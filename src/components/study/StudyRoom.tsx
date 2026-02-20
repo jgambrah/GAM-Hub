@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { getAcademicAssistance } from '@/ai/flows/ai-tutor-flow';
 import { cn } from '@/lib/utils';
 import type { StudyRoom as StudyRoomType } from '@/lib/types';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 export default function StudyRoomInterface({ roomId, onClose }: { roomId: string, onClose: () => void }) {
   const { user: userProfile } = useAuth();
@@ -78,40 +80,55 @@ export default function StudyRoomInterface({ roomId, onClose }: { roomId: string
       return;
     }
 
+    if (!firestore) return;
+
     setAiLoading(true);
     setIsTutorOpen(true); // Open sidebar to show thinking state
 
-    try {
-      // 1. Save thinking state to history
-      const aiAssistanceRef = await addDoc(collection(firestore!, 'study_rooms', roomId, 'ai_assistance'), {
-        prompt: content,
-        authorName: userProfile?.name || "Student",
-        createdAt: serverTimestamp(),
-        status: 'thinking'
-      });
+    const colRef = collection(firestore, 'study_rooms', roomId, 'ai_assistance');
+    const aiData = {
+      prompt: content,
+      authorName: userProfile?.name || "Member",
+      createdAt: serverTimestamp(),
+      status: 'thinking'
+    };
 
-      // 2. Call academic assistant flow
-      const result = await getAcademicAssistance({
-        notes: content,
-        topic: roomData?.title
-      });
+    // Use Pattern 1: Non-blocking mutation with .catch()
+    addDoc(colRef, aiData)
+      .then(async (docRef) => {
+        // AI Request inside the success block
+        try {
+          const result = await getAcademicAssistance({
+            notes: content,
+            topic: roomData?.title
+          });
 
-      // 3. Update doc with Professor's explanation
-      await updateDoc(aiAssistanceRef, {
-        response: result.explanation,
-        status: 'complete'
-      });
+          updateDocumentNonBlocking(docRef, {
+            response: result.explanation,
+            status: 'complete'
+          });
+        } catch (err) {
+          console.error("AI Flow Error:", err);
+          updateDocumentNonBlocking(docRef, {
+            response: "The Professor is currently unavailable. Please try again in a few moments.",
+            status: 'error'
+          });
+        }
+      })
+      .catch(async (serverError) => {
+        // Create the rich, contextual error asynchronously.
+        const permissionError = new FirestorePermissionError({
+          path: colRef.path,
+          operation: 'create',
+          requestResourceData: aiData,
+        });
 
-    } catch (err) {
-      console.error("AI Tutor Error:", err);
-      toast({
-        variant: 'destructive',
-        title: "Tutor Busy",
-        description: "The Professor is currently consulting another student. Try again in a moment.",
+        // Emit the error with the global error emitter
+        errorEmitter.emit('permission-error', permissionError);
+      })
+      .finally(() => {
+        setAiLoading(false);
       });
-    } finally {
-      setAiLoading(false);
-    }
   };
 
   const handleTextChange = (val: string) => {

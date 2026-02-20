@@ -99,6 +99,8 @@ service cloud.firestore {
       match /ai_assistance/{docId} {
         allow read, write: if isVerifiedMember() && (
           isAdmin() ||
+          hasRole('staff') ||
+          hasRole('management') ||
           request.auth.token.major == get(/databases/$(database)/documents/study_rooms/$(roomId)).data.major
         );
       }

@@ -382,6 +382,8 @@ exports.syncUserClaims = onDocumentUpdated("users/{userId}", async (event) => {
       isAdmin: newData.role === "admin" || newData.email === "admin@gamhub.com",
       isCandidate: newData.candidacyStatus === "approved",
       isAuthority: !!newData.isAuthority,
+      major: newData.major || null,
+      department: newData.department || null,
     });
 
     console.log("✅ Claims successfully synced to Auth Token.");
@@ -430,6 +432,8 @@ exports.injectClaimsOnSignIn = beforeUserSignedIn(async (event) => {
         superAdmin: data.role === "admin",
         isCandidate: data.candidacyStatus === "approved",
         isAuthority: !!data.isAuthority,
+        major: data.major || null,
+        department: data.department || null,
       },
     };
   } catch (error) {
