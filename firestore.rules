@@ -1,0 +1,194 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Pure token check — zero Firestore reads, zero poisoning
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.uid == 'xYAuFJclD2UiUwPAUb4vqEaaKct2' ||
+        request.auth.token.email == 'admin@gamhub.com' ||
+        request.auth.token.isAdmin == true ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    // Pure token check — campusId now comes from Auth token via syncUserClaims
+    function belongsToCampus(campusId) {
+      return request.auth.token.campusId == campusId ||
+             request.auth.token.campusId == 'all';
+    }
+
+    function hasRole(role) {
+      return request.auth.token.role == role;
+    }
+
+    function isCreatingInOwnCampus() {
+      return request.resource.data.campusId == request.auth.token.campusId ||
+             request.auth.token.campusId == 'all';
+    }
+
+    function isVerifiedMember() {
+      return isAdmin() || (isSignedIn() && request.auth.token.email_verified == true);
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    match /platform_stats/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /spotlight/{docId} {
+      allow read, list, get: if true;
+      allow write: if isAdmin();
+    }
+
+    match /live_broadcasts/{campusId} {
+      allow list, get: if isSignedIn();
+      allow write: if isAdmin() || hasRole('src');
+    }
+
+    // KEY RESTRICTION: registry_posts is now management-only per Liaison directive.
+    match /registry_posts/{registryPostId} {
+      allow read, write: if hasRole('management');
+    }
+
+    match /src_posts/{postId} {
+      allow list: if isAdmin() || isVerifiedMember();
+      allow get:  if isAdmin() || (isSignedIn() && belongsToCampus(resource.data.campusId));
+      allow write: if isAdmin() || (hasRole('src') && isCreatingInOwnCampus());
+    }
+
+    match /hall_of_fame/{docId} {
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /announcements/{id} {
+      allow read, list: if isSignedIn();
+      allow create, update: if isAdmin() || request.auth.token.isAuthority == true;
+    }
+
+    match /candidate_applications/{appId} {
+      allow list: if isVerifiedMember();
+      allow get: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || hasRole('src');
+      allow update: if isAdmin() || (hasRole('src') && belongsToCampus(resource.data.campusId));
+      allow create: if isVerifiedMember() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /study_rooms/{roomId} {
+      allow list, get: if isVerifiedMember();
+      allow create: if isVerifiedMember() && (
+        !('isOfficial' in request.resource.data) ||
+        request.resource.data.isOfficial == false ||
+        (request.resource.data.isOfficial == true && (
+          hasRole('staff') || hasRole('src') || hasRole('management') || isAdmin()
+        ))
+      );
+      allow update: if isVerifiedMember() && (request.auth.uid in resource.data.participants || isAdmin());
+      match /ai_assistance/{docId} {
+        allow read, write: if isVerifiedMember() && (
+          isAdmin() ||
+          request.auth.token.major == get(/databases/$(database)/documents/study_rooms/$(roomId)).data.major
+        );
+      }
+    }
+
+    match /products/{productId} {
+      allow list: if isVerifiedMember();
+      allow get: if isVerifiedMember() && (
+        isAdmin() || resource.data.productType != 'service' ||
+        get(/databases/$(database)/documents/users/$(resource.data.vendorId)).data.trial_leads_count > 0 ||
+        get(/databases/$(database)/documents/users/$(resource.data.vendorId)).data.lead_credits > 0
+      );
+      allow create: if isAdmin() || (isVerifiedMember() && hasRole('vendor'));
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.vendorId == request.auth.uid);
+    }
+
+    match /orders/{orderId} {
+      allow list: if isVerifiedMember();
+      allow get, update: if isAdmin() || (isVerifiedMember() && (
+        request.auth.uid == resource.data.buyerId || request.auth.uid == resource.data.vendorId
+      ));
+      allow create: if isVerifiedMember() && request.resource.data.buyerId == request.auth.uid;
+    }
+
+    match /payout_requests/{requestId} {
+      allow list, get: if isAdmin() || (isSignedIn() && resource.data.vendorId == request.auth.uid);
+      allow create: if isVerifiedMember() && request.resource.data.vendorId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /arena_posts/{postId} {
+      allow read, list: if true;
+      allow create: if isVerifiedMember();
+      match /comebacks/{id} {
+        allow read, list: if true;
+        allow create: if isVerifiedMember() || isAdmin();
+      }
+    }
+
+    match /social_posts/{postId} {
+      allow get, list: if true;
+      allow create: if isVerifiedMember() && request.resource.data.content != null;
+      allow update: if isAdmin() || (isOwner(resource.data.authorId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['isLiaisonBoosted', 'isProtected', 'vibeLevel']));
+      allow delete: if isAdmin() || isOwner(resource.data.authorId);
+      match /comments/{commentId} {
+        allow read, list: if true;
+        allow create: if isVerifiedMember();
+      }
+      match /likedBy/{userId} {
+        allow read: if true;
+        allow write: if isOwner(userId);
+      }
+    }
+
+    match /campuses/{campusId} {
+      allow read, list: if true;
+      allow update: if isAdmin() || (hasRole('src') && belongsToCampus(campusId) &&
+        !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['studentDomain', 'staffDomain', 'primaryColor', 'id']));
+      allow create, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isVerifiedMember());
+      allow list: if isVerifiedMember();
+      allow create, update: if isAdmin() || isOwner(userId);
+      match /ai_assistant/{id} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    match /chats/{chatId} {
+      allow list, get, update: if isAdmin() || (isVerifiedMember() && request.auth.uid in resource.data.users);
+      allow create: if isVerifiedMember();
+      match /messages/{msgId} {
+        allow read, create: if isAdmin() || isVerifiedMember();
+      }
+    }
+
+    match /connections/{id} {
+      allow list, get: if isAdmin() || isVerifiedMember();
+      allow read, write: if isVerifiedMember();
+    }
+
+    match /pickup_points/{id} { allow read, list: if isSignedIn(); }
+    match /disputes/{id} {
+      allow read, create: if isVerifiedMember();
+      allow update: if isAdmin();
+    }
+  }
+}

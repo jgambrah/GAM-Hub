@@ -1,0 +1,61 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "registry_posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "campusId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "src_posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "campusId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "social_posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "campusId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "products",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "campusId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

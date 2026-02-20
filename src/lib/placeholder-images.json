@@ -1,0 +1,76 @@
+{
+  "placeholderImages": [
+    {
+      "id": "avatar-1",
+      "description": "User avatar 1",
+      "imageUrl": "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwyfHxwZXJzb24lMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzA0NjI2MDZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person portrait"
+    },
+    {
+      "id": "avatar-2",
+      "description": "User avatar 2",
+      "imageUrl": "https://images.unsplash.com/flagged/photo-1595514191830-3e96a518989b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8cGVyc29uJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzcwNDYyNjA2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person portrait"
+    },
+    {
+      "id": "avatar-3",
+      "description": "User avatar 3",
+      "imageUrl": "https://images.unsplash.com/photo-1590086782792-42dd2350140d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxwZXJzb24lMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzA0NjI2MDZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person portrait"
+    },
+    {
+      "id": "avatar-4",
+      "description": "User avatar 4",
+      "imageUrl": "https://images.unsplash.com/flagged/photo-1595514191830-3e96a518989b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8cGVyc29uJTIwcG9ydHJhaXR8ZW58MHx8fHwxNzcwNDYyNjA2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "person portrait"
+    },
+    {
+      "id": "product-1",
+      "description": "Laptop on a desk",
+      "imageUrl": "https://images.unsplash.com/photo-1589362281138-e3f7ebe47f1a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8bGFwdG9wJTIwZGVza3xlbnwwfHx8fDE3NzAzODgxMTh8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "laptop desk"
+    },
+    {
+      "id": "product-2",
+      "description": "Wireless headphones",
+      "imageUrl": "https://images.unsplash.com/photo-1693841114924-92ac9abde8f6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxoZWFkcGhvbmVzJTIwcHJvZHVjdHxlbnwwfHx8fDE3NzAzODgxMTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "headphones product"
+    },
+    {
+      "id": "product-3",
+      "description": "A collection of textbooks",
+      "imageUrl": "https://images.unsplash.com/photo-1658563248961-62d39328d1a2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxMHx8Ym9va3MlMjBzdGFja3xlbnwwfHx8fDE3NzAzNzQwNjd8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "books stack"
+    },
+    {
+      "id": "product-4",
+      "description": "A stylish backpack",
+      "imageUrl": "https://images.unsplash.com/photo-1761915866371-7caac74464fa?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw2fHxiYWNrcGFjayUyMG1pbmltYWxpc3R8ZW58MHx8fHwxNzcwNDY0MzE2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "backpack minimalist"
+    },
+    {
+      "id": "product-5",
+      "description": "A smartphone",
+      "imageUrl": "https://images.unsplash.com/photo-1653589048352-7c3b90241ae2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHxzbWFydHBob25lJTIwc2NyZWVufGVufDB8fHx8MTc3MDM5MDMxNXww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "smartphone screen"
+    },
+    {
+      "id": "product-6",
+      "description": "A reusable coffee cup",
+      "imageUrl": "https://images.unsplash.com/photo-1598908314732-07113901949e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHxjb2ZmZWUlMjBjdXB8ZW58MHx8fHwxNzcwNDY0MzE2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "coffee cup"
+    },
+    {
+      "id": "social-1",
+      "description": "Students studying in a group",
+      "imageUrl": "https://images.unsplash.com/photo-1522071820081-009f0129c71c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwxfHxzdHVkZW50cyUyMHN0dWR5aW5nfGVufDB8fHx8MTc3MDQ2NDMxNnww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "students studying"
+    },
+    {
+      "id": "social-2",
+      "description": "Campus event with a crowd",
+      "imageUrl": "https://images.unsplash.com/photo-1769283996520-b8a1e5834c5d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw2fHx1bml2ZXJzaXR5JTIwZXZlbnR8ZW58MHx8fHwxNzcwNDY0MzE2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "university event"
+    }
+  ]
+}
