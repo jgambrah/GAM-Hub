@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { campuses } from '@/lib/data';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useFirebase, setDocumentNonBlocking } from '@/firebase';
+import { useFirebase } from '@/firebase';
 import { createUserWithEmailAndPassword, sendEmailVerification, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -46,6 +46,12 @@ type SignInValues = z.infer<typeof signInSchema>;
 type StudentSignUpValues = z.infer<typeof studentSignUpSchema>;
 type VendorSignUpValues = z.infer<typeof vendorSignUpSchema>;
 
+/**
+ * AuthForm Component
+ * 
+ * Updated with the "Cinematic Visibility" patch. 
+ * Inputs now feature explicit text-white and high-contrast glassmorphic backgrounds.
+ */
 export function AuthForm() {
   const router = useRouter();
   const { toast } = useToast();
@@ -77,12 +83,7 @@ export function AuthForm() {
     setIsLoading(true);
     try {
       const credential = await signInWithEmailAndPassword(auth, data.email, data.password);
-      
-      // ✅ THE CRITICAL LIAISON FIX:
-      // Force discard old cached token and fetch fresh one with new claims
-      // injected by injectClaimsOnSignIn. This MUST happen before we redirect.
       await credential.user.getIdToken(true);
-
       toast({ title: 'Login Successful', description: 'Redirecting to your dashboard...' });
       router.push('/dashboard');
     } catch (error: any) {
@@ -169,29 +170,45 @@ export function AuthForm() {
     );
   }
 
+  // COMMON INPUT CLASSES FOR VISIBILITY
+  const inputClasses = "bg-white/10 border-white/20 text-white placeholder:text-slate-400 focus:bg-white/20 focus:border-yellow-500 transition-all h-12 rounded-xl";
+
   return (
     <Tabs defaultValue="signin" className="w-full">
-      <TabsList className="grid w-full grid-cols-2">
-        <TabsTrigger value="signin">Sign In</TabsTrigger>
-        <TabsTrigger value="signup">Sign Up</TabsTrigger>
+      <TabsList className="grid w-full grid-cols-2 bg-white/5 p-1 rounded-xl mb-6">
+        <TabsTrigger value="signin" className="rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white">Sign In</TabsTrigger>
+        <TabsTrigger value="signup" className="rounded-lg data-[state=active]:bg-white/10 data-[state=active]:text-white">Sign Up</TabsTrigger>
       </TabsList>
       
       <TabsContent value="signin">
         <form onSubmit={signInForm.handleSubmit(onSignInSubmit)}>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="signin-email">Email</Label>
-              <Input id="signin-email" type="email" autoComplete="email" disabled={isLoading} {...signInForm.register('email')} />
-              {signInForm.formState.errors.email && <p className="text-xs text-destructive">{signInForm.formState.errors.email.message}</p>}
+              <Label htmlFor="signin-email" className="text-white ml-1">University Email</Label>
+              <Input 
+                id="signin-email" 
+                type="email" 
+                autoComplete="email" 
+                disabled={isLoading} 
+                className={inputClasses}
+                {...signInForm.register('email')} 
+              />
+              {signInForm.formState.errors.email && <p className="text-xs text-red-400">{signInForm.formState.errors.email.message}</p>}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="signin-password">Password</Label>
-              <Input id="signin-password" type="password" disabled={isLoading} {...signInForm.register('password')} />
-              {signInForm.formState.errors.password && <p className="text-xs text-destructive">{signInForm.formState.errors.password.message}</p>}
+              <Label htmlFor="signin-password" className="text-white ml-1">Password</Label>
+              <Input 
+                id="signin-password" 
+                type="password" 
+                disabled={isLoading} 
+                className={inputClasses}
+                {...signInForm.register('password')} 
+              />
+              {signInForm.formState.errors.password && <p className="text-xs text-red-400">{signInForm.formState.errors.password.message}</p>}
             </div>
-            <Button disabled={isLoading} className="mt-2" type="submit">
+            <Button disabled={isLoading} className="mt-4 py-6 rounded-xl bg-yellow-500 text-slate-950 hover:bg-yellow-400 font-black uppercase tracking-widest shadow-lg" type="submit">
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Sign In
+              Enter the Yard
             </Button>
           </div>
         </form>
@@ -199,67 +216,66 @@ export function AuthForm() {
 
       <TabsContent value="signup">
         <Tabs defaultValue="student" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="student">Student / Staff</TabsTrigger>
-                <TabsTrigger value="vendor">Vendor</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 bg-white/5 p-1 rounded-xl mb-4">
+                <TabsTrigger value="student" className="text-xs">Student/Staff</TabsTrigger>
+                <TabsTrigger value="vendor" className="text-xs">Vendor</TabsTrigger>
             </TabsList>
             <TabsContent value="student">
                 <form onSubmit={studentSignUpForm.handleSubmit(onStudentSignUpSubmit)}>
-                    <div className="grid gap-4 py-4">
+                    <div className="grid gap-4 py-2">
                         <div className="grid gap-2">
-                            <Label htmlFor="signup-name">Full Name</Label>
-                            <Input id="signup-name" disabled={isLoading} {...studentSignUpForm.register('name')} />
-                            {studentSignUpForm.formState.errors.name && <p className="text-xs text-destructive">{studentSignUpForm.formState.errors.name.message}</p>}
+                            <Label htmlFor="signup-name" className="text-white ml-1">Full Name</Label>
+                            <Input id="signup-name" className={inputClasses} disabled={isLoading} {...studentSignUpForm.register('name')} />
+                            {studentSignUpForm.formState.errors.name && <p className="text-xs text-red-400">{studentSignUpForm.formState.errors.name.message}</p>}
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="signup-email">University Email</Label>
-                            <Input id="signup-email" placeholder="name@st.ug.edu.gh" type="email" disabled={isLoading} {...studentSignUpForm.register('email')} />
-                            {studentSignUpForm.formState.errors.email && <p className="text-xs text-destructive">{studentSignUpForm.formState.errors.email.message}</p>}
+                            <Label htmlFor="signup-email" className="text-white ml-1">University Email</Label>
+                            <Input id="signup-email" placeholder="name@st.ug.edu.gh" className={inputClasses} type="email" disabled={isLoading} {...studentSignUpForm.register('email')} />
+                            {studentSignUpForm.formState.errors.email && <p className="text-xs text-red-400">{studentSignUpForm.formState.errors.email.message}</p>}
                         </div>
                         <div className="grid gap-2">
-                            <Label htmlFor="signup-password">Password</Label>
-                            <Input id="signup-password" type="password" disabled={isLoading} {...studentSignUpForm.register('password')} />
-                            {studentSignUpForm.formState.errors.password && <p className="text-xs text-destructive">{studentSignUpForm.formState.errors.password.message}</p>}
+                            <Label htmlFor="signup-password" className="text-white ml-1">Password</Label>
+                            <Input id="signup-password" type="password" className={inputClasses} disabled={isLoading} {...studentSignUpForm.register('password')} />
+                            {studentSignUpForm.formState.errors.password && <p className="text-xs text-red-400">{studentSignUpForm.formState.errors.password.message}</p>}
                         </div>
-                        <Button disabled={isLoading} className="mt-2" type="submit">
+                        <Button disabled={isLoading} className="mt-4 py-6 rounded-xl bg-primary text-white hover:bg-primary/90 font-black uppercase tracking-widest" type="submit">
                             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Create Account
+                            Initialize Profile
                         </Button>
                     </div>
                 </form>
             </TabsContent>
             <TabsContent value="vendor">
                 <form onSubmit={vendorSignUpForm.handleSubmit(onVendorSignUpSubmit)}>
-                  <div className="grid gap-4 py-4">
+                  <div className="grid gap-4 py-2">
                     <div className="grid gap-2">
-                      <Label htmlFor="vendor-company">Company Name</Label>
-                      <Input id="vendor-company" disabled={isLoading} {...vendorSignUpForm.register('companyName')} />
-                      {vendorSignUpForm.formState.errors.companyName && <p className="text-xs text-destructive">{vendorSignUpForm.formState.errors.companyName.message}</p>}
+                      <Label htmlFor="vendor-company" className="text-white ml-1">Company Name</Label>
+                      <Input id="vendor-company" className={inputClasses} disabled={isLoading} {...vendorSignUpForm.register('companyName')} />
+                      {vendorSignUpForm.formState.errors.companyName && <p className="text-xs text-red-400">{vendorSignUpForm.formState.errors.companyName.message}</p>}
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="vendor-email">Business Email</Label>
-                      <Input id="vendor-email" type="email" disabled={isLoading} {...vendorSignUpForm.register('email')} />
-                      {vendorSignUpForm.formState.errors.email && <p className="text-xs text-destructive">{vendorSignUpForm.formState.errors.email.message}</p>}
+                      <Label htmlFor="vendor-email" className="text-white ml-1">Business Email</Label>
+                      <Input id="vendor-email" type="email" className={inputClasses} disabled={isLoading} {...vendorSignUpForm.register('email')} />
+                      {vendorSignUpForm.formState.errors.email && <p className="text-xs text-red-400">{vendorSignUpForm.formState.errors.email.message}</p>}
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="vendor-password">Password</Label>
-                      <Input id="vendor-password" type="password" disabled={isLoading} {...vendorSignUpForm.register('password')} />
-                      {vendorSignUpForm.formState.errors.password && <p className="text-xs text-destructive">{vendorSignUpForm.formState.errors.password.message}</p>}
+                      <Label htmlFor="vendor-password" className="text-white ml-1">Password</Label>
+                      <Input id="vendor-password" type="password" className={inputClasses} disabled={isLoading} {...vendorSignUpForm.register('password')} />
+                      {vendorSignUpForm.formState.errors.password && <p className="text-xs text-red-400">{vendorSignUpForm.formState.errors.password.message}</p>}
                     </div>
                     <div className="grid gap-2">
-                      <Label htmlFor="vendor-campus">Primary Campus</Label>
+                      <Label htmlFor="vendor-campus" className="text-white ml-1">Primary Campus</Label>
                       <Select onValueChange={(value) => vendorSignUpForm.setValue('campusId', value)} disabled={isLoading}>
-                          <SelectTrigger id="vendor-campus"><SelectValue placeholder="Select a campus" /></SelectTrigger>
-                          <SelectContent>
+                          <SelectTrigger id="vendor-campus" className="bg-white/10 border-white/20 text-white h-12 rounded-xl"><SelectValue placeholder="Select a campus" /></SelectTrigger>
+                          <SelectContent className="bg-slate-900 border-white/10 text-white rounded-xl">
                               {campuses.map((campus) => (<SelectItem key={campus.id} value={campus.id}>{campus.name}</SelectItem>))}
                           </SelectContent>
                       </Select>
-                      {vendorSignUpForm.formState.errors.campusId && <p className="text-xs text-destructive">{vendorSignUpForm.formState.errors.campusId.message}</p>}
+                      {vendorSignUpForm.formState.errors.campusId && <p className="text-xs text-red-400">{vendorSignUpForm.formState.errors.campusId.message}</p>}
                     </div>
-                    <p className="text-xs text-muted-foreground">Vendor accounts require manual approval by an admin.</p>
-                    <Button disabled={isLoading} className="mt-2" variant="secondary" type="submit">
+                    <Button disabled={isLoading} className="mt-4 py-6 rounded-xl bg-white text-slate-900 hover:bg-slate-100 font-black uppercase tracking-widest" type="submit">
                       {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Register as Vendor
+                      Register Business
                     </Button>
                   </div>
                 </form>
