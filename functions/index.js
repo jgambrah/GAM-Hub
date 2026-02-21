@@ -205,7 +205,14 @@ exports.gamHubAuthGate = beforeUserCreated(async (event) => {
   const db = admin.firestore();
 
   if (email === "admin@gamhub.com") {
-    return {customClaims: {role: "admin", superAdmin: true, isAdmin: true, campusId: "all"}};
+    return {
+      customClaims: {
+        role: "admin",
+        superAdmin: true,
+        isAdmin: true,
+        campusId: "all",
+      },
+    };
   }
 
   const domain = email.split("@")[1];
@@ -450,27 +457,27 @@ exports.onArenaVibration = onDocumentCreated("arena_posts/{postId}", async (even
   const post = event.data.data();
   const content = post.content || "";
   const keywords = ["vote", "tribal", "violence", "politics", "tribe", "kill", "fight"];
-  
+
   const isSensitive = keywords.some((k) => content.toLowerCase().includes(k));
-  
+
   if (isSensitive) {
-    const db = admin.firestore();
-    
     // Safety check: Redact if violent or tribalist
     if (content.toLowerCase().includes("violence") ||
         content.toLowerCase().includes("tribal") ||
         content.toLowerCase().includes("fight")) {
       return event.data.ref.update({
         status: "blocked",
-        content: "[LIAISON ALERT: This post violated the Yard Safety Protocol and has been redacted by the Moderator.]",
+        content: "[LIAISON ALERT: This post violated the Yard Safety Protocol " +
+                 "and has been redacted by the Moderator.]",
         moderationNote: "Inciting tribalism or violence is strictly prohibited in the Yard.",
       });
     }
-    
+
     // Otherwise, add a Liaison Bot Comeback to keep the peace
     const comebacksRef = event.data.ref.collection("comebacks");
     await comebacksRef.add({
-      text: "Liaison Bot is watching this discussion. Keep the vibration healthy and intellectual, Citizens. 🤖🛡️🇬🇭",
+      text: "Liaison Bot is watching this discussion. Keep the vibration " +
+            "healthy and intellectual, Citizens. 🤖🛡️🇬🇭",
       authorId: "liaison-bot",
       authorName: "Liaison Bot",
       authorCampus: "GH",
@@ -478,10 +485,54 @@ exports.onArenaVibration = onDocumentCreated("arena_posts/{postId}", async (even
       isBot: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    
+
     return event.data.ref.update({
       comebackCount: admin.firestore.FieldValue.increment(1),
     });
   }
   return null;
 });
+
+/**
+ * 15. NOTIFICATION ENGINE
+ * Sends alerts for key order milestones.
+ */
+exports.sendOrderNotifications = onDocumentUpdated("orders/{orderId}",
+    async (event) => {
+      const newData = event.data.after.data();
+      const oldData = event.data.before.data();
+
+      let targetId = "";
+      let msg = "";
+
+      // A. Notify Vendor about new request (via inquiry update or confirmation req)
+      if (oldData.status === "inquiry_sent" && newData.status === "awaiting_confirmation") {
+        targetId = newData.vendorId;
+        msg = `New request for ${newData.productName}! ` +
+              "Please confirm your stock availability.";
+      }
+
+      // B. Notify Buyer that they can now pay
+      if (oldData.status === "awaiting_confirmation" && newData.status === "confirmed") {
+        targetId = newData.buyerId;
+        msg = `Stock confirmed for ${newData.productName}! ` +
+              "You can now proceed to MoMo payment.";
+      }
+
+      if (targetId && msg) {
+        const userDoc = await admin.firestore().collection("users")
+            .doc(targetId).get();
+        const fcmToken = userDoc.data() ? userDoc.data().fcmToken : null;
+
+        if (fcmToken) {
+          await admin.messaging().send({
+            token: fcmToken,
+            notification: {
+              title: "GAM Hub Yard Alert",
+              body: msg,
+            },
+            data: {orderId: event.params.orderId},
+          });
+        }
+      }
+    });
