@@ -5,7 +5,7 @@ import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
@@ -32,8 +32,11 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [showComebacks, setShowComebacks] = useState(false);
 
+    const isBlocked = post.status === 'blocked';
+
     // LIAISON STABILIZATION: Lock embed URL to prevent iframe flickering during re-renders
     const stabilizedEmbedUrl = React.useMemo(() => {
+        if (isBlocked) return '';
         if (post.mediaType === 'youtube' && post.mediaUrl) {
             return getYouTubeEmbedUrl(post.mediaUrl);
         }
@@ -41,7 +44,7 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
             return post.mediaUrl;
         }
         return '';
-    }, [post.mediaUrl, post.mediaType]);
+    }, [post.mediaUrl, post.mediaType, isBlocked]);
 
     React.useEffect(() => {
         setLocalStats({ ...post.stats, comebacks: post.comebackCount || 0 });
@@ -58,7 +61,7 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     }, [user, firestore, post.id]);
 
     const handleAction = async (action: 'like' | 'burn') => {
-        if (!user || !firestore || isProcessing) return;
+        if (!user || !firestore || isProcessing || isBlocked) return;
         setIsProcessing(true);
 
         const postRef = doc(firestore, 'arena_posts', post.id);
@@ -111,21 +114,37 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     const isShade = post.vibeType === 'shade';
 
     return (
-        <div className="relative bg-card rounded-[2.5rem] p-6 border-l-8 shadow-sm" style={{ borderLeftColor: post.authorColor }}>
+        <div className={cn(
+            "relative bg-card rounded-[2.5rem] p-6 border-l-8 shadow-sm transition-all",
+            isBlocked ? "border-red-600 bg-red-50 dark:bg-red-950/10" : ""
+        )} style={{ borderLeftColor: isBlocked ? undefined : post.authorColor }}>
+            
+            {isBlocked && (
+                <div className="absolute top-0 right-0 p-4">
+                    <ShieldAlert className="text-red-600 animate-pulse" size={24} />
+                </div>
+            )}
+
             <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full border-2 border-white dark:border-card shadow-sm overflow-hidden" 
-                        style={{ backgroundColor: post.authorColor }}>
-                        <Image src={post.authorAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${post.authorName}`} width={40} height={40} alt="avatar" className="object-cover w-full h-full"/>
+                        style={{ backgroundColor: isBlocked ? "#dc2626" : post.authorColor }}>
+                        {isBlocked ? (
+                            <div className="w-full h-full flex items-center justify-center bg-red-600 text-white">
+                                <ShieldAlert size={20} />
+                            </div>
+                        ) : (
+                            <Image src={post.authorAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${post.authorName}`} width={40} height={40} alt="avatar" className="object-cover w-full h-full"/>
+                        )}
                     </div>
                     <div>
                         <p className="text-sm font-black text-foreground leading-none flex items-center">
-                        {post.authorName} 
-                        {post.authorId === 'xYAuFJclD2UiUwPAUb4vqEaaKct2' && <span className="ml-1 text-blue-500 font-bold text-[10px]">(Liaison)</span>}
+                        {isBlocked ? "Liaison Moderator" : post.authorName} 
+                        {!isBlocked && post.authorId === 'xYAuFJclD2UiUwPAUb4vqEaaKct2' && <span className="ml-1 text-blue-500 font-bold text-[10px]">(Liaison)</span>}
                         </p>
                         <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1 flex items-center gap-2">
-                           <span className="px-1.5 py-0.5 rounded text-white" style={{backgroundColor: post.authorColor}}>{post.authorCampus}</span>
-                           {post.targetCampus && (
+                           <span className={cn("px-1.5 py-0.5 rounded text-white", isBlocked ? "bg-red-600" : "")} style={{backgroundColor: isBlocked ? undefined : post.authorColor}}>{isBlocked ? "SHIELD" : post.authorCampus}</span>
+                           {!isBlocked && post.targetCampus && (
                                <>
                                 <Zap size={12} className="text-muted-foreground" />
                                 <span className="tracking-widest">
@@ -143,38 +162,53 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                 )}
             </div>
             
-            {post.content && <p className="text-lg font-bold text-foreground leading-tight">"{post.content}"</p>}
-            
-            {post.mediaUrl && (
-                <div className="mt-4 rounded-2xl overflow-hidden bg-black border border-border">
-                    {post.mediaType === 'image' && <Image src={post.mediaUrl} width={500} height={300} className="w-full h-auto object-cover" alt="Post media" />}
-                    {post.mediaType === 'video' && <video src={post.mediaUrl} controls className="w-full h-auto" />}
-                    {post.mediaType === 'youtube' && stabilizedEmbedUrl && (
-                        <iframe src={stabilizedEmbedUrl} className="w-full h-auto aspect-video" allow="autoplay; encrypted-media" allowFullScreen />
+            {isBlocked ? (
+                <div className="py-4 space-y-3">
+                    <p className="text-lg font-black text-red-600 italic">
+                        {post.content}
+                    </p>
+                    {post.moderationNote && (
+                        <p className="text-xs font-bold text-red-400 uppercase tracking-widest flex items-center gap-2">
+                            <Bot size={14} /> Reason: {post.moderationNote}
+                        </p>
                     )}
-                    {post.mediaType === 'tiktok' && stabilizedEmbedUrl && <div className="bg-black flex justify-center"><TikTokEmbed url={stabilizedEmbedUrl} /></div>}
                 </div>
-            )}
-
-            <div className="flex gap-4 mt-6">
-                <button
-                    onClick={() => handleAction(isShade ? 'burn' : 'like')}
-                    disabled={isProcessing}
-                    className={cn(
-                        "flex items-center gap-1.5 text-muted-foreground hover:text-red-500 transition-colors",
-                        isShade && userAction === 'burned' && 'text-red-500',
-                        !isShade && userAction === 'liked' && 'text-blue-500'
+            ) : (
+                <>
+                    {post.content && <p className="text-lg font-bold text-foreground leading-tight">"{post.content}"</p>}
+                    
+                    {post.mediaUrl && (
+                        <div className="mt-4 rounded-2xl overflow-hidden bg-black border border-border">
+                            {post.mediaType === 'image' && <Image src={post.mediaUrl} width={500} height={300} className="w-full h-auto object-cover" alt="Post media" />}
+                            {post.mediaType === 'video' && <video src={post.mediaUrl} controls className="w-full h-auto" />}
+                            {post.mediaType === 'youtube' && stabilizedEmbedUrl && (
+                                <iframe src={stabilizedEmbedUrl} className="w-full h-auto aspect-video" allow="autoplay; encrypted-media" allowFullScreen />
+                            )}
+                            {post.mediaType === 'tiktok' && stabilizedEmbedUrl && <div className="bg-black flex justify-center"><TikTokEmbed url={stabilizedEmbedUrl} /></div>}
+                        </div>
                     )}
-                >
-                    {isShade ? <Flame size={16} className={cn(userAction === 'burned' && "fill-current")} /> : <ThumbsUp size={16} className={cn(userAction === 'liked' && "fill-current")} />}
-                    <span className="text-xs font-black">
-                        {isShade ? `${localStats?.burns || 0} Burns` : `${localStats?.likes || 0} Likes`}
-                    </span>
-                </button>
-                <button onClick={() => setShowComebacks(!showComebacks)} className="flex items-center gap-1.5 text-muted-foreground hover:text-blue-500 transition-colors">
-                    <MessageSquare size={16} /> <span className="text-xs font-black">{localStats.comebacks || 0} Comebacks</span>
-                </button>
-            </div>
+
+                    <div className="flex gap-4 mt-6">
+                        <button
+                            onClick={() => handleAction(isShade ? 'burn' : 'like')}
+                            disabled={isProcessing}
+                            className={cn(
+                                "flex items-center gap-1.5 text-muted-foreground hover:text-red-500 transition-colors",
+                                isShade && userAction === 'burned' && 'text-red-500',
+                                !isShade && userAction === 'liked' && 'text-blue-500'
+                            )}
+                        >
+                            {isShade ? <Flame size={16} className={cn(userAction === 'burned' && "fill-current")} /> : <ThumbsUp size={16} className={cn(userAction === 'liked' && "fill-current")} />}
+                            <span className="text-xs font-black">
+                                {isShade ? `${localStats?.burns || 0} Burns` : `${localStats?.likes || 0} Likes`}
+                            </span>
+                        </button>
+                        <button onClick={() => setShowComebacks(!showComebacks)} className="flex items-center gap-1.5 text-muted-foreground hover:text-blue-500 transition-colors">
+                            <MessageSquare size={16} /> <span className="text-xs font-black">{localStats.comebacks || 0} Comebacks</span>
+                        </button>
+                    </div>
+                </>
+            )}
 
             {showComebacks && user && (
               <ArenaComebacks post={post} />

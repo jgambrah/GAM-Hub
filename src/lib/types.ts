@@ -1,4 +1,3 @@
-
 export type User = {
   id: string;
   name: string;
@@ -190,6 +189,8 @@ export type ArenaPost = {
   comebackCount?: number;
   mediaUrl?: string;
   mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
+  status?: 'active' | 'blocked';
+  moderationNote?: string;
 };
 
 export type ArenaComeback = {

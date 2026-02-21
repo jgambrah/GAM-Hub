@@ -441,3 +441,47 @@ exports.injectClaimsOnSignIn = beforeUserSignedIn(async (event) => {
     return;
   }
 });
+
+/**
+ * 14. THE AI LIAISON MODERATOR
+ * Monitors Arena posts for political safety and incitement.
+ */
+exports.onArenaVibration = onDocumentCreated("arena_posts/{postId}", async (event) => {
+  const post = event.data.data();
+  const content = post.content || "";
+  const keywords = ["vote", "tribal", "violence", "politics", "tribe", "kill", "fight"];
+  
+  const isSensitive = keywords.some((k) => content.toLowerCase().includes(k));
+  
+  if (isSensitive) {
+    const db = admin.firestore();
+    
+    // Safety check: Redact if violent or tribalist
+    if (content.toLowerCase().includes("violence") ||
+        content.toLowerCase().includes("tribal") ||
+        content.toLowerCase().includes("fight")) {
+      return event.data.ref.update({
+        status: "blocked",
+        content: "[LIAISON ALERT: This post violated the Yard Safety Protocol and has been redacted by the Moderator.]",
+        moderationNote: "Inciting tribalism or violence is strictly prohibited in the Yard.",
+      });
+    }
+    
+    // Otherwise, add a Liaison Bot Comeback to keep the peace
+    const comebacksRef = event.data.ref.collection("comebacks");
+    await comebacksRef.add({
+      text: "Liaison Bot is watching this discussion. Keep the vibration healthy and intellectual, Citizens. 🤖🛡️🇬🇭",
+      authorId: "liaison-bot",
+      authorName: "Liaison Bot",
+      authorCampus: "GH",
+      authorColor: "#0f172a",
+      isBot: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    
+    return event.data.ref.update({
+      comebackCount: admin.firestore.FieldValue.increment(1),
+    });
+  }
+  return null;
+});
