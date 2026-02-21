@@ -192,5 +192,17 @@ service cloud.firestore {
       allow read, create: if isVerifiedMember();
       allow update: if isAdmin();
     }
+
+    // POLITICS HUB: Manifesto & Endorsement Logic
+    match /manifestos/{candidateId} {
+      allow read: if isSignedIn();
+      allow create: if isVerifiedMember();
+      allow update: if isVerifiedMember() && (isOwner(candidateId) || isAdmin());
+      
+      match /endorsements/{studentId} {
+        allow read: if isSignedIn();
+        allow create: if isVerifiedMember() && isOwner(studentId);
+      }
+    }
   }
 }
