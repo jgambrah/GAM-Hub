@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { FlameKindling, Flame, LayoutDashboard, ShoppingBag, Rss, Users, Building, Settings, UserCheck, Link, CreditCard, MessagesSquare, ShieldAlert, Landmark, Banknote, Sparkles, MapPin, Globe, BookOpen, PackageCheck, Wallet, History, Zap, Star, Gavel, Key, FileCheck } from 'lucide-react';
+import { FlameKindling, Flame, LayoutDashboard, ShoppingBag, Rss, Users, Building, Settings, UserCheck, Link, CreditCard, MessagesSquare, ShieldAlert, Landmark, Banknote, Sparkles, MapPin, Globe, BookOpen, PackageCheck, Wallet, History, Zap, Star, Gavel, Key, FileCheck, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import type { NavItem } from '@/lib/types';
 import {
@@ -33,6 +33,7 @@ const navItems: NavItem[] = [
   
   // Admin Section
   { href: '/admin/analytics', label: 'Analytics', icon: Globe, roles: ['admin'] },
+  { href: '/admin/exit-poll', label: 'Exit Poll', icon: TrendingUp, roles: ['admin'] },
   { href: '/admin/handover', label: 'Handover', icon: Key, roles: ['admin'] },
   { href: '/admin/campuses', label: 'Campuses', icon: Building, roles: ['admin'] },
   { href: '/admin/candidates', label: 'Candidates', icon: Gavel, roles: ['admin'] },
