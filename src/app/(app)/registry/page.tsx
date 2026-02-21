@@ -17,7 +17,9 @@ export default function RegistryHubPage() {
 
   const activeCampusId = isAdmin ? viewAsCampus?.id : user?.campusId;
 
-  // LIAISON RESTRICTION: Only management or admins can view official registry data
+  // LIAISON RESTRICTION: Management sees everything, Students/Staff see items scoped to them or 'all'
+  // Actually, per recent directive, registry_posts is management-only. 
+  // Let's refine the query to match the security rules and user role.
   const isAuthorized = React.useMemo(() => {
     if (!user) return false;
     return user.role === 'management' || isAdmin;
@@ -27,6 +29,7 @@ export default function RegistryHubPage() {
   const registryQuery = useMemoFirebase(() => {
     if (!firestore || !activeCampusId || !isTokenReady || !isAuthorized) return null;
     
+    // Management/Admin can see all circulars for this campus
     return query(
       collection(firestore, 'registry_posts'),
       where('campusId', '==', activeCampusId),
