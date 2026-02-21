@@ -1,3 +1,4 @@
+
 export type User = {
   id: string;
   name: string;
@@ -116,6 +117,8 @@ export type RegistryPost = {
   title: string;
   content: string;
   isUrgent: boolean;
+  targetAudience: 'all' | 'staff' | 'student';
+  attachments: string[];
   expirationDate?: string;
   createdAt: any;
   updatedAt?: any;

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -6,7 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useCampusView } from '@/hooks/use-campus-view';
 import { collection, query, where, orderBy } from 'firebase/firestore';
 import type { RegistryPost } from '@/lib/types';
-import { Landmark, ShieldAlert, BadgeCheck, Calendar, FileText, Lock } from 'lucide-react';
+import { Landmark, ShieldAlert, BadgeCheck, Calendar, FileText, Lock, Users, GraduationCap, Briefcase, Paperclip, Download } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -21,8 +22,8 @@ export default function RegistryHubPage() {
   const isAuthorized = React.useMemo(() => {
     if (!user) return false;
     // Only 'management' role is now permitted per firestore.rules
-    return user.role === 'management';
-  }, [user]);
+    return user.role === 'management' || isAdmin;
+  }, [user, isAdmin]);
 
   // DATA FETCH: Guarded by isAuthorized and isTokenReady
   const registryQuery = useMemoFirebase(() => {
@@ -93,6 +94,10 @@ export default function RegistryHubPage() {
                           <ShieldAlert size={10} /> Urgent
                         </span>
                       )}
+                      <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1">
+                        {post.targetAudience === 'staff' ? <Briefcase size={10} /> : post.targetAudience === 'student' ? <GraduationCap size={10} /> : <Globe size={10} />}
+                        Target: {post.targetAudience?.toUpperCase() || 'ALL'}
+                      </span>
                     </div>
                     {post.createdAt && (
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
@@ -107,6 +112,28 @@ export default function RegistryHubPage() {
                   <div className="bg-slate-50 dark:bg-slate-900/50 p-6 rounded-2xl border mb-6">
                     <p className="text-muted-foreground text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
                   </div>
+
+                  {/* Multimedia Attachments */}
+                  {post.attachments && post.attachments.length > 0 && (
+                    <div className="space-y-2 mb-6">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Official Attachments</p>
+                      <div className="flex flex-wrap gap-2">
+                        {post.attachments.map((url, i) => (
+                          <a 
+                            key={i} 
+                            href={url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-card border rounded-xl hover:bg-muted transition-all group shadow-sm"
+                          >
+                            <FileText size={14} className="text-primary" />
+                            <span className="text-xs font-bold">Memo_{i+1}.pdf</span>
+                            <Download size={12} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex flex-col md:flex-row items-center justify-between pt-6 border-t border-border">
                     <div className="flex items-center gap-2 text-muted-foreground mb-4 md:mb-0">

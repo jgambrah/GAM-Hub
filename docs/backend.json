@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Campus": {
@@ -338,6 +339,18 @@
         "isUrgent": {
           "type": "boolean",
           "description": "Flag indicating if this announcement requires urgent attention and should be prominently displayed."
+        },
+        "targetAudience": {
+          "type": "string",
+          "enum": ["all", "staff", "student"],
+          "description": "The specific community group this directive is aimed at."
+        },
+        "attachments": {
+          "type": "array",
+          "description": "An array of storage URLs for official memo scans or PDFs.",
+          "items": {
+            "type": "string"
+          }
         },
         "expirationDate": {
           "type": "string",
