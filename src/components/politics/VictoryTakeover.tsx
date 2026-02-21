@@ -55,7 +55,7 @@ export function VictoryTakeover({ winner, onDismiss }: VictoryTakeoverProps) {
           initial={{ scale: 0.8, y: 40, rotate: -2 }}
           animate={{ scale: 1, y: 0, rotate: 0 }}
           transition={{ type: "spring", damping: 15, stiffness: 100 }}
-          className="relative max-w-md w-full bg-gradient-to-b from-amber-400 to-amber-600 rounded-[3.5rem] p-1.5 shadow-[0_0_100px_rgba(245,158,11,0.4)]"
+          className="relative max-w-md w-full bg-gradient-to-b from-amber-400 to-amber-600 rounded-3xl p-1.5 shadow-[0_0_100px_rgba(245,158,11,0.4)]"
         >
           <div className="bg-slate-950 rounded-[3.2rem] p-10 text-center relative overflow-hidden">
             {/* Ambient background glow */}
@@ -108,7 +108,7 @@ export function VictoryTakeover({ winner, onDismiss }: VictoryTakeoverProps) {
               Salute the Yard
             </button>
           </div>
-        </div>
+        </motion.div>
       </motion.div>
     </AnimatePresence>
   );
