@@ -4,26 +4,33 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const CAMPUS_IMAGES = [
-  "https://images.unsplash.com/photo-1523050854058-8df90110c9f1", // Campus Plaza
-  "https://images.unsplash.com/photo-1541339907198-e08756ebafe3", // Graduation/Authority
-  "https://images.unsplash.com/photo-1525921429624-479b6a29d810", // Modern Architecture
-  "https://images.unsplash.com/photo-1519389950473-47ba0277781c", // Tech/Shopping
-  "https://images.unsplash.com/photo-1523240715639-99a8088fb98e", // Group Discussion
-  "https://images.unsplash.com/photo-1529156069898-49953e39b3ac", // Social Vibes
-  "https://images.unsplash.com/photo-1491438590914-bc09fcaaf77a", // Market/Vendors
-  "https://images.unsplash.com/photo-1552664730-d307ca884978", // Strategy/Meeting
-  "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846", // Cafe/Shopping
-  "https://images.unsplash.com/photo-1523287562758-66c7fc58967f", // Library/Focus
-  "https://images.unsplash.com/photo-1524178232363-1fb2b075b655", // Lecture Hall
-  "https://images.unsplash.com/photo-1511632765486-a01980e01a18", // Event/Arena Hype
-  "https://images.unsplash.com/photo-1501503060800-5fa24abf7446", // Dorm Life
-  "https://images.unsplash.com/photo-1521791136064-7986c2923216", // Professional Staff Lounge
-  "https://images.unsplash.com/photo-1531482615713-2afd69097998", // Collaboration
-  "https://images.unsplash.com/photo-1434039347661-90f42067f267", // Writing/Registry
+  // 1-5: Academic Excellence (Black Students in Libraries/Labs)
+  "https://images.unsplash.com/photo-1523240715639-99a8088fb98e", // Group of Black students studying
+  "https://images.unsplash.com/photo-1543269865-cbf427effbad", // Students collaborating in a modern hall
+  "https://images.unsplash.com/photo-1522202176988-66273c2fd55f", // Students walking on a lush campus
+  "https://images.unsplash.com/photo-1517486808906-6ca8b3f04846", // Student with laptop in cafe
+  "https://images.unsplash.com/photo-1523287562758-66c7fc58967f", // Focused study in a library
+
+  // 6-10: The "Monies" & Shopping (Typical Market/Vendor Vibes)
+  "https://images.unsplash.com/photo-1531053326607-9d349096d887", // Outdoor market/vendor setup
+  "https://images.unsplash.com/photo-1472851294608-062f824d29cc", // Small business/shop vibe
+  "https://plus.unsplash.com/premium_photo-1664371205096-27719665287a", // Transaction/MoMo vibe (hands/phone)
+  "https://images.unsplash.com/photo-1556742044-3c52d6e88c62", // Digital payment/Shopping focus
+  "https://images.unsplash.com/photo-1516321318423-f06f85e504b3", // Student checking phone (The Arena)
+
+  // 11-15: Campus Landscapes (Architectural Vibes similar to Ghana)
+  "https://images.unsplash.com/photo-1590013332441-1f953c483f05", // Red-roof architecture/tropical campus
+  "https://images.unsplash.com/photo-1498243639351-a6c01e6a1006", // Concrete modern university walkway
+  "https://images.unsplash.com/photo-1562774053-701939374585", // University main building/tower
+  "https://images.unsplash.com/photo-1525921429624-479b6a29d810", // Open-air campus plaza
+  "https://images.unsplash.com/photo-1519452575417-564c1401ecc0", // Tropical trees and campus paths
+
+  // 16-20: Social Life & Leadership (The SRC & Vibe War)
+  "https://images.unsplash.com/photo-1529156069898-49953e39b3ac", // Friends laughing/socializing
+  "https://images.unsplash.com/photo-1511632765486-a01980e01a18", // Event/Social gathering
+  "https://images.unsplash.com/photo-1523050854058-8df90110c9f1", // Graduation/Success
   "https://images.unsplash.com/photo-1571260899304-425eee4c7efc", // University Gateway
-  "https://images.unsplash.com/photo-1522202176988-66273c2fd55f", // Students Walking
-  "https://images.unsplash.com/photo-1492538368677-f6e0afe31dcc", // Laptop/Online Shopping
-  "https://images.unsplash.com/photo-1558021212-51b6ecfa0db9", // Books/Knowledge
+  "https://images.unsplash.com/photo-1521791136064-7986c2923216", // Professional staff lounge vibe
 ].map(url => `${url}?auto=format&fit=crop&q=80&w=1600`);
 
 const FEATURES = [
@@ -39,7 +46,7 @@ export function CinematicBackground() {
   const [featureIndex, setFeatureIndex] = useState(0);
 
   useEffect(() => {
-    // 10 Second Pulse for Images
+    // 10 Second Interval for a fast, viby transition as requested
     const imgInterval = setInterval(() => {
       setImgIndex((prev) => (prev + 1) % CAMPUS_IMAGES.length);
     }, 10000);
@@ -57,23 +64,23 @@ export function CinematicBackground() {
 
   return (
     <div className="fixed inset-0 z-0 overflow-hidden bg-black">
-      {/* Background Image Carousel with Live Pulse Logic */}
+      {/* Background Image Carousel with Localized Identity Logic */}
       <AnimatePresence mode="wait">
         <motion.div
           key={imgIndex}
-          initial={{ opacity: 0, scale: 1.1, filter: "blur(4px)" }}
-          animate={{ opacity: 0.6, scale: 1, filter: "blur(0px)" }}
+          initial={{ opacity: 0, scale: 1.05 }}
+          animate={{ opacity: 0.65, scale: 1 }} // Slightly higher opacity for darker Ghanaian skin tones to pop
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 1.5, ease: "easeInOut" }}
           className="absolute inset-0 h-full w-full"
         >
           <img
             src={CAMPUS_IMAGES[imgIndex]}
-            alt="Campus Life"
+            alt="Ghanaian Campus Life"
             className="h-full w-full object-cover"
           />
-          {/* Multi-Layer Gradient for Readability */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/60 z-[1]" />
+          {/* Enhanced Vignette for that Premium "Lifestyle" look */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-black/80 via-transparent to-black/60 z-[1]" />
         </motion.div>
       </AnimatePresence>
 
