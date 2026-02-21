@@ -5,6 +5,8 @@ import { useView } from '@/context/ViewContext';
 import { useAuth } from '@/hooks/use-auth';
 import { Plus, Video, Sparkles, Camera, Type, MessageSquare, Loader2 } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 
 // Restored Components
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
@@ -21,6 +23,62 @@ import SRCDashboard from '@/components/src/SRCDashboard';
 import VendorDashboard from '@/components/dashboard/vendor-dashboard';
 import YardStrength from '@/components/social/YardStrength';
 import CampusRadio from '@/components/social/CampusRadio';
+import { VictoryTakeover } from '@/components/politics/VictoryTakeover';
+
+/**
+ * ElectionWinnerWatcher Component
+ * 
+ * Listens for the most recent 'election_winner' post type for the user's campus.
+ * Triggers the Victory Takeover overlay if the result hasn't been dismissed locally.
+ */
+function ElectionWinnerWatcher() {
+  const { user, isTokenReady } = useAuth();
+  const { firestore } = useFirebase();
+  const [winner, setWinner] = useState<any>(null);
+
+  const winnerQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.campusId || !isTokenReady) return null;
+    return query(
+      collection(firestore, 'social_posts'),
+      where('campusId', '==', user.campusId),
+      where('type', '==', 'election_winner'),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+  }, [firestore, user?.campusId, isTokenReady]);
+
+  const { data } = useCollection(winnerQuery);
+
+  useEffect(() => {
+    if (data && data.length > 0) {
+      const post = data[0];
+      // Liaison Security: Check local storage to prevent duplicate takeovers
+      const dismissed = localStorage.getItem(`dismissed_winner_${post.id}`);
+      if (!dismissed) {
+        setWinner({
+          id: post.id,
+          name: post.winnerName,
+          image: post.winnerPhoto,
+          position: post.position,
+          campusId: post.campusId.toUpperCase(),
+          victoryMessage: post.content
+        });
+      }
+    }
+  }, [data]);
+
+  if (!winner) return null;
+
+  return (
+    <VictoryTakeover 
+      winner={winner} 
+      onDismiss={() => {
+        localStorage.setItem(`dismissed_winner_${winner.id}`, 'true');
+        setWinner(null);
+      }} 
+    />
+  );
+}
 
 export default function HomePage() {
   const { viewMode } = useView();
@@ -65,6 +123,9 @@ export default function HomePage() {
   // 2. STUDENT & STAFF EXPERIENCE (THE YARD)
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+      {/* THE VICTORY OVERLAY WATCHER */}
+      <ElectionWinnerWatcher />
+
       {/* A. OFFICIAL URGENT ALERTS */}
       <UrgentRegistryAlert />
 
