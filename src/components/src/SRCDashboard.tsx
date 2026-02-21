@@ -184,7 +184,7 @@ export default function SRCDashboard({ userProfile }: { userProfile: AppUser }) 
 
   return (
     <div className="p-4 md:p-8 bg-muted/30 min-h-screen">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-6xl auto">
         <header className="mb-10 flex justify-between items-center">
           <div>
             <h1 className="text-3xl md:text-4xl font-black bg-gradient-to-r from-purple-600 via-blue-600 to-pink-600 bg-clip-text text-transparent tracking-tight">
