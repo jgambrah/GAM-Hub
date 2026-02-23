@@ -5,375 +5,67 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Campus",
       "type": "object",
-      "description": "Represents a university campus within the GAM Hub platform, serving as a partition for multi-tenant data.",
+      "description": "Represents a university campus within the GAM Hub platform.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Campus entity."
-        },
-        "name": {
-          "type": "string",
-          "description": "The official name of the university campus (e.g., 'Kwame Nkrumah University of Science and Technology')."
-        },
-        "domain": {
-          "type": "string",
-          "description": "The email domain associated with this campus (e.g., 'knust.edu.gh'), used for user authentication validation."
-        },
-        "location": {
-          "type": "string",
-          "description": "Geographic location of the university campus."
-        },
-        "logoUrl": {
-          "type": "string",
-          "description": "URL to the campus logo or emblem.",
-          "format": "uri"
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the campus record was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the campus record was last updated.",
-          "format": "date-time"
-        },
-        "radioName": {
-          "type": "string",
-          "description": "The name of the campus radio station."
-        },
-        "radioStreamUrl": {
-          "type": "string",
-          "description": "The digital streaming URL for the campus radio station.",
-          "format": "uri"
-        },
-        "radioWebsite": {
-          "type": "string",
-          "description": "The official website of the campus radio station.",
-          "format": "uri"
-        }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "domain": { "type": "string" },
+        "location": { "type": "string" },
+        "primaryColor": { "type": "string" },
+        "secondaryColor": { "type": "string" },
+        "radioName": { "type": "string" },
+        "radioStreamUrl": { "type": "string" }
       },
-      "required": [
-        "id",
-        "name",
-        "domain",
-        "location",
-        "createdAt"
-      ]
+      "required": ["id", "name", "domain", "createdAt"]
     },
     "User": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
-      "description": "Represents a user account within the GAM Hub platform, associated with a specific university campus and role.",
+      "description": "Represents a user account within the GAM Hub platform.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the User entity."
-        },
-        "email": {
-          "type": "string",
-          "description": "The user's email address, used for login and campus affiliation. (Relationship: User 1:1 Authentication)",
-          "format": "email"
-        },
-        "campusId": {
-          "type": "string",
-          "description": "Reference to the Campus this user is associated with. (Relationship: Campus 1:N User)"
-        },
-        "role": {
-          "type": "string",
-          "description": "The assigned role of the user (e.g., 'student', 'staff', 'vendor', 'admin') for access control."
-        },
-        "isVendorVerified": {
-          "type": "boolean",
-          "description": "Flag indicating if a vendor user has been manually approved by an Admin."
-        },
-        "firstName": {
-          "type": "string",
-          "description": "The user's first name."
-        },
-        "lastName": {
-          "type": "string",
-          "description": "The user's last name."
-        },
-        "profileImageUrl": {
-          "type": "string",
-          "description": "URL to the user's profile picture.",
-          "format": "uri"
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the user account was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the user account was last updated.",
-          "format": "date-time"
-        }
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "campusId": { "type": "string" },
+        "role": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" }
       },
-      "required": [
-        "id",
-        "email",
-        "campusId",
-        "role",
-        "firstName",
-        "lastName",
-        "createdAt"
-      ]
+      "required": ["id", "email", "campusId", "role"]
     },
     "Product": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Product",
       "type": "object",
-      "description": "Represents a product listed for sale by a vendor on the E-Market platform.",
+      "description": "Represents a product listed for sale.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Product entity."
-        },
-        "campusId": {
-          "type": "string",
-          "description": "Reference to the Campus where this product is available. (Relationship: Campus 1:N Product)"
-        },
-        "vendorId": {
-          "type": "string",
-          "description": "Reference to the User who is selling this product (must have 'vendor' role). (Relationship: User 1:N Product)"
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the product."
-        },
-        "description": {
-          "type": "string",
-          "description": "A detailed description of the product."
-        },
-        "price": {
-          "type": "number",
-          "description": "The selling price of the product."
-        },
-        "imageUrls": {
-          "type": "array",
-          "description": "An array of URLs for product images.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "category": {
-          "type": "string",
-          "description": "The category the product belongs to (e.g., 'Electronics', 'Books', 'Services')."
-        },
-        "stockQuantity": {
-          "type": "number",
-          "description": "The number of units of the product currently in stock."
-        },
-        "isAvailable": {
-          "type": "boolean",
-          "description": "Flag indicating if the product is currently available for purchase."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the product was listed.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the product details were last updated.",
-          "format": "date-time"
-        }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "vendorId": { "type": "string" },
+        "campusId": { "type": "string" }
       },
-      "required": [
-        "id",
-        "campusId",
-        "vendorId",
-        "name",
-        "description",
-        "price",
-        "imageUrls",
-        "category",
-        "isAvailable",
-        "createdAt"
-      ]
+      "required": ["id", "campusId", "vendorId", "name", "price"]
     },
-    "SocialPost": {
+    "CampusPulse": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "SocialPost",
+      "title": "CampusPulse",
       "type": "object",
-      "description": "Represents a user-generated post in the social feed for networking within a campus community. Stored at root for administrative flexibility.",
+      "description": "Represents a unified social post in the flat campus_pulse collection.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the SocialPost entity."
-        },
-        "campusId": {
-          "type": "string",
-          "description": "The ID of the campus this post is visible to."
-        },
-        "authorId": {
-          "type": "string",
-          "description": "Reference to the User who created this post."
-        },
-        "contentType": {
-          "type": "string",
-          "description": "The type of content in the post (e.g., 'text', 'youtube', 'tiktok', 'image')."
-        },
-        "content": {
-          "type": "string",
-          "description": "The main text content or description of the post."
-        },
-        "mediaUrl": {
-          "type": "string",
-          "description": "Optional URL for image or video content."
-        },
-        "likesCount": {
-          "type": "number",
-          "description": "The number of likes received by the post."
-        },
-        "isArenaEntry": {
-          "type": "boolean",
-          "description": "Flag for Arena leaderboard participation."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the post was created.",
-          "format": "date-time"
-        }
+        "id": { "type": "string" },
+        "campusId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "content": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "isArenaEntry": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": [
-        "id",
-        "campusId",
-        "authorId",
-        "content",
-        "createdAt"
-      ]
-    },
-    "SrcPost": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "SrcPost",
-      "type": "object",
-      "description": "Represents an official announcement or informational post from the Student Representative Council (SRC) for a specific university campus.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the SrcPost entity."
-        },
-        "campusId": {
-          "type": "string",
-          "description": "Reference to the Campus this SRC post belongs to. (Relationship: Campus 1:N SrcPost)"
-        },
-        "authorId": {
-          "type": "string",
-          "description": "Reference to the User (typically staff or student representative) who published this SRC post. (Relationship: User 1:N SrcPost)"
-        },
-        "title": {
-          "type": "string",
-          "description": "The headline or title of the SRC post."
-        },
-        "content": {
-          "type": "string",
-          "description": "The full text content of the SRC post."
-        },
-        "mediaUrls": {
-          "type": "array",
-          "description": "An array of URLs for images or videos associated with the SRC post.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the SRC post was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the SRC post was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "campusId",
-        "authorId",
-        "title",
-        "content",
-        "createdAt"
-      ]
-    },
-    "RegistryPost": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "RegistryPost",
-      "type": "object",
-      "description": "Represents official, critical announcements or directives from the university's central administration or registry.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the RegistryPost entity."
-        },
-        "campusId": {
-          "type": "string",
-          "description": "Reference to the Campus this registry announcement pertains to. (Relationship: Campus 1:N RegistryPost)"
-        },
-        "authorId": {
-          "type": "string",
-          "description": "Reference to the User (typically staff or admin) who published this registry announcement. (Relationship: User 1:N RegistryPost)"
-        },
-        "title": {
-          "type": "string",
-          "description": "The headline or title of the registry announcement."
-        },
-        "content": {
-          "type": "string",
-          "description": "The full text content of the registry announcement."
-        },
-        "isUrgent": {
-          "type": "boolean",
-          "description": "Flag indicating if this announcement requires urgent attention and should be prominently displayed."
-        },
-        "targetAudience": {
-          "type": "string",
-          "enum": ["all", "staff", "student"],
-          "description": "The specific community group this directive is aimed at."
-        },
-        "attachments": {
-          "type": "array",
-          "description": "An array of storage URLs for official memo scans or PDFs.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "expirationDate": {
-          "type": "string",
-          "description": "Optional date and time when the announcement is no longer considered active or relevant.",
-          "format": "date-time"
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the registry announcement was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the registry announcement was last updated.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "campusId",
-        "authorId",
-        "title",
-        "content",
-        "isUrgent",
-        "createdAt"
-      ]
+      "required": ["id", "campusId", "authorId", "content", "createdAt"]
     }
   },
   "auth": {
-    "providers": [
-      "password",
-      "anonymous"
-    ]
+    "providers": ["password", "anonymous"]
   },
   "firestore": {
     "structure": [
@@ -381,99 +73,34 @@
         "path": "/campuses/{campusId}",
         "definition": {
           "entityName": "Campus",
-          "schema": {
-            "$ref": "#/backend/entities/Campus"
-          },
-          "description": "Top-level collection for university campus definitions. Accessible to all users for read.",
-          "params": [
-            {
-              "name": "campusId",
-              "description": "Unique identifier for the campus."
-            }
-          ]
+          "schema": { "$ref": "#/backend/entities/Campus" },
+          "description": "Top-level collection for university campus definitions."
         }
       },
       {
         "path": "/users/{userId}",
         "definition": {
           "entityName": "User",
-          "schema": {
-            "$ref": "#/backend/entities/User"
-          },
-          "description": "Stores user profiles and role context.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "Unique identifier for the user."
-            }
-          ]
+          "schema": { "$ref": "#/backend/entities/User" },
+          "description": "Stores user profiles."
         }
       },
       {
         "path": "/products/{productId}",
         "definition": {
           "entityName": "Product",
-          "schema": {
-            "$ref": "#/backend/entities/Product"
-          },
-          "description": "Top-level marketplace collection.",
-          "params": [
-            {
-              "name": "productId",
-              "description": "Unique identifier for the product."
-            }
-          ]
+          "schema": { "$ref": "#/backend/entities/Product" },
+          "description": "Marketplace items."
         }
       },
       {
-        "path": "/social_posts/{socialPostId}",
+        "path": "/campus_pulse/{pulseId}",
         "definition": {
-          "entityName": "SocialPost",
-          "schema": {
-            "$ref": "#/backend/entities/SocialPost"
-          },
-          "description": "Consolidated root collection for all social vibes and national arena entries.",
-          "params": [
-            {
-              "name": "socialPostId",
-              "description": "Unique identifier for the social post."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/src_posts/{srcPostId}",
-        "definition": {
-          "entityName": "SrcPost",
-          "schema": {
-            "$ref": "#/backend/entities/SrcPost"
-          },
-          "description": "Top-level collection for official SRC announcements.",
-          "params": [
-            {
-              "name": "srcPostId",
-              "description": "Unique identifier for the SRC post."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/registry_posts/{registryPostId}",
-        "definition": {
-          "entityName": "RegistryPost",
-          "schema": {
-            "$ref": "#/backend/entities/RegistryPost"
-          },
-          "description": "Top-level collection for official university registry announcements.",
-          "params": [
-            {
-              "name": "registryPostId",
-              "description": "Unique identifier for the registry announcement."
-            }
-          ]
+          "entityName": "CampusPulse",
+          "schema": { "$ref": "#/backend/entities/CampusPulse" },
+          "description": "UNIFIED FLAT PATH: All campus vibrations and arena entries live here for high-trust access."
         }
       }
-    ],
-    "reasoning": "The social architecture has been consolidated to the root '/social_posts' collection to ensure administrative stability and high-trust read access for the National Liaison, bypassing restricted nested path segments."
+    ]
   }
 }

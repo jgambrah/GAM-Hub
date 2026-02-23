@@ -7,7 +7,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // THE LIAISON MASTER KEY: Evaluated at highest priority
     function isAdmin() {
       return isSignedIn() && (
         request.auth.uid == 'xYAuFJclD2UiUwPAUb4vqEaaKct2' ||
@@ -15,15 +14,6 @@ service cloud.firestore {
         request.auth.token.isAdmin == true ||
         request.auth.token.role == 'admin'
       );
-    }
-
-    function belongsToCampus(campusId) {
-      return request.auth.token.campusId == campusId ||
-             request.auth.token.campusId == 'all' || isAdmin();
-    }
-
-    function hasRole(role) {
-      return request.auth.token.role == role || isAdmin();
     }
 
     function isVerifiedMember() {
@@ -39,14 +29,14 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // --- ROOT SOCIAL ARCHITECTURE ---
-    match /social_posts/{postId} {
-      // THE NATIONAL FIX: Root access is strictly open for reading to avoid Liaison token races
+    // --- UNIFIED CAMPUS PULSE ---
+    match /campus_pulse/{pulseId} {
+      // THE UNIFIED FIX: Root access is open for reading to avoid Liaison token lag
       allow get, list: if true;
       allow create: if isVerifiedMember() && request.resource.data.content != null;
       allow update: if isAdmin() || (isOwner(resource.data.authorId) &&
         !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['isLiaisonBoosted', 'isProtected', 'vibeLevel']));
+          .hasAny(['isLiaisonBoosted', 'isProtected']));
       allow delete: if isAdmin() || isOwner(resource.data.authorId);
       
       match /comments/{commentId} {
@@ -59,36 +49,20 @@ service cloud.firestore {
       }
     }
 
-    match /platform_stats/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /spotlight/{docId} {
-      allow read, list, get: if true;
-      allow write: if isAdmin();
-    }
-
-    match /live_broadcasts/{campusId} {
-      allow list, get: if isSignedIn();
-      allow write: if isAdmin() || hasRole('src');
-    }
-
-    match /registry_posts/{registryPostId} {
-      allow read: if isAdmin() || hasRole('management');
-      allow write: if hasRole('management');
-    }
-
     match /src_posts/{postId} {
       allow list: if isAdmin() || isVerifiedMember();
       allow get:  if true;
-      allow write: if isAdmin() || hasRole('src');
+      allow write: if isAdmin() || request.auth.token.role == 'src';
+    }
+
+    match /registry_posts/{registryPostId} {
+      allow read: if isAdmin() || request.auth.token.role == 'management';
+      allow write: if request.auth.token.role == 'management';
     }
 
     match /products/{productId} {
-      allow list: if isVerifiedMember();
-      allow get: if isVerifiedMember();
-      allow create: if isAdmin() || (isVerifiedMember() && hasRole('vendor'));
+      allow list, get: if isVerifiedMember();
+      allow create: if isAdmin() || (isVerifiedMember() && request.auth.token.role == 'vendor');
       allow update, delete: if isAdmin() || (isSignedIn() && resource.data.vendorId == request.auth.uid);
     }
 
@@ -102,7 +76,7 @@ service cloud.firestore {
 
     match /campuses/{campusId} {
       allow read, list: if true;
-      allow update: if isAdmin() || (hasRole('src') && belongsToCampus(campusId));
+      allow update: if isAdmin() || (request.auth.token.role == 'src' && request.auth.token.campusId == campusId);
       allow create, delete: if isAdmin();
     }
 
@@ -119,23 +93,15 @@ service cloud.firestore {
         allow read, create: if isAdmin() || isVerifiedMember();
       }
     }
-
-    match /connections/{id} {
-      allow list, get: if isAdmin() || isVerifiedMember();
-      allow read, write: if isVerifiedMember();
+    
+    match /platform_stats/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
-    match /pickup_points/{id} { allow read, list: if true; }
-    
-    match /manifestos/{candidateId} {
-      allow read: if isSignedIn();
-      allow create: if isVerifiedMember();
-      allow update: if isVerifiedMember() && (isOwner(candidateId) || isAdmin());
-      
-      match /endorsements/{studentId} {
-        allow read: if isSignedIn();
-        allow create: if isVerifiedMember() && isOwner(studentId);
-      }
+    match /spotlight/{docId} {
+      allow read, list, get: if true;
+      allow write: if isAdmin();
     }
   }
 }
