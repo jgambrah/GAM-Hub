@@ -7,7 +7,7 @@ import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy } from 'firebase/firestore';
 import type { Manifesto } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Gavel, ShieldCheck } from 'lucide-react';
+import { Gavel, ShieldCheck, RefreshCcw } from 'lucide-react';
 import ManifestoCard from '@/components/politics/manifesto-card';
 import { useCampusView } from '@/hooks/use-campus-view';
 import CreateManifestoCard from '@/components/politics/CreateManifestoCard';
@@ -19,17 +19,17 @@ import CreateManifestoCard from '@/components/politics/CreateManifestoCard';
  * Correctly segregates political content by campus ID for all user roles (Student/Staff/Admin).
  */
 export default function PoliticsPage() {
-  const { user, isAdmin, isTokenReady } = useAuth();
+  const { user, isAdmin, isUserLoading } = useAuth();
   const { firestore } = useFirebase();
   const { viewAsCampus } = useCampusView();
 
   // The active context: Staff/Students use their profile campus, Liaison uses the global switcher
   const activeCampusId = isAdmin ? viewAsCampus?.id : user?.campusId;
 
-  // ✅ POLITICS COLLECTION HANDSHAKE: Query the root manifestos path
+  // ✅ POLITICS COLLECTION HANDSHAKE: Query the flat /manifestos path
+  // We utilize the simplified vibration pattern: fire as soon as user is identified.
   const manifestosQuery = useMemoFirebase(() => {
-    // Guard against permission races by waiting for context and token readiness
-    if (!firestore || !activeCampusId || !isTokenReady) return null;
+    if (!firestore || !activeCampusId || !user) return null;
     
     return query(
       collection(firestore, 'manifestos'),
@@ -37,9 +37,23 @@ export default function PoliticsPage() {
       where('status', '==', 'active'),
       orderBy('endorsements', 'desc')
     );
-  }, [firestore, activeCampusId, isTokenReady]);
+  }, [firestore, activeCampusId, user?.id]);
 
-  const { data: manifestos, isLoading } = useCollection<Manifesto>(manifestosQuery);
+  const { data: manifestos, isLoading, error } = useCollection<Manifesto>(manifestosQuery);
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 text-center">
+        <p className="text-red-500 font-black uppercase mb-4 tracking-widest">Politics Signal Blocked</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black text-xs flex items-center gap-2"
+        >
+          <RefreshCcw size={14} /> Re-sync Identity
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-background min-h-full">
@@ -62,7 +76,7 @@ export default function PoliticsPage() {
 
         {/* THE MANIFESTO GRID */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 px-2">
-          {isLoading ? (
+          {isLoading || isUserLoading ? (
             <>
               {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-[500px] rounded-[3rem]" />)}
             </>
