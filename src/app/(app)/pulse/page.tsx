@@ -21,7 +21,7 @@ function ElectionWinnerWatcher() {
   const [winner, setWinner] = useState<any>(null);
 
   const winnerQuery = useMemoFirebase(() => {
-    // SIMPLIFIED HANDSHAKE: No claims/token ready check needed for flat reads
+    // SIMPLIFIED HANDSHAKE: Fires as soon as basic user context is established
     if (!firestore || !user?.campusId) return null;
     return query(
       collection(firestore, 'campus_pulse'),

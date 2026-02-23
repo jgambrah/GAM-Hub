@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef } from 'react';
@@ -20,6 +19,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();

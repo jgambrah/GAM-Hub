@@ -13,8 +13,7 @@ import { useAuth } from '@/hooks/use-auth';
  * CampusPulseFeed Component
  * 
  * THE SIMPLIFIED VIBRATION: Targets the flat 'campus_pulse' collection.
- * We no longer wait for 'isTokenReady' for reads because the root collection 
- * is open for listing to all authenticated users.
+ * Fires as soon as user identity is established, bypassing administrative claim checks for reads.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -26,10 +25,9 @@ export default function CampusPulseFeed({
     tab?: 'all' | 'vlogs';
 }) {
     const { firestore } = useFirebase();
-    const { user } = useAuth(); // Simplified check: Just ensure a user context exists
+    const { user } = useAuth();
     
     const socialQuery = useMemoFirebase(() => {
-        // Only fire when Firebase and User context are ready
         if (!firestore || !activeCampusId || !user) return null;
         if (tab !== 'all' && tab !== 'vlogs') return null;
 
@@ -68,7 +66,6 @@ export default function CampusPulseFeed({
     const { data: posts, isLoading: isLoadingPosts, error } = useCollection<SocialPost>(socialQuery);
     const { data: srcPosts, isLoading: isLoadingSrc } = useCollection<SrcPost>(srcQuery);
 
-    // LIAISON IDENTITY REFRESH: Show if a permission error somehow persists
     if (error) {
         return (
             <div className="p-10 text-center bg-red-50 dark:bg-red-950/20 rounded-[3rem] border-2 border-red-100 dark:border-red-900/50">
