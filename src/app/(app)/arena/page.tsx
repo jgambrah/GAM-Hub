@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, limit, serverTimestamp, where } from 'firebase/firestore';
 import type { ArenaPost, User, Campus } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Swords, Flame, Send, Loader2, Star, Smile, Youtube, ImagePlus, Video, X, Trophy } from 'lucide-react';
@@ -22,9 +21,15 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 
+/**
+ * ArenaPage Component
+ * 
+ * The National Battleground. 
+ * Updated to use the TOP-LEVEL social_posts collection for all queries.
+ */
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
-    const { user, isUserLoading } = useAuth();
+    const { user, isUserLoading, isTokenReady } = useAuth();
     const { toast } = useToast();
     
     // Form state
@@ -45,21 +50,23 @@ export default function ArenaPage() {
     // Fetch ALL campuses for dynamic targeting
     const { data: allCampuses, isLoading: isLoadingCampuses } = useCollection<Campus>(
         useMemoFirebase(() => {
-            if (!firestore) return null;
+            if (!firestore || !isTokenReady) return null;
             return query(collection(firestore, 'campuses'), orderBy('acronym', 'asc'));
-        }, [firestore])
+        }, [firestore, isTokenReady])
     );
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
+    // NATIONAL ARENA QUERY: Now hits top-level social_posts
     const postsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !isTokenReady) return null;
         return query(
-            collection(firestore, 'arena_posts'),
+            collection(firestore, 'social_posts'),
+            where('isArenaEntry', '==', true),
             orderBy('createdAt', 'desc'),
             limit(50)
         );
-    }, [firestore]);
+    }, [firestore, isTokenReady]);
 
     const { data: posts, isLoading: isLoadingPosts } = useCollection<ArenaPost>(postsQuery);
 
@@ -93,7 +100,7 @@ export default function ArenaPage() {
         setIsLoading(true);
 
         const authorCampus = userCampusInfo?.acronym || "GH";
-        const authorColor = userCampusInfo?.primaryColor || "#0f172a"; // Slate-900 for Admin
+        const authorColor = userCampusInfo?.primaryColor || "#0f172a"; 
         const authorName = user.name || "National Liaison";
         const authorAvatarUrl = user.avatarUrl || `https://picsum.photos/seed/${user.id}/100/100`;
 
@@ -108,8 +115,10 @@ export default function ArenaPage() {
                 authorColor: authorColor,
                 stats: { likes: 0, burns: 0 },
                 comebackCount: 0,
-                createdAt: serverTimestamp(),
-                isGlobal: targetCampus === 'ALL', // Special flag for global shades
+                createdAt: new Date().toISOString(),
+                isArenaEntry: true, // Key flag for the national query
+                isGlobal: targetCampus === 'ALL', 
+                campusId: user.campusId, // For campus-specific filtering in other views
             };
     
             if (vibeType === 'shade' && targetCampus) {
@@ -129,7 +138,7 @@ export default function ArenaPage() {
                 postData.mediaType = videoUrl.includes('youtube') || videoUrl.includes('youtu.be') ? 'youtube' : 'tiktok';
             }
 
-            await addDocumentNonBlocking(collection(firestore, 'arena_posts'), postData);
+            await addDocumentNonBlocking(collection(firestore, 'social_posts'), postData);
             toast({ title: 'Vibe Shared!', description: 'Your post is now live in The Arena.' });
             resetInputs();
         } catch (error) {
@@ -174,7 +183,6 @@ export default function ArenaPage() {
                         <div className="flex items-center gap-2 mb-4 px-2 overflow-x-auto no-scrollbar">
                             <p className="text-[10px] font-black text-slate-400 uppercase mr-2 flex-shrink-0">Target Yard:</p>
                             
-                            {/* THE "ALL" BUTTON */}
                             <button 
                                 onClick={() => setTargetCampus('ALL')}
                                 className={`flex-shrink-0 px-5 py-2 rounded-xl text-[10px] font-black transition-all border-2 ${
@@ -186,7 +194,6 @@ export default function ArenaPage() {
                                 🇬🇭 THE NATION (ALL)
                             </button>
 
-                            {/* EXISTING CAMPUS BUTTONS */}
                             {allCampuses?.filter(c => c.acronym !== userCampusInfo?.acronym).map((uni: any) => (
                                 <button 
                                 key={uni.id} 
@@ -266,7 +273,6 @@ export default function ArenaPage() {
                 )}
             </div>
 
-            {/* THE TROPHY CABINET DRAWER */}
             <Sheet open={showHallOfFame} onOpenChange={setShowHallOfFame}>
                 <SheetContent side="bottom" className="h-[80vh] rounded-t-[3.5rem] bg-muted/50 border-t-4 border-amber-500 overflow-y-auto no-scrollbar">
                     <SheetHeader className="mb-8">

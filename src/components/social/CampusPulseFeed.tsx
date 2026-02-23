@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit, QueryConstraint } from 'firebase/firestore';
-import type { SocialPost, User as AppUser, SrcPost } from '@/lib/types';
+import type { SocialPost, User as AppUser, SrcPost, Product } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import SocialPostCard from './social-post-card';
 import { CommunityConnectCard } from '../connections/student-profile-card';
@@ -11,6 +11,12 @@ import { MessageSquare, Users, ShoppingBag, Trophy, Gavel } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import Image from 'next/image';
 
+/**
+ * CampusPulseFeed Component
+ * 
+ * Fetches and displays the social heartbeat of a campus.
+ * Updated to use the TOP-LEVEL social_posts collection for rule compliance.
+ */
 export default function CampusPulseFeed({
     activeCampusId,
     filterTag,
@@ -28,18 +34,29 @@ export default function CampusPulseFeed({
     // --- QUERIES ---
     const socialQuery = useMemoFirebase(() => {
         // ✅ QUERY GUARD: Wait for token readiness and valid campus
-        if (!firestore || !isTokenReady || !activeCampusId || activeCampusId === 'all') return null;
+        if (!firestore || !isTokenReady || !activeCampusId) return null;
         if (tab !== 'all' && tab !== 'vlogs') return null;
 
         const constraints: QueryConstraint[] = [];
-        if (filterTag && filterTag !== 'All') constraints.push(where('tags', 'array-contains', filterTag.toLowerCase()));
-        if (tab === 'vlogs') constraints.push(where('mediaType', 'in', ['video', 'youtube', 'tiktok']));
+        
+        // Filter by campus at the top level
+        if (activeCampusId !== 'all') {
+            constraints.push(where('campusId', '==', activeCampusId));
+        }
+
+        if (filterTag && filterTag !== 'All') {
+            constraints.push(where('tags', 'array-contains', filterTag.toLowerCase()));
+        }
+        
+        if (tab === 'vlogs') {
+            constraints.push(where('mediaType', 'in', ['video', 'youtube', 'tiktok']));
+        }
 
         constraints.push(orderBy('createdAt', 'desc'));
         constraints.push(limit(20));
 
-        // Use the Nested Segregated Path
-        return query(collection(firestore, 'campuses', activeCampusId, 'social_posts'), ...constraints);
+        // Use the Top-Level Unified Path to satisfy 'allow read: if true' rule
+        return query(collection(firestore, 'social_posts'), ...constraints);
     }, [firestore, activeCampusId, filterTag, tab, isTokenReady]);
 
     const srcQuery = useMemoFirebase(() => {
@@ -127,6 +144,21 @@ export default function CampusPulseFeed({
                     {people?.map(p => <CommunityConnectCard key={p.id} student={p} currentUser={currentUser!} />)}
                 </div>
             );
+        case 'market':
+            return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                    {/* Simplified product cards for explore tab */}
+                    {products?.map(p => (
+                        <div key={p.id} className="bg-card p-4 rounded-2xl border shadow-sm">
+                            <div className="aspect-square relative rounded-xl overflow-hidden mb-3">
+                                <Image src={p.imageUrl} fill className="object-cover" alt={p.name} />
+                            </div>
+                            <p className="font-bold text-sm truncate">{p.name}</p>
+                            <p className="text-xs text-primary font-black">GHS {p.price.toFixed(2)}</p>
+                        </div>
+                    ))}
+                </div>
+            )
         case 'vlogs':
         case 'all':
         default:

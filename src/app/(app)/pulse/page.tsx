@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 /**
  * ElectionWinnerWatcher Component (Internal to Pulse)
  * Triggers the Victory Takeover overlay if a result is active.
+ * Updated to use the TOP-LEVEL social_posts collection.
  */
 function ElectionWinnerWatcher() {
   const { user, isTokenReady } = useAuth();
@@ -22,7 +23,8 @@ function ElectionWinnerWatcher() {
   const winnerQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     return query(
-      collection(firestore, 'campuses', user.campusId, 'social_posts'),
+      collection(firestore, 'social_posts'),
+      where('campusId', '==', user.campusId),
       where('type', '==', 'election_winner'),
       orderBy('createdAt', 'desc'),
       limit(1)
