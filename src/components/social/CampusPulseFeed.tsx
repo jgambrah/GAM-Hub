@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo } from 'react';
@@ -7,7 +8,7 @@ import type { SocialPost, User as AppUser, SrcPost, Product } from '@/lib/types'
 import { Skeleton } from '../ui/skeleton';
 import SocialPostCard from './social-post-card';
 import { CommunityConnectCard } from '../connections/student-profile-card';
-import { MessageSquare, Users, ShoppingBag, Trophy, Gavel, Sparkles } from 'lucide-react';
+import { MessageSquare, Trophy, Gavel, Sparkles } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import Image from 'next/image';
 
@@ -15,13 +16,12 @@ import Image from 'next/image';
  * CampusPulseFeed Component
  * 
  * Fetches and displays the social heartbeat of a campus.
- * FIXED: Uses the root 'social_posts' collection with a 'campusId' filter
- * to satisfy the 'allow read: if true' rule, bypassing restricted nested paths.
+ * LIAISON CONSOLIDATION: Uses root 'social_posts' with campusId filters
+ * to satisfy the high-trust root rules and avoid sub-collection races.
  */
 export default function CampusPulseFeed({
     activeCampusId,
     filterTag,
-    searchQuery,
     tab = 'all',
 }: {
     activeCampusId: string;
@@ -32,15 +32,15 @@ export default function CampusPulseFeed({
     const { firestore } = useFirebase();
     const { user: currentUser, isUserLoading, isTokenReady } = useAuth();
     
-    // --- QUERIES: Root-Level Architecture for Rule Stability ---
+    // --- QUERIES: Root-Level Architecture ---
     const socialQuery = useMemoFirebase(() => {
-        // ✅ QUERY GUARD: Wait for token readiness and valid campus context
+        // ✅ QUERY GUARD: Wait for token readiness
         if (!firestore || !isTokenReady || !activeCampusId) return null;
         if (tab !== 'all' && tab !== 'vlogs') return null;
 
         const constraints: QueryConstraint[] = [];
         
-        // LIAISON STRATEGY: Query root 'social_posts' with campusId filter
+        // Use Root Path with a filter instead of a nested sub-collection
         if (activeCampusId !== 'all') {
             constraints.push(where('campusId', '==', activeCampusId));
         }
@@ -56,7 +56,6 @@ export default function CampusPulseFeed({
         constraints.push(orderBy('createdAt', 'desc'));
         constraints.push(limit(20));
 
-        // Use Top-Level Path to satisfy permissive root rules
         return query(collection(firestore, 'social_posts'), ...constraints);
     }, [firestore, activeCampusId, filterTag, tab, isTokenReady]);
 
@@ -112,8 +111,7 @@ export default function CampusPulseFeed({
             likes: 0,
             commentCount: 0,
             type: 'src_official',
-            isOfficial: true,
-            isLiaisonBoosted: true
+            isOfficial: true
         }));
 
         return [...mappedSrc, ...posts].sort((a, b) => 
@@ -162,13 +160,13 @@ export default function CampusPulseFeed({
         case 'vlogs':
         case 'all':
         default:
-            if (unifiedPosts.length === 0) return <EmptyState icon={Sparkles} title="The Pulse is Silent" message="No vibrations detected on this campus yet. Be the first to share a vibe!" />;
+            if (unifiedPosts.length === 0) return <EmptyState icon={Sparkles} title="The Pulse is Silent" message="No vibrations detected on this campus yet." />;
             return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {unifiedPosts.map((post) => {
                         if (post.type === 'election_winner') {
                             return (
-                                <div key={post.id} className="md:col-span-2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 p-8 rounded-[3rem] text-white shadow-2xl relative overflow-hidden mb-6">
+                                <div key={post.id} className="md:col-span-2 bg-slate-900 p-8 rounded-[3rem] text-white shadow-2xl relative overflow-hidden mb-6">
                                   <div className="absolute -right-4 -bottom-4 opacity-10 rotate-12"><Trophy size={150} /></div>
                                   <div className="relative z-10 text-center">
                                     <div className="bg-amber-500 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase w-fit mx-auto mb-6">Official Result</div>

@@ -195,23 +195,23 @@
         "createdAt"
       ]
     },
-    "SocialFeedPost": {
+    "SocialPost": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "SocialFeedPost",
+      "title": "SocialPost",
       "type": "object",
-      "description": "Represents a user-generated post in the social feed for networking within a campus community.",
+      "description": "Represents a user-generated post in the social feed for networking within a campus community. Stored at root for administrative flexibility.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the SocialFeedPost entity."
+          "description": "Unique identifier for the SocialPost entity."
         },
         "campusId": {
           "type": "string",
-          "description": "Reference to the Campus where this social post is visible. (Relationship: Campus 1:N SocialFeedPost)"
+          "description": "The ID of the campus this post is visible to."
         },
         "authorId": {
           "type": "string",
-          "description": "Reference to the User who created this post. (Relationship: User 1:N SocialFeedPost)"
+          "description": "Reference to the User who created this post."
         },
         "contentType": {
           "type": "string",
@@ -219,40 +219,30 @@
         },
         "content": {
           "type": "string",
-          "description": "The main content of the post (e.g., text, YouTube/TikTok link, image URL)."
+          "description": "The main text content or description of the post."
         },
-        "description": {
+        "mediaUrl": {
           "type": "string",
-          "description": "An optional caption or additional description for the content."
+          "description": "Optional URL for image or video content."
         },
         "likesCount": {
           "type": "number",
           "description": "The number of likes received by the post."
         },
-        "commentsCount": {
-          "type": "number",
-          "description": "The number of comments on the post."
+        "isArenaEntry": {
+          "type": "boolean",
+          "description": "Flag for Arena leaderboard participation."
         },
         "createdAt": {
           "type": "string",
-          "description": "Timestamp when the social feed post was created.",
+          "description": "Timestamp when the post was created.",
           "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the social feed post was last updated.",
-          "format": "date-time"
-        },
-        "isModerated": {
-          "type": "boolean",
-          "description": "Flag indicating if the post has been reviewed by a moderator."
         }
       },
       "required": [
         "id",
         "campusId",
         "authorId",
-        "contentType",
         "content",
         "createdAt"
       ]
@@ -394,7 +384,7 @@
           "schema": {
             "$ref": "#/backend/entities/Campus"
           },
-          "description": "Top-level collection for university campus definitions. Accessible to all users for read to determine campus affiliation and details. Written by global administrators.",
+          "description": "Top-level collection for university campus definitions. Accessible to all users for read.",
           "params": [
             {
               "name": "campusId",
@@ -410,27 +400,11 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Stores user profiles, including their assigned `campusId` and `role` (student, staff, vendor, admin) for database-backed access control. Private read/write for the owner, admin read/write. Includes `isVendorVerified` for vendor approval status.",
+          "description": "Stores user profiles and role context.",
           "params": [
             {
               "name": "userId",
-              "description": "Unique identifier for the user, matching `request.auth.uid`."
-            }
-          ]
-        }
-      },
-      {
-        "path": "/roles_admin/{adminId}",
-        "definition": {
-          "entityName": "User",
-          "schema": {
-            "$ref": "#/backend/entities/User"
-          },
-          "description": "Dedicated collection for identifying global administrators. The mere existence of a document at `/roles_admin/{userId}` grants global administrative privileges, aligning with the 'existence over content' DBAC principle. This document can be minimal, containing just the user ID, or a reference.",
-          "params": [
-            {
-              "name": "adminId",
-              "description": "Unique identifier of the user who is a global administrator."
+              "description": "Unique identifier for the user."
             }
           ]
         }
@@ -442,7 +416,7 @@
           "schema": {
             "$ref": "#/backend/entities/Product"
           },
-          "description": "Top-level collection for e-market products listed by vendors. Each product document includes denormalized `campusId` and `vendorId` for authorization independence. Vendors can manage their own products, and campus members can view products from their campus.",
+          "description": "Top-level marketplace collection.",
           "params": [
             {
               "name": "productId",
@@ -452,17 +426,17 @@
         }
       },
       {
-        "path": "/social_feed_posts/{socialFeedPostId}",
+        "path": "/social_posts/{socialPostId}",
         "definition": {
-          "entityName": "SocialFeedPost",
+          "entityName": "SocialPost",
           "schema": {
-            "$ref": "#/backend/entities/SocialFeedPost"
+            "$ref": "#/backend/entities/SocialPost"
           },
-          "description": "Top-level collection for user-generated social feed posts. Each post includes denormalized `campusId` and `authorId` for authorization independence. Users can create, update, and delete their own posts, and all campus members can read posts from their campus.",
+          "description": "Consolidated root collection for all social vibes and national arena entries.",
           "params": [
             {
-              "name": "socialFeedPostId",
-              "description": "Unique identifier for the social feed post."
+              "name": "socialPostId",
+              "description": "Unique identifier for the social post."
             }
           ]
         }
@@ -474,7 +448,7 @@
           "schema": {
             "$ref": "#/backend/entities/SrcPost"
           },
-          "description": "Top-level collection for official Student Representative Council (SRC) announcements. Each post includes denormalized `campusId` and `authorId` for authorization independence and QAPs. Accessible to all campus members for reading. Written by authorized SRC members.",
+          "description": "Top-level collection for official SRC announcements.",
           "params": [
             {
               "name": "srcPostId",
@@ -490,7 +464,7 @@
           "schema": {
             "$ref": "#/backend/entities/RegistryPost"
           },
-          "description": "Top-level collection for official university registry announcements. Each post includes denormalized `campusId` and `authorId` for authorization independence and QAPs. Contains `isUrgent` flag for specific filtering requirements. Accessible to all campus members for reading. Written by authorized staff/administrators.",
+          "description": "Top-level collection for official university registry announcements.",
           "params": [
             {
               "name": "registryPostId",
@@ -500,6 +474,6 @@
         }
       }
     ],
-    "reasoning": "The Firestore structure for GAM Hub is designed with a strong emphasis on security, scalability, and debuggability, adhering strictly to the provided core design principles and strategy mandates. The core of the design revolves around a multi-tenant architecture where data is partitioned by `campusId`.\n\n**Authorization Independence & Denormalization:**\nTo achieve critical Authorization Independence, all documents that require `campusId`, `authorId`, or `vendorId` for access control (e.g., `Product`, `SocialFeedPost`, `SrcPost`, `RegistryPost`) store these fields directly within their own document. This means a security rule inspecting a `Product` document does not need to perform a `get()` operation on a parent `Campus` or `User` document to determine access rights. For example, a rule for a product can check `resource.data.campusId` and `resource.data.vendorId` directly. This eliminates hierarchical authorization dependencies, making rules atomic, simpler, and less prone to breaking during batched writes or transactions. While the user's initial request mentioned 'custom claims for roles', this design explicitly follows the 'DBAC (No Custom Claims)' mandate. Therefore, user roles and `campusId` for the requesting user are stored in their respective `users/{userId}` document. For `list` operations, this means security rules will perform a `get()` on the current user's document (`/users/$(request.auth.uid)`) to retrieve their `campusId` and `role` to validate query filters, rather than relying on `request.auth.token` custom claims.\n\n**QAPs (Queries as Authorization Primitives):**\nQAPs are enabled through Structural Segregation and the denormalization of authorization context. Each distinct type of post (`SocialFeedPost`, `SrcPost`, `RegistryPost`) and `Product` is housed in its own top-level collection (`/social_feed_posts`, `/src_posts`, `/registry_posts`, `/products`). This segregation ensures that all documents within a collection share a homogeneous security posture, simplifying rule sets. For instance, all documents in `/src_posts` are official SRC announcements, accessible to all members of the specified `campusId` for reading, and only to authorized SRC members for writing. Because `campusId` is denormalized into every document, client-side queries can efficiently filter data by `campusId` (e.g., `db.collection('src_posts').where('campusId', '==', userCampusId)`). Security rules then validate that the `campusId` requested in the query matches the `campusId` associated with the authenticated user (retrieved from `get(/users/$(request.auth.uid)).data.campusId`). This prevents clients from requesting data outside their permitted campus and ensures that rules are not used as filters after data retrieval, thus maintaining QAPs.\n\n**Role-Based Access Control (DBAC):**\nRoles are managed within the `users/{userId}` document via the `role` field. For global 'admin' privileges, an 'existence over content' pattern is used with a dedicated `/roles_admin/{adminId}` collection. The presence of a document in this collection for a `userId` grants admin status, allowing for efficient and explicit rule checks without relying on custom claims, aligning with the DBAC mandate."
+    "reasoning": "The social architecture has been consolidated to the root '/social_posts' collection to ensure administrative stability and high-trust read access for the National Liaison, bypassing restricted nested path segments."
   }
 }

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -10,10 +11,10 @@ import ProductCard from '@/components/products/product-card';
 import { Skeleton } from '../ui/skeleton';
 import { ScrollArea, ScrollBar } from '../ui/scroll-area';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Loader2, Sparkles, ShoppingBag, ChevronRight, Video, Image as ImageIcon, Youtube } from 'lucide-react';
+import { Loader2, Sparkles, ShoppingBag, ChevronRight, Image as ImageIcon, Video, Youtube } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import StaffLounge from './staff-lounge';
 import CampusVibeFeed from '../spotlight/campus-vibe-feed';
@@ -22,7 +23,6 @@ import { summarizeSocialFeed } from '@/ai/flows/summarize-social-feed';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import ShareVibeModal from '../social/ShareVibeModal';
-
 
 function StudentOrders() {
   const { user } = useAuth();
@@ -80,9 +80,8 @@ function StudentOrders() {
   );
 }
 
-
 export default function StudentDashboard({ showBulletin = true, showStaffLounge = true, showVibeFeed = true }: { showBulletin?: boolean, showStaffLounge?: boolean, showVibeFeed?: boolean }) {
-  const { user } = useAuth();
+  const { user, isTokenReady } = useAuth();
   const { firestore } = useFirebase();
   const { toast } = useToast();
   const [summary, setSummary] = useState('');
@@ -91,12 +90,15 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
   const [loadingRecs, setLoadingRecs] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
 
-
-  // Fetch social feed for summary
+  // Fetch social feed for summary from ROOT collection
   const socialFeedQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !user.campusId) return null;
-    return query(collection(firestore, 'social_posts'), where('campusId', '==', user.campusId));
-  }, [firestore, user]);
+    if (!firestore || !user?.campusId || !isTokenReady) return null;
+    return query(
+        collection(firestore, 'social_posts'), 
+        where('campusId', '==', user.campusId),
+        limit(10)
+    );
+  }, [firestore, user, isTokenReady]);
   const { data: socialFeed, isLoading: isLoadingSocial } = useCollection<SocialPost>(socialFeedQuery);
 
   // Fetch product catalog for recommendations
@@ -105,7 +107,6 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
     return collection(firestore, 'products');
   }, [firestore]);
   const { data: allProducts, isLoading: isLoadingProducts } = useCollection<Product>(productsQuery);
-
 
   async function handleSummarize() {
     if (!user || !user.campusId || !socialFeed) return;
@@ -140,7 +141,7 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
         role: user.role as 'student' | 'staff',
         majorOrDepartment: user.role === 'student' ? user.major : user.department,
         interests: user.interests,
-        purchaseHistory: [], // Mock purchase history
+        purchaseHistory: [], 
         productCatalog: allProducts.map(p => ({ 
             productId: p.id, 
             name: p.name, 
@@ -172,7 +173,6 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
 
   return (
     <div className="space-y-12">
-        
         <Card onClick={() => setShowShareModal(true)} className="cursor-pointer hover:bg-muted/50 transition-colors">
             <CardContent className="p-4">
             <div className="flex items-start space-x-4">
