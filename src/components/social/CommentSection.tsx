@@ -19,6 +19,7 @@ export default function CommentSection({ postId }: { postId: string }) {
 
   const commentsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
+    // UNIFIED PATH: Targets campus_pulse hierarchy
     return query(collection(firestore, 'campus_pulse', postId, 'comments'), orderBy('createdAt', 'asc'));
   }, [firestore, postId]);
   

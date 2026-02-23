@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -52,8 +53,9 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
 
     React.useEffect(() => {
         if (user && firestore) {
-            const likeRef = doc(firestore, 'arena_posts', post.id, 'likedBy', user.id);
-            const burnRef = doc(firestore, 'arena_posts', post.id, 'burnedBy', user.id);
+            // UNIFIED PATH: Point to campus_pulse for interactions
+            const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
+            const burnRef = doc(firestore, 'campus_pulse', post.id, 'burnedBy', user.id);
 
             getDoc(likeRef).then(doc => { if (doc.exists()) setUserAction('liked') });
             getDoc(burnRef).then(doc => { if (doc.exists()) setUserAction('burned') });
@@ -64,9 +66,9 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
         if (!user || !firestore || isProcessing || isBlocked) return;
         setIsProcessing(true);
 
-        const postRef = doc(firestore, 'arena_posts', post.id);
-        const likeRef = doc(firestore, 'arena_posts', post.id, 'likedBy', user.id);
-        const burnRef = doc(firestore, 'arena_posts', post.id, 'burnedBy', user.id);
+        const postRef = doc(firestore, 'campus_pulse', post.id);
+        const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
+        const burnRef = doc(firestore, 'campus_pulse', post.id, 'burnedBy', user.id);
         
         let newAction: 'liked' | 'burned' | null = null;
         if (userAction === (action === 'like' ? 'liked' : 'burned')) {

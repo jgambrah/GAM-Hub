@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
@@ -138,14 +139,15 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
 
   const comebacksQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, 'arena_posts', post.id, 'comebacks'), orderBy('createdAt', 'asc'));
+    // UNIFIED PATH: Targets campus_pulse sub-collection
+    return query(collection(firestore, 'campus_pulse', post.id, 'comebacks'), orderBy('createdAt', 'asc'));
   }, [firestore, post.id]);
 
   const { data: comebacks, isLoading } = useCollection<ArenaComeback>(comebacksQuery);
 
   const onEmojiClick = (emojiData: EmojiClickData) => {
     setText((prevInput) => prevInput + emojiData.emoji);
-    setShowEmojiPicker(false); // Automatically close after selection
+    setShowEmojiPicker(false); 
   };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,9 +201,10 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         comebackData.mediaType = videoUrl.includes('youtube') || videoUrl.includes('youtu.be') ? 'youtube' : 'tiktok';
       }
       
-      await addDocumentNonBlocking(collection(firestore, 'arena_posts', post.id, 'comebacks'), comebackData);
+      // UNIFIED WRITE: Save to campus_pulse hierarchy
+      await addDocumentNonBlocking(collection(firestore, 'campus_pulse', post.id, 'comebacks'), comebackData);
 
-      const postRef = doc(firestore, 'arena_posts', post.id);
+      const postRef = doc(firestore, 'campus_pulse', post.id);
       await updateDocumentNonBlocking(postRef, {
         comebackCount: increment(1)
       });
@@ -223,7 +226,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
 
   return (
     <div className="mt-6 pt-6 border-t border-border space-y-6 animate-in fade-in duration-300 relative">
-      {/* EMOJI PICKER OVERLAY */}
       {showEmojiPicker && (
         <div className="absolute bottom-20 left-0 z-[100] shadow-2xl bg-card rounded-3xl p-2 border animate-in slide-in-from-bottom-4 duration-300">
            <div className="flex justify-end mb-2">
@@ -235,7 +237,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         </div>
       )}
 
-      {/* COMMEBACKS LIST */}
       <div className="max-h-[400px] overflow-y-auto space-y-4 no-scrollbar pr-2 pb-4">
         {isLoading ? (
             <div className="space-y-4"> 
@@ -251,7 +252,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         )}
       </div>
 
-      {/* INPUT COMMAND CENTER */}
       <form onSubmit={handleReply} className="space-y-3">
         {showUrlInput && (
           <input 
