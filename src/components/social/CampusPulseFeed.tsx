@@ -1,22 +1,20 @@
-
 'use client';
 
 import React, { useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit, QueryConstraint } from 'firebase/firestore';
-import type { SocialPost, User as AppUser, SrcPost, Product } from '@/lib/types';
+import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import SocialPostCard from './social-post-card';
-import { CommunityConnectCard } from '../connections/student-profile-card';
-import { MessageSquare, Trophy, Gavel, Sparkles, RefreshCcw } from 'lucide-react';
+import { Sparkles, RefreshCcw } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import Image from 'next/image';
 
 /**
  * CampusPulseFeed Component
  * 
- * THE UNIFIED FIX: Targets the flat 'campus_pulse' collection.
- * No longer waits for 'isTokenReady' for reads to eliminate UI lag.
+ * THE SIMPLIFIED VIBRATION: Targets the flat 'campus_pulse' collection.
+ * We no longer wait for 'isTokenReady' for reads because the root collection 
+ * is open for listing to all authenticated users.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -25,20 +23,20 @@ export default function CampusPulseFeed({
 }: {
     activeCampusId: string;
     filterTag?: string;
-    searchQuery?: string;
-    tab?: 'all' | 'people' | 'market' | 'vlogs';
+    tab?: 'all' | 'vlogs';
 }) {
     const { firestore } = useFirebase();
-    const { user: currentUser, isUserLoading } = useAuth();
+    const { user } = useAuth(); // Simplified check: Just ensure a user context exists
     
     const socialQuery = useMemoFirebase(() => {
-        // UNIFIED CALL: Target the flat root collection immediately
-        if (!firestore || !activeCampusId) return null;
+        // Only fire when Firebase and User context are ready
+        if (!firestore || !activeCampusId || !user) return null;
         if (tab !== 'all' && tab !== 'vlogs') return null;
 
-        const constraints: QueryConstraint[] = [];
         const pulseRef = collection(firestore, 'campus_pulse');
+        const constraints: QueryConstraint[] = [];
         
+        // Segregation Logic: Filter by the current campus context
         if (activeCampusId !== 'all') {
             constraints.push(where('campusId', '==', activeCampusId));
         }
@@ -55,31 +53,31 @@ export default function CampusPulseFeed({
         constraints.push(limit(20));
 
         return query(pulseRef, ...constraints);
-    }, [firestore, activeCampusId, filterTag, tab]);
+    }, [firestore, activeCampusId, filterTag, tab, user?.id]);
 
     const srcQuery = useMemoFirebase(() => {
-        if (!firestore || tab !== 'all' || !activeCampusId || activeCampusId === 'all') return null;
+        if (!firestore || tab !== 'all' || !activeCampusId || activeCampusId === 'all' || !user) return null;
         return query(
             collection(firestore, 'src_posts'),
             where('campusId', '==', activeCampusId),
             orderBy('createdAt', 'desc'),
             limit(5)
         );
-    }, [firestore, tab, activeCampusId]);
+    }, [firestore, tab, activeCampusId, user?.id]);
 
     const { data: posts, isLoading: isLoadingPosts, error } = useCollection<SocialPost>(socialQuery);
     const { data: srcPosts, isLoading: isLoadingSrc } = useCollection<SrcPost>(srcQuery);
 
-    // LIAISON IDENTITY REFRESH
+    // LIAISON IDENTITY REFRESH: Show if a permission error somehow persists
     if (error) {
         return (
             <div className="p-10 text-center bg-red-50 dark:bg-red-950/20 rounded-[3rem] border-2 border-red-100 dark:border-red-900/50">
-                <p className="text-sm font-black text-red-600 dark:text-red-400 uppercase tracking-widest mb-4">Identity Sync Required</p>
+                <p className="text-sm font-black text-red-600 dark:text-red-400 uppercase tracking-widest mb-4">Vibration Mismatch</p>
                 <button 
                     onClick={() => window.location.reload()}
                     className="flex items-center gap-2 mx-auto bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all"
                 >
-                    <RefreshCcw size={14} /> Refresh Handshake
+                    <RefreshCcw size={14} /> Re-sync Identity
                 </button>
             </div>
         );
@@ -128,24 +126,9 @@ export default function CampusPulseFeed({
                     <p className="text-sm text-muted-foreground mt-2">No vibrations detected on this campus yet.</p>
                 </div>
             ) : (
-                unifiedPosts.map((post) => {
-                    if (post.type === 'election_winner') {
-                        return (
-                            <div key={post.id} className="md:col-span-2 bg-slate-900 p-8 rounded-[3rem] text-white shadow-2xl relative overflow-hidden mb-6">
-                              <div className="absolute -right-4 -bottom-4 opacity-10 rotate-12"><Trophy size={150} /></div>
-                              <div className="relative z-10 text-center">
-                                <div className="bg-amber-500 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase w-fit mx-auto mb-6">Official Result</div>
-                                <h2 className="text-3xl font-black italic tracking-tighter">Congratulations {post.winnerName}</h2>
-                                <p className="text-amber-400 font-bold uppercase tracking-widest text-xs mt-1">Elected {post.position}</p>
-                                <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-[2rem] max-w-xl mx-auto">
-                                    <p className="text-sm text-slate-300 leading-relaxed italic">"{post.content}"</p>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                    }
-                    return <SocialPostCard key={post.id} post={post} />;
-                })
+                unifiedPosts.map((post) => (
+                    <SocialPostCard key={post.id} post={post} />
+                ))
             )}
         </div>
     );
