@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
-    const { user, isUserLoading } = useAuth();
+    const { user, isUserLoading, isTokenReady } = useAuth();
     const { toast } = useToast();
     
     const [isLoading, setIsLoading] = useState(false);
@@ -41,23 +41,24 @@ export default function ArenaPage() {
 
     const { data: allCampuses } = useCollection<Campus>(
         useMemoFirebase(() => {
-            if (!firestore) return null;
+            if (!firestore || !isTokenReady) return null;
             return query(collection(firestore, 'campuses'), orderBy('acronym', 'asc'));
-        }, [firestore])
+        }, [firestore, isTokenReady])
     );
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
     // UNIFIED QUERY: Query the flat 'campus_pulse' collection for arena entries
+    // Uses the hardened isTokenReady guard to ensure claim synchronization
     const postsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !user || !isTokenReady) return null;
         return query(
             collection(firestore, 'campus_pulse'),
             where('isArenaEntry', '==', true),
             orderBy('createdAt', 'desc'),
             limit(50)
         );
-    }, [firestore]);
+    }, [firestore, user?.id, isTokenReady]);
 
     const { data: posts, isLoading: isLoadingPosts } = useCollection<ArenaPost>(postsQuery);
 

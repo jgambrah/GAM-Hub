@@ -13,16 +13,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 /**
  * ElectionWinnerWatcher Component (Internal to Pulse)
  * Triggers the Victory Takeover overlay if a result is active.
- * Uses the simplified flat collection query for high-trust access.
+ * Uses the hardened query guard to prevent claim race conditions.
  */
 function ElectionWinnerWatcher() {
-  const { user } = useAuth();
+  const { user, isTokenReady } = useAuth();
   const { firestore } = useFirebase();
   const [winner, setWinner] = useState<any>(null);
 
   const winnerQuery = useMemoFirebase(() => {
-    // SIMPLIFIED HANDSHAKE: Fires as soon as basic user context is established
-    if (!firestore || !user?.campusId) return null;
+    // HARDENED HANDSHAKE: Fires only when token is ready and campus ID is stable
+    if (!firestore || !user?.campusId || !isTokenReady) return null;
     return query(
       collection(firestore, 'campus_pulse'),
       where('campusId', '==', user.campusId),
@@ -30,7 +30,7 @@ function ElectionWinnerWatcher() {
       orderBy('createdAt', 'desc'),
       limit(1)
     );
-  }, [firestore, user?.campusId, user?.id]);
+  }, [firestore, user?.campusId, user?.id, isTokenReady]);
 
   const { data } = useCollection(winnerQuery);
 
