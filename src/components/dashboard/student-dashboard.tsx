@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useMemo } from 'react';
@@ -90,15 +89,17 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
   const [loadingRecs, setLoadingRecs] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
 
-  // Fetch social feed for summary from ROOT collection
+  // FETCH: From Unified campus_pulse instead of deprecated social_posts
   const socialFeedQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.campusId || !isTokenReady) return null;
+    // Basic handshake: Fires as soon as user is identified
+    if (!firestore || !user?.campusId) return null;
     return query(
-        collection(firestore, 'social_posts'), 
+        collection(firestore, 'campus_pulse'), 
         where('campusId', '==', user.campusId),
+        orderBy('createdAt', 'desc'),
         limit(10)
     );
-  }, [firestore, user, isTokenReady]);
+  }, [firestore, user?.campusId, user?.id]);
   const { data: socialFeed, isLoading: isLoadingSocial } = useCollection<SocialPost>(socialFeedQuery);
 
   // Fetch product catalog for recommendations
@@ -208,11 +209,11 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
                 <div className="flex items-center justify-between">
                     <div>
                         <CardTitle>Campus Buzz</CardTitle>
-                        <CardDescription>A summary of what's happening on your campus social feed.</CardDescription>
+                        <CardDescription>AI summary of your {user.campusAcronym || 'Campus'} feed.</CardDescription>
                     </div>
                     <Button onClick={handleSummarize} size="sm" variant="outline" disabled={loadingSummary || isLoadingSocial}>
                         {loadingSummary ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                        Generate
+                        Vibe-Check
                     </Button>
                 </div>
             </CardHeader>
@@ -224,9 +225,9 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
                     <Skeleton className="h-4 w-3/4" />
                 </div>
                 ) : summary ? (
-                <p className="text-sm text-muted-foreground">{summary}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{summary}</p>
                 ) : (
-                    <p className="text-center text-sm text-muted-foreground py-8">Click "Generate" to get a summary of the campus feed.</p>
+                    <p className="text-center text-sm text-muted-foreground py-8 italic opacity-60">Click "Vibe-Check" to summarize the latest vibrations.</p>
                 )}
             </CardContent>
             </Card>
@@ -236,7 +237,7 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
       <section className="p-6 bg-blue-50/50 dark:bg-primary/10 rounded-[2.5rem] border border-blue-100 dark:border-primary/20">
         <div className="flex items-center justify-between mb-4">
             <h3 className="font-black text-blue-900 dark:text-blue-300 flex items-center gap-2">
-              <Sparkles size={18} /> Especially for {user.name?.split(' ')[0]}
+              <Sparkles size={18} /> Tailored for {user.name?.split(' ')[0]}
             </h3>
             <Button onClick={handleGetRecommendations} size="sm" variant="outline" disabled={loadingRecs || isLoadingProducts} className="bg-background/70 dark:bg-primary/20 backdrop-blur-sm">
                 {loadingRecs ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}

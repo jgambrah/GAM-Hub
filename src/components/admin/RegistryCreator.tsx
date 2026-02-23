@@ -17,10 +17,10 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 
 /**
- * RegistryCreator Component
+ * RegistryCreator Component: The "Safe-Broadcast" Hub
  * 
- * Professional URO Dashboard UI for official university directives.
- * Handles the "Multimedia Handshake" (Storage upload -> Firestore write).
+ * Implements high-trust URO broadcasting for official university directives.
+ * Uses the Multimedia Handshake (Storage -> Firestore) with non-blocking writes.
  */
 export default function RegistryCreator({ userProfile }: { userProfile: any }) {
   const { firestore, storage } = useFirebase();
@@ -71,7 +71,7 @@ export default function RegistryCreator({ userProfile }: { userProfile: any }) {
         attachmentUrls.push(url);
       }
 
-      // 2. Prepare Payload
+      // 2. Prepare Payload for Root Collection (Safe-Path)
       const postData: Partial<RegistryPost> = {
         title: formData.title,
         content: formData.content,
@@ -84,7 +84,8 @@ export default function RegistryCreator({ userProfile }: { userProfile: any }) {
         updatedAt: new Date().toISOString(),
       };
 
-      // 3. Firestore Mutation (Pattern 1: Non-Blocking)
+      // 3. SAFE-BROADCAST: Firestore Mutation (Pattern 1: Non-Blocking)
+      // Writing to /registry_posts root avoids the nested path permission hurdles
       const colRef = collection(firestore, 'registry_posts');
       addDocumentNonBlocking(colRef, postData);
       
@@ -92,7 +93,7 @@ export default function RegistryCreator({ userProfile }: { userProfile: any }) {
       setFormData({ title: '', content: '', isUrgent: false, targetAudience: 'all' });
       setFiles([]);
     } catch (err) {
-      console.error(err);
+      console.error("Liaison Broadcast Error:", err);
       toast({ variant: 'destructive', title: "Broadcast Failed", description: "Could not release the circular at this time." });
     } finally {
       setLoading(false);
@@ -118,7 +119,7 @@ export default function RegistryCreator({ userProfile }: { userProfile: any }) {
           <Label className="text-[10px] font-black text-blue-900 dark:text-blue-400 uppercase tracking-widest px-2">Circular Title</Label>
           <Input 
             required 
-            placeholder="e.g., End of Semester Examination Guidelines" 
+            placeholder="e.g., Examination Protocol 2026" 
             className="w-full p-6 h-auto rounded-2xl bg-slate-50 dark:bg-muted border-none font-bold text-lg text-foreground focus:ring-2 focus:ring-blue-900 transition-all shadow-inner" 
             value={formData.title} 
             onChange={e => setFormData({...formData, title: e.target.value})} 
@@ -129,7 +130,7 @@ export default function RegistryCreator({ userProfile }: { userProfile: any }) {
             <div className="space-y-2">
                 <Label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-2">Target Audience</Label>
                 <Select value={formData.targetAudience} onValueChange={(val: any) => setFormData({...formData, targetAudience: val})}>
-                    <SelectTrigger className="rounded-2xl border-none bg-slate-50 dark:bg-muted h-14 font-bold shadow-inner">
+                    <SelectTrigger className="rounded-2xl border-none bg-slate-50 dark:bg-muted h-14 font-bold shadow-inner text-foreground">
                         <SelectValue placeholder="Select Audience" />
                     </SelectTrigger>
                     <SelectContent className="rounded-2xl border-none shadow-2xl">
@@ -149,8 +150,7 @@ export default function RegistryCreator({ userProfile }: { userProfile: any }) {
                         <ShieldAlert size={18} />
                         <span className="text-xs font-black uppercase">Urgent Notice</span>
                     </div>
-                    <input type="checkbox" checked={formData.isUrgent} onChange={() => {}} className="hidden" />
-                    <div className={cn("w-4 h-4 rounded-full border-2", formData.isUrgent ? "bg-red-600 border-red-600" : "border-slate-300")} />
+                    <div className={cn("w-4 h-4 rounded-full border-2", formData.isUrgent ? "bg-red-600 border-red-600 shadow-[0_0_10px_rgba(220,38,38,0.3)]" : "border-slate-300")} />
                 </div>
             </div>
         </div>
@@ -159,15 +159,15 @@ export default function RegistryCreator({ userProfile }: { userProfile: any }) {
           <Label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-2">Official Message</Label>
           <Textarea 
             required 
-            placeholder="Specify instructions clearly for the targeted audience..." 
-            className="w-full p-6 rounded-2xl bg-slate-50 dark:bg-muted border-none h-48 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-900 transition-all resize-none shadow-inner" 
+            placeholder="Details of the directive..." 
+            className="w-full p-6 rounded-2xl bg-slate-50 dark:bg-muted border-none h-48 text-sm text-foreground outline-none focus:ring-2 focus:ring-blue-900 transition-all resize-none shadow-inner no-scrollbar" 
             value={formData.content} 
             onChange={e => setFormData({...formData, content: e.target.value})} 
           />
         </div>
 
         <div className="space-y-2">
-          <Label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-2">Multimedia Attachments (PDF / Scans)</Label>
+          <Label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-2">Multimedia Attachments</Label>
           <div className="p-6 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-[2rem] bg-slate-50/50 dark:bg-muted/30 flex flex-col items-center justify-center gap-4">
             <input 
               type="file" 
@@ -217,7 +217,7 @@ export default function RegistryCreator({ userProfile }: { userProfile: any }) {
           disabled={loading || !isTokenReady} 
           className="w-full py-8 bg-blue-900 text-white rounded-[2rem] font-black text-lg flex items-center justify-center gap-3 shadow-xl hover:bg-blue-800 hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-50"
         >
-          {loading ? <Loader2 className="animate-spin" /> : <><Send size={20} /> Release Circular</>}
+          {loading ? <Loader2 className="animate-spin" /> : <><Send size={20} /> Safe-Broadcast to Yard</>}
         </Button>
       </form>
     </div>
