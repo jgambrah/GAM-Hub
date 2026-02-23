@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
-import { MessageSquare, Plus, Video, Camera, Type, Loader2 } from 'lucide-react';
+import { MessageSquare, Plus, Video, Camera, Type, Info, Sparkles, Trophy } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import ShareVibeModal from '@/components/social/ShareVibeModal';
 import { VictoryTakeover } from '@/components/politics/VictoryTakeover';
@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 /**
  * ElectionWinnerWatcher Component (Internal to Pulse)
  * Triggers the Victory Takeover overlay if a result is active.
- * Updated to use the TOP-LEVEL social_posts collection.
+ * Uses root social_posts collection with campusId filter for Liaison stability.
  */
 function ElectionWinnerWatcher() {
   const { user, isTokenReady } = useAuth();
@@ -84,17 +84,36 @@ export default function PulsePage() {
       <ElectionWinnerWatcher />
 
       <div className="max-w-4xl mx-auto pt-6 space-y-8 px-4">
-        {/* HEADER */}
+        {/* HEADER: THE CAMPUS HEARTBEAT */}
         <div className="bg-slate-900 rounded-[3rem] p-10 text-white shadow-2xl relative overflow-hidden">
           <div className="absolute right-0 top-0 p-8 opacity-10"><MessageSquare size={150} /></div>
           <div className="relative z-10">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="text-blue-400" size={16} />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em]">Live Vibration</span>
+            </div>
             <h1 className="text-4xl font-black italic tracking-tighter uppercase">Campus Pulse</h1>
-            <p className="text-sm text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Live from {user.campusAcronym || 'The Yard'}</p>
+            <p className="text-sm text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">
+              Live from {user.campusAcronym || 'The Yard'}
+            </p>
+          </div>
+        </div>
+
+        {/* FEATURE NARRATIVE: THE LIAISON DECREE */}
+        <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-[2.5rem] border-2 border-dashed border-blue-200 dark:border-blue-800 flex items-start gap-4">
+          <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg">
+            <Info size={24} />
+          </div>
+          <div>
+            <h4 className="font-black text-blue-900 dark:text-blue-200 uppercase tracking-widest text-xs">The Pulse Protocol</h4>
+            <p className="text-sm text-blue-800 dark:text-blue-300 mt-1 leading-relaxed">
+              This is the heartbeat of your campus. While <b>The Arena</b> is for national competition, the <b>Pulse</b> is for internal vibes, SRC news, and local community updates. Share your frequency! 📡🇬🇭
+            </p>
           </div>
         </div>
 
         {/* ACTION BAR */}
-        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex justify-between items-center">
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-4">
             <div className="flex -space-x-2">
               <div className="p-2 bg-red-100 text-red-600 rounded-lg border-2 border-white"><Video size={18} /></div>
@@ -106,7 +125,7 @@ export default function PulsePage() {
           
           <button 
             onClick={() => setVibeModalOpen(true)}
-            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-2xl font-black text-xs shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+            className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-2xl font-black text-xs shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-2"
           >
             <Plus size={16} />
             Share Vibe

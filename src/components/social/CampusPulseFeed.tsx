@@ -7,7 +7,7 @@ import type { SocialPost, User as AppUser, SrcPost, Product } from '@/lib/types'
 import { Skeleton } from '../ui/skeleton';
 import SocialPostCard from './social-post-card';
 import { CommunityConnectCard } from '../connections/student-profile-card';
-import { MessageSquare, Users, ShoppingBag, Trophy, Gavel } from 'lucide-react';
+import { MessageSquare, Users, ShoppingBag, Trophy, Gavel, Sparkles } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import Image from 'next/image';
 
@@ -15,7 +15,8 @@ import Image from 'next/image';
  * CampusPulseFeed Component
  * 
  * Fetches and displays the social heartbeat of a campus.
- * Updated to use the TOP-LEVEL social_posts collection for rule compliance.
+ * FIXED: Uses the root 'social_posts' collection with a 'campusId' filter
+ * to satisfy the 'allow read: if true' rule, bypassing restricted nested paths.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -31,15 +32,15 @@ export default function CampusPulseFeed({
     const { firestore } = useFirebase();
     const { user: currentUser, isUserLoading, isTokenReady } = useAuth();
     
-    // --- QUERIES ---
+    // --- QUERIES: Root-Level Architecture for Rule Stability ---
     const socialQuery = useMemoFirebase(() => {
-        // ✅ QUERY GUARD: Wait for token readiness and valid campus
+        // ✅ QUERY GUARD: Wait for token readiness and valid campus context
         if (!firestore || !isTokenReady || !activeCampusId) return null;
         if (tab !== 'all' && tab !== 'vlogs') return null;
 
         const constraints: QueryConstraint[] = [];
         
-        // Filter by campus at the top level
+        // LIAISON STRATEGY: Query root 'social_posts' with campusId filter
         if (activeCampusId !== 'all') {
             constraints.push(where('campusId', '==', activeCampusId));
         }
@@ -55,7 +56,7 @@ export default function CampusPulseFeed({
         constraints.push(orderBy('createdAt', 'desc'));
         constraints.push(limit(20));
 
-        // Use the Top-Level Unified Path to satisfy 'allow read: if true' rule
+        // Use Top-Level Path to satisfy permissive root rules
         return query(collection(firestore, 'social_posts'), ...constraints);
     }, [firestore, activeCampusId, filterTag, tab, isTokenReady]);
 
@@ -130,10 +131,10 @@ export default function CampusPulseFeed({
     }
 
     const EmptyState = ({ icon: Icon, title, message }: { icon: React.ElementType, title: string, message: string }) => (
-        <div className="text-center py-20 text-muted-foreground border-2 border-dashed rounded-3xl col-span-full">
-            <Icon className="mx-auto h-12 w-12 text-muted-foreground/30 mb-4" />
-            <p className="font-semibold">{title}</p>
-            <p className="text-sm">{message}</p>
+        <div className="text-center py-24 bg-card rounded-[3rem] border-2 border-dashed border-border/50 col-span-full">
+            <Icon className="mx-auto h-16 w-16 text-muted-foreground/20 mb-6" />
+            <p className="text-xl font-black text-foreground">{title}</p>
+            <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">{message}</p>
         </div>
     );
 
@@ -147,14 +148,13 @@ export default function CampusPulseFeed({
         case 'market':
             return (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                    {/* Simplified product cards for explore tab */}
                     {products?.map(p => (
-                        <div key={p.id} className="bg-card p-4 rounded-2xl border shadow-sm">
-                            <div className="aspect-square relative rounded-xl overflow-hidden mb-3">
-                                <Image src={p.imageUrl} fill className="object-cover" alt={p.name} />
+                        <div key={p.id} className="bg-card p-4 rounded-[2.5rem] border shadow-sm group hover:shadow-xl transition-all">
+                            <div className="aspect-square relative rounded-3xl overflow-hidden mb-4">
+                                <Image src={p.imageUrl} fill className="object-cover group-hover:scale-110 transition-transform duration-500" alt={p.name} />
                             </div>
-                            <p className="font-bold text-sm truncate">{p.name}</p>
-                            <p className="text-xs text-primary font-black">GHS {p.price.toFixed(2)}</p>
+                            <p className="font-black text-sm truncate px-2">{p.name}</p>
+                            <p className="text-xs text-primary font-black px-2 mt-1">GHS {p.price.toFixed(2)}</p>
                         </div>
                     ))}
                 </div>
@@ -162,7 +162,7 @@ export default function CampusPulseFeed({
         case 'vlogs':
         case 'all':
         default:
-            if (unifiedPosts.length === 0) return <EmptyState icon={MessageSquare} title="No Vibes Found" message="The pulse is quiet today." />;
+            if (unifiedPosts.length === 0) return <EmptyState icon={Sparkles} title="The Pulse is Silent" message="No vibrations detected on this campus yet. Be the first to share a vibe!" />;
             return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {unifiedPosts.map((post) => {
@@ -172,9 +172,11 @@ export default function CampusPulseFeed({
                                   <div className="absolute -right-4 -bottom-4 opacity-10 rotate-12"><Trophy size={150} /></div>
                                   <div className="relative z-10 text-center">
                                     <div className="bg-amber-500 text-white text-[10px] font-black px-4 py-1 rounded-full uppercase w-fit mx-auto mb-6">Official Result</div>
-                                    <h2 className="text-2xl font-black">Congratulations {post.winnerName}</h2>
+                                    <h2 className="text-3xl font-black italic tracking-tighter">Congratulations {post.winnerName}</h2>
                                     <p className="text-amber-400 font-bold uppercase tracking-widest text-xs mt-1">Elected {post.position}</p>
-                                    <p className="mt-6 text-sm text-slate-400 leading-relaxed italic">"{post.content}"</p>
+                                    <div className="mt-8 p-6 bg-white/5 border border-white/10 rounded-[2rem] max-w-xl mx-auto">
+                                        <p className="text-sm text-slate-300 leading-relaxed italic">"{post.content}"</p>
+                                    </div>
                                   </div>
                                 </div>
                               );
