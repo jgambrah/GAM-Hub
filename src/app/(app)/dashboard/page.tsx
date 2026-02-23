@@ -1,16 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useView } from '@/context/ViewContext';
 import { useAuth } from '@/hooks/use-auth';
-import { Plus, Video, Sparkles, Camera, Type, MessageSquare, Loader2 } from 'lucide-react';
+import { Loader2, ArrowRight, MessageSquare, Sparkles } from 'lucide-react';
 import { getAuth } from 'firebase/auth';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, limit } from 'firebase/firestore';
+import Link from 'next/link';
 
 // Restored Components
-import CampusPulseFeed from '@/components/social/CampusPulseFeed';
-import ShareVibeModal from '@/components/social/ShareVibeModal';
 import CampusSpotlight from '@/components/spotlight/campus-spotlight';
 import { CampusBulletin } from '@/components/spotlight/CampusBulletin';
 import UrgentRegistryAlert from '@/components/spotlight/UrgentRegistryAlert';
@@ -23,71 +20,14 @@ import SRCDashboard from '@/components/src/SRCDashboard';
 import VendorDashboard from '@/components/dashboard/vendor-dashboard';
 import YardStrength from '@/components/social/YardStrength';
 import CampusRadio from '@/components/social/CampusRadio';
-import { VictoryTakeover } from '@/components/politics/VictoryTakeover';
-
-/**
- * ElectionWinnerWatcher Component
- * 
- * Listens for the most recent 'election_winner' post type for the user's campus.
- * Triggers the Victory Takeover overlay if the result hasn't been dismissed locally.
- */
-function ElectionWinnerWatcher() {
-  const { user, isTokenReady } = useAuth();
-  const { firestore } = useFirebase();
-  const [winner, setWinner] = useState<any>(null);
-
-  const winnerQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.campusId || !isTokenReady) return null;
-    return query(
-      collection(firestore, 'social_posts'),
-      where('campusId', '==', user.campusId),
-      where('type', '==', 'election_winner'),
-      orderBy('createdAt', 'desc'),
-      limit(1)
-    );
-  }, [firestore, user?.campusId, isTokenReady]);
-
-  const { data } = useCollection(winnerQuery);
-
-  useEffect(() => {
-    if (data && data.length > 0) {
-      const post = data[0];
-      // Liaison Security: Check local storage to prevent duplicate takeovers
-      const dismissed = localStorage.getItem(`dismissed_winner_${post.id}`);
-      if (!dismissed) {
-        setWinner({
-          id: post.id,
-          name: post.winnerName,
-          image: post.winnerPhoto,
-          position: post.position,
-          campusId: post.campusId.toUpperCase(),
-          victoryMessage: post.content
-        });
-      }
-    }
-  }, [data]);
-
-  if (!winner) return null;
-
-  return (
-    <VictoryTakeover 
-      winner={winner} 
-      onDismiss={() => {
-        localStorage.setItem(`dismissed_winner_${winner.id}`, 'true');
-        setWinner(null);
-      }} 
-    />
-  );
-}
 
 export default function HomePage() {
   const { viewMode } = useView();
   const { user, isUserLoading } = useAuth();
-  const [isVibeModalOpen, setVibeModalOpen] = useState(false);
 
   /**
    * 🔍 LIAISON TOKEN AUDIT
-   * Temporary debug block to verify Custom Claims in the browser console.
+   * Verification of Custom Claims in the browser console.
    */
   useEffect(() => {
     const auth = getAuth();
@@ -123,9 +63,6 @@ export default function HomePage() {
   // 2. STUDENT & STAFF EXPERIENCE (THE YARD)
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* THE VICTORY OVERLAY WATCHER */}
-      <ElectionWinnerWatcher />
-
       {/* A. OFFICIAL URGENT ALERTS */}
       <UrgentRegistryAlert />
 
@@ -149,51 +86,39 @@ export default function HomePage() {
         {/* E. NATIONAL YARD STRENGTH (Economic/Productivity Prestige) */}
         <YardStrength />
 
-        {/* F. DAILY SPOTLIGHT (The Winners) */}
+        {/* F. PULSE ENTRY GATEWAY (NEW) */}
+        <div className="px-4">
+          <Link href="/pulse">
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-8 rounded-[3rem] text-white shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-all active:scale-95">
+              <div className="absolute right-0 top-0 p-8 opacity-10 group-hover:rotate-12 transition-transform">
+                <MessageSquare size={120} />
+              </div>
+              <div className="relative z-10 flex justify-between items-center">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="text-amber-400" size={16} />
+                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">Live Social Stream</span>
+                  </div>
+                  <h2 className="text-3xl font-black italic tracking-tighter uppercase">Enter Campus Pulse</h2>
+                  <p className="text-indigo-100 text-sm mt-2 font-medium">Join the social vibration of your Yard.</p>
+                </div>
+                <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-md border border-white/20">
+                  <ArrowRight size={24} />
+                </div>
+              </div>
+            </div>
+          </Link>
+        </div>
+
+        {/* G. DAILY SPOTLIGHT (The Winners) */}
         <CampusSpotlight />
 
-        {/* G. MY ORDER PULSE (Real-time tracking of GHS) */}
+        {/* H. MY ORDER PULSE (Real-time tracking of GHS) */}
         <BuyerOrdersPulse />
 
-        {/* H. MAJOR-MATCH (Academic Networking) */}
+        {/* I. MAJOR-MATCH (Academic Networking) */}
         <MajorMatch />
-
-        {/* I. THE MULTIMEDIA ACTION BAR (Share Vibe) */}
-        <div className="px-6 mt-12 mb-6 flex justify-between items-center bg-white p-6 mx-4 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden group">
-          <div className="flex items-center gap-4">
-            <div className="flex -space-x-2">
-              <div className="p-2 bg-red-100 text-red-600 rounded-lg border-2 border-white relative z-30"><Video size={18} /></div>
-              <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg border-2 border-white relative z-20"><Camera size={18} /></div>
-              <div className="p-2 bg-blue-100 text-blue-600 rounded-lg border-2 border-white relative z-10"><Type size={18} /></div>
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-slate-900 leading-tight">Campus Pulse</h2>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Broadcast to the Yard</p>
-            </div>
-          </div>
-          
-          <button 
-            onClick={() => setVibeModalOpen(true)}
-            className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-6 py-3 rounded-2xl font-black text-xs shadow-lg shadow-red-100 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <Plus size={16} />
-            Share Vibe
-          </button>
-        </div>
-
-        {/* J. THE LIVE VIBE GRID */}
-        <div className="px-2">
-          <CampusPulseFeed activeCampusId={user?.campusId || 'all'} />
-        </div>
       </div>
-
-      {/* MODAL LAYER */}
-      {isVibeModalOpen && (
-        <ShareVibeModal 
-          userProfile={user} 
-          onClose={() => setVibeModalOpen(false)} 
-        />
-      )}
     </div>
   );
 }

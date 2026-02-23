@@ -1,7 +1,11 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { FlameKindling, Flame, LayoutDashboard, ShoppingBag, Rss, Users, Building, Settings, UserCheck, Link, CreditCard, MessagesSquare, ShieldAlert, Landmark, Banknote, Sparkles, MapPin, Globe, BookOpen, PackageCheck, Wallet, History, Zap, Star, Gavel, Key, FileCheck, TrendingUp } from 'lucide-react';
+import { 
+  FlameKindling, Flame, LayoutDashboard, ShoppingBag, Users, Building, Settings, UserCheck, 
+  Link, CreditCard, MessagesSquare, ShieldAlert, Landmark, Banknote, Sparkles, MapPin, 
+  Globe, BookOpen, PackageCheck, Wallet, History, Zap, Star, Gavel, Key, FileCheck, TrendingUp, Rss
+} from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import type { NavItem } from '@/lib/types';
 import {
@@ -21,6 +25,7 @@ import { useView } from '@/context/ViewContext';
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['student', 'staff', 'admin', 'src'] },
+  { href: '/pulse', label: 'Campus Pulse', icon: Rss, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/explore', label: 'Explore', icon: Globe, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/arena', label: 'The Arena', icon: Flame, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/registry', label: 'The Registry', icon: Landmark, roles: ['student', 'staff', 'admin', 'src'] },
@@ -91,14 +96,12 @@ export function AppSidebar() {
 
   const filteredNavItems = navItems.filter(item => {
     if (!user) return false;
-    // For non-vendor roles, filter normally
     if (viewMode !== 'vendor') {
       return item.roles.includes(viewMode);
     }
-    return false; // Vendor has a custom menu, don't show main nav items
+    return false; 
   });
 
-  // Determine the campus to display based on role and view-as state
   const displayCampus = isAdmin ? (viewAsCampus ?? { acronym: 'GAM', name: 'Global Admin View' }) : campus;
 
   return (
