@@ -29,9 +29,21 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // --- MANIFESTOS (POLITICS) ---
+    match /manifestos/{manifestoId} {
+      // Allow all verified members (including staff) to see the vision
+      allow get, list: if isVerifiedMember();
+      // Only approved candidates can edit their campaign HQ
+      allow create, update: if isOwner(manifestoId) && request.auth.token.isCandidate == true;
+      
+      match /endorsements/{userId} {
+        allow read: if isVerifiedMember();
+        allow write: if isOwner(userId);
+      }
+    }
+
     // --- UNIFIED CAMPUS PULSE ---
     match /campus_pulse/{pulseId} {
-      // THE UNIFIED FIX: Root access is open for reading to avoid Liaison token lag
       allow get, list: if true;
       allow create: if isVerifiedMember() && request.resource.data.content != null;
       allow update: if isAdmin() || (isOwner(resource.data.authorId) &&
