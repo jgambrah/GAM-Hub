@@ -28,6 +28,7 @@ export default function CampusPulseFeed({
     const { user } = useAuth();
     
     const socialQuery = useMemoFirebase(() => {
+        // SIMPLIFIED HANDSHAKE: Fires as soon as basic user context is established
         if (!firestore || !activeCampusId || !user) return null;
         if (tab !== 'all' && tab !== 'vlogs') return null;
 
