@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { collection, doc } from 'firebase/firestore';
+import { collection } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useFirebase, addDocumentNonBlocking } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,12 @@ import Image from 'next/image';
 import type { SocialPost } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
+/**
+ * ShareVibeModal Component
+ * 
+ * The multimedia broadcast center for the Yard.
+ * Supports: Text, Native Image/Video Uploads, and External YouTube/TikTok Links.
+ */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
   const { toast } = useToast();
@@ -57,7 +63,11 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     e.preventDefault();
     if (!userProfile || !firestore || !storage || !auth.currentUser) return;
     
-    const hasMedia = imageFile || videoFile || externalUrl.trim();
+    // Check if there is any content to share
+    const hasMedia = (postType === 'image' && imageFile) || 
+                     (postType === 'native' && videoFile) || 
+                     (postType === 'link' && externalUrl.trim());
+                     
     if (!content.trim() && !hasMedia) {
         toast({ variant: 'destructive', title: 'Empty Vibe', description: 'Add a thought, photo, or link to broadcast!' });
         return;
@@ -78,7 +88,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         imageUrl = await getDownloadURL(fileRef);
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
-        const fileRef = ref(storage, `social_videos/${userProfile.id}_${Date.now()}_${videoFile.name}`);
+        const fileRef = ref(storage, `social_videos/${auth.currentUser.uid}_${Date.now()}_${videoFile.name}`);
         await uploadBytes(fileRef, videoFile);
         mediaUrl = await getDownloadURL(fileRef);
       } else if (postType === 'link' && externalUrl) {
@@ -106,8 +116,8 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         createdAt: new Date().toISOString(),
       };
 
-      // 3. BROADCAST TO ROOT COLLECTION
-      await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
+      // 3. BROADCAST TO ROOT COLLECTION (Unified Path)
+      addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
       
       toast({ title: 'Vibe Shared with the Yard!' });
       onClose();
@@ -129,7 +139,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[5000] flex items-center justify-center p-4">
-      <div className="bg-card rounded-[3.5rem] w-full max-w-lg overflow-hidden shadow-2xl relative animate-in zoom-in duration-300">
+      <div className="bg-card rounded-[3.5rem] w-full max-w-lg overflow-hidden shadow-2xl relative animate-in zoom-in duration-300 border border-border">
         <button onClick={onClose} className="absolute top-6 right-6 p-2 bg-muted rounded-full z-20 hover:bg-muted/80 transition-all"><X size={20}/></button>
         
         <div className="p-8">
@@ -137,7 +147,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             <div className="p-3 bg-indigo-500 text-white rounded-2xl shadow-lg"><Sparkles size={24}/></div>
             <div>
               <h2 className="text-3xl font-black text-foreground">Share Your Vibe</h2>
-              <p className="text-sm font-medium text-muted-foreground italic">Broadcasting to {userProfile.campusAcronym || 'The Yard'}</p>
+              <p className="text-sm font-medium text-muted-foreground italic">Broadcasting to {userProfile?.campusAcronym || 'The Yard'}</p>
             </div>
           </div>
 
@@ -172,7 +182,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                             value={externalUrl}
                             onChange={(e) => setExternalUrl(e.target.value)}
                             placeholder="Paste link here..."
-                            className="w-full p-4 pl-12 rounded-2xl bg-muted border-none outline-none font-mono text-xs text-blue-600 focus:ring-2 focus:ring-primary transition-all dark:bg-slate-900"
+                            className="w-full p-4 pl-12 rounded-2xl bg-muted border-none outline-none font-mono text-xs text-blue-600 focus:ring-2 focus:ring-primary transition-all dark:bg-slate-900 shadow-inner"
                         />
                         <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                     </div>
@@ -194,7 +204,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 
                 <button 
                     type="button" 
-                    onClick={() => fileInputRef.current?.click()} 
+                    onClick={() => { resetMedia(); fileInputRef.current?.click(); }} 
                     className={cn(
                         "flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", 
                         postType === 'image' ? "bg-emerald-50 text-emerald-600 border-emerald-500 shadow-sm" : "bg-transparent border-transparent text-muted-foreground"
@@ -205,7 +215,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
                 <button 
                     type="button" 
-                    onClick={() => videoInputRef.current?.click()} 
+                    onClick={() => { resetMedia(); videoInputRef.current?.click(); }} 
                     className={cn(
                         "flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", 
                         postType === 'native' ? "bg-red-50 text-red-600 border-red-500 shadow-sm" : "bg-transparent border-transparent text-muted-foreground"

@@ -104,7 +104,7 @@ export default function ArenaPage() {
                 postData.mediaType = videoUrl.includes('youtube') ? 'youtube' : 'tiktok';
             }
 
-            await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
+            addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
             toast({ title: 'Vibe Shared in The Arena!' });
             resetInputs();
         } catch (error) {

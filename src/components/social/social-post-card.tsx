@@ -30,7 +30,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [likeCount, setLikeCount] = React.useState(post.likes);
   const [isProcessingLike, setIsProcessingLike] = React.useState(false);
   const [showComments, setShowComments] = React.useState(false);
-  const [showVideo, setShowVideo] = React.useState(false);
   
   const isTrending = likeCount >= 20 || post.isProtected;
 
