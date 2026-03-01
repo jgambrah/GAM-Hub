@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -9,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Image as ImageIcon, Type, X, Send, Camera, Video, Sparkles, Youtube, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import type { SocialPost } from '@/lib/types';
+import { cn } from '@/lib/utils';
 
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
