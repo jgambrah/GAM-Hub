@@ -17,7 +17,6 @@ import { cn } from '@/lib/utils';
  * 
  * The multimedia broadcast center for the Yard.
  * Supports: Text, Native Image/Video Uploads, and External YouTube/TikTok Links.
- * Implements the Hardened handlePublish logic with Atomic Error Logging.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -59,10 +58,11 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     }
   };
 
+  // ✅ THE HARDENED MULTIMEDIA BROADCAST ENGINE
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 1. DEBUG LOG: See why the guard might be stopping the action
+    // 1. DEBUG LOG: monitor for Liaison-Grade Fix
     console.log("📡 Broadcast Attempted:", { 
       hasUserProfile: !!userProfile, 
       hasFirestore: !!firestore, 
@@ -113,7 +113,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       const hashtags = content.match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
 
       // CONSTRUCT PAYLOAD
-      // Important: We add isArenaEntry: false to distinguish Pulse from Arena
       const postData = {
         authorId: auth.currentUser.uid,
         authorName: userProfile.name || "Campus Member",
@@ -128,11 +127,11 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         likes: 0,
         commentCount: 0,
         type: 'regular',
-        isArenaEntry: false, // CRITICAL: Tells rules this is a Pulse post
+        isArenaEntry: false, // CRITICAL: Pulse vibrations are NOT Arena entries
         createdAt: new Date().toISOString(),
       };
 
-      // 3. BROADCAST: Using standard Firestore to catch immediate errors
+      // 3. BROADCAST: Using standard Firestore
       const { addDoc, collection } = await import('firebase/firestore');
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       

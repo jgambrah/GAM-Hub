@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection, useAuth as useAuthInstance } from '@/firebase';
 import type { User as AppUser, Campus } from '@/lib/types';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { onIdTokenChanged, User as FirebaseUser } from 'firebase/auth';
 import { doc, collection } from 'firebase/firestore';
 
 interface AuthState {
@@ -15,6 +15,13 @@ interface AuthState {
   isAdmin: boolean;
   isCandidate: boolean;
   isTokenReady: boolean;
+}
+
+// Global variable to track claims across re-renders/loop prevention
+declare global {
+  interface Window {
+    __LAST_CLAIMS__?: string;
+  }
 }
 
 export const useAuth = (): AuthState => {
@@ -28,35 +35,44 @@ export const useAuth = (): AuthState => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCandidate, setIsCandidate] = useState(false);
 
-  // ✅ THE CRITICAL FIX: Force Token Refresh on Auth State Change
+  // ✅ EMERGENCY PATCH: Stop the Liaison Sync Loop
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onIdTokenChanged(auth, async (user) => {
       if (user) {
         setFirebaseUser(user);
         try {
-          // 1. Force refresh token to pick up latest custom claims
-          const idTokenResult = await user.getIdTokenResult(true);
+          // Use standard getIdTokenResult to check claims
+          const idTokenResult = await user.getIdTokenResult();
           const claims = idTokenResult.claims;
           
-          setIsAdmin(!!claims.isAdmin || !!claims.superAdmin || user.email === 'admin@gamhub.com');
-          setIsCandidate(!!claims.isCandidate);
-          
-          // 2. Signal that the token is fresh and custom claims are active
-          setIsTokenReady(true);
-          console.log("Liaison Sync: Auth Token is fresh and claims are active.");
+          // LIAISON DEBOUNCE: Only update state if the claims string has actually changed
+          const newClaimsString = JSON.stringify(claims);
+          if (window.__LAST_CLAIMS__ !== newClaimsString) {
+            window.__LAST_CLAIMS__ = newClaimsString;
+            
+            setIsAdmin(!!claims.isAdmin || !!claims.superAdmin || user.email === 'admin@gamhub.com');
+            setIsCandidate(!!claims.isCandidate);
+            setIsTokenReady(true);
+            
+            console.log("🔑 Liaison Sync: Auth Token Refreshed (Claims Updated)");
+          } else {
+            // Claims are identical, ensure token readiness is flagged on first load
+            if (!isTokenReady) setIsTokenReady(true);
+          }
         } catch (err) {
           console.error("Liaison Sync Error:", err);
-          setIsTokenReady(true); // Fallback to proceed even if claims check fails
+          setIsTokenReady(true); // Unblock UI even on error
         }
       } else {
         setFirebaseUser(null);
         setIsTokenReady(false);
         setIsAdmin(false);
         setIsCandidate(false);
+        window.__LAST_CLAIMS__ = undefined;
       }
     });
     return () => unsubscribe();
-  }, [auth]);
+  }, [auth, isTokenReady]);
 
   // Redirect if definitely not logged in
   useEffect(() => {
