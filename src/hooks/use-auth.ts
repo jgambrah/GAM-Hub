@@ -35,17 +35,19 @@ export const useAuth = (): AuthState => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCandidate, setIsCandidate] = useState(false);
 
-  // ✅ EMERGENCY PATCH: Stop the Liaison Sync Loop
+  /**
+   * ✅ LIAISON SYNC DEBOUNCE
+   * Prevents the infinite re-render loop by only updating state 
+   * when custom claims have actually changed string-wise.
+   */
   useEffect(() => {
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
       if (user) {
         setFirebaseUser(user);
         try {
-          // Use standard getIdTokenResult to check claims
           const idTokenResult = await user.getIdTokenResult();
           const claims = idTokenResult.claims;
           
-          // LIAISON DEBOUNCE: Only update state if the claims string has actually changed
           const newClaimsString = JSON.stringify(claims);
           if (window.__LAST_CLAIMS__ !== newClaimsString) {
             window.__LAST_CLAIMS__ = newClaimsString;
@@ -54,14 +56,14 @@ export const useAuth = (): AuthState => {
             setIsCandidate(!!claims.isCandidate);
             setIsTokenReady(true);
             
-            console.log("🔑 Liaison Sync: Auth Token Refreshed (Claims Updated)");
+            console.log("🔑 Liaison Sync: Auth Token Refreshed (Claims Changed)");
           } else {
-            // Claims are identical, ensure token readiness is flagged on first load
+            // Claims are identical, just ensure ready flag is up
             if (!isTokenReady) setIsTokenReady(true);
           }
         } catch (err) {
           console.error("Liaison Sync Error:", err);
-          setIsTokenReady(true); // Unblock UI even on error
+          setIsTokenReady(true); // Unblock UI on non-critical error
         }
       } else {
         setFirebaseUser(null);
@@ -72,9 +74,9 @@ export const useAuth = (): AuthState => {
       }
     });
     return () => unsubscribe();
-  }, [auth, isTokenReady]);
+  }, [auth]); // Removed isTokenReady from deps to prevent unnecessary cycles
 
-  // Redirect if definitely not logged in
+  // Redirect logic
   useEffect(() => {
     if (!isAuthLoading && !firebaseUser && isTokenReady === false) {
       const timer = setTimeout(() => {
@@ -84,7 +86,6 @@ export const useAuth = (): AuthState => {
     }
   }, [firebaseUser, isAuthLoading, isTokenReady, auth, router]);
 
-  // Memoize the document reference to the user's profile in Firestore
   const userDocRef = useMemoFirebase(() => {
     if (!firestore || !firebaseUser || !isTokenReady) return null;
     return doc(firestore, 'users', firebaseUser.uid);
@@ -111,7 +112,6 @@ export const useAuth = (): AuthState => {
     return appUser;
   }, [appUser, campus]);
 
-  // Overall loading state depends on TOKEN READINESS
   const isUserLoading = isAuthLoading || !isTokenReady || (firebaseUser ? (isDocLoading || isLoadingCampuses) : false);
 
   return {

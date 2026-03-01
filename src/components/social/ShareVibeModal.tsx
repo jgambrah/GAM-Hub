@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useFirebase } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
 import { 
   ImageIcon, Type, X, Send, 
   Video, Sparkles, Youtube, Loader2, Link as LinkIcon 
@@ -16,10 +17,11 @@ import { cn } from '@/lib/utils';
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Supports: Text, Native Image/Video Uploads, and External YouTube/TikTok Links.
+ * Securely handles Text, Image/Video Uploads, and YouTube/TikTok Links.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
+  const { isTokenReady } = useAuth();
   const { toast } = useToast();
   
   // Vibe State
@@ -58,22 +60,24 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     }
   };
 
-  // ✅ THE HARDENED MULTIMEDIA BROADCAST ENGINE
+  /**
+   * ✅ HARDENED BROADCAST ENGINE
+   * Implements Atomic Error Logging and Logic Settle Delays to prevent crashes.
+   */
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 1. DEBUG LOG: monitor for Liaison-Grade Fix
-    console.log("📡 Broadcast Attempted:", { 
-      hasUserProfile: !!userProfile, 
-      hasFirestore: !!firestore, 
-      uid: auth?.currentUser?.uid 
-    });
+    // 1. Prevent action if already processing or re-rendering
+    if (loading) return;
 
-    if (!userProfile || !firestore || !storage || !auth?.currentUser) {
+    console.log("📡 Broadcast Attempted:", { isTokenReady, userId: auth?.currentUser?.uid });
+
+    // 2. Ensure identity is synchronized
+    if (!isTokenReady || !userProfile || !auth?.currentUser) {
       toast({ 
         variant: 'destructive', 
         title: 'Identity Syncing', 
-        description: 'The Yard is still verifying your credentials. Please wait a second.' 
+        description: 'Wait a moment for the Yard to verify your credentials.' 
       });
       return;
     }
@@ -102,7 +106,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         imageUrl = await getDownloadURL(fileRef);
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
-        const fileRef = ref(storage, `social_videos/${auth.currentUser.uid}_${Date.now()}_${videoFile.name}`);
+        const fileRef = ref(storage, `social_videos/${auth.currentUser.uid}/${Date.now()}_${videoFile.name}`);
         await uploadBytes(fileRef, videoFile);
         mediaUrl = await getDownloadURL(fileRef);
       } else if (postType === 'link' && externalUrl) {
@@ -127,23 +131,26 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         likes: 0,
         commentCount: 0,
         type: 'regular',
-        isArenaEntry: false, // CRITICAL: Pulse vibrations are NOT Arena entries
+        isArenaEntry: false, // CRITICAL: Security Rules separation
         createdAt: new Date().toISOString(),
       };
 
-      // 3. BROADCAST: Using standard Firestore
+      // 3. BROADCAST: Using standard Firestore for immediate feedback
       const { addDoc, collection } = await import('firebase/firestore');
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       
       toast({ title: 'Vibe Shared with the Yard!' });
-      onClose();
+      
+      // 4. LOGIC SETTLE: Delay closing to prevent "Model is Disposed" race conditions
+      setTimeout(() => onClose(), 100);
+
     } catch (err: any) { 
-        console.error("🚨 Vibe Broadcast Failed:", err.message); 
+        console.error("🚨 BROADCAST CRASH:", err.message); 
         toast({ 
           variant: 'destructive', 
-          title: 'Broadcast Error', 
+          title: 'Broadcast Failed', 
           description: err.message.includes('permission') 
-            ? 'The Fortress blocked this post. Check .edu.gh verification.' 
+            ? 'The Fortress blocked this post. Check verification.' 
             : 'Check your connection and try again.' 
         });
     } finally { 
@@ -168,7 +175,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
           <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-indigo-500 text-white rounded-2xl shadow-lg"><Sparkles size={24}/></div>
             <div>
-              <h2 className="text-3xl font-black text-foreground">Share Your Vibe</h2>
+              <h2 className="text-3xl font-black text-foreground tracking-tight">Share Your Vibe</h2>
               <p className="text-sm font-medium text-muted-foreground italic">Broadcasting to {userProfile?.campusAcronym || 'The Yard'}</p>
             </div>
           </div>
