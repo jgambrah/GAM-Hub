@@ -1,11 +1,14 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { collection, serverTimestamp } from 'firebase/firestore';
+import { collection, doc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useFirebase, addDocumentNonBlocking } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
-import { Image as ImageIcon, Type, X, Send, Camera, Video, Sparkles, Youtube, Loader2, Link as LinkIcon, Play } from 'lucide-react';
+import { 
+  Image as ImageIcon, Type, X, Send, 
+  Video, Sparkles, Youtube, Loader2, Link as LinkIcon 
+} from 'lucide-react';
 import Image from 'next/image';
 import type { SocialPost } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -14,10 +17,12 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
   const { toast } = useToast();
   
+  // Vibe State
   const [postType, setPostType] = useState<'text' | 'image' | 'native' | 'link'>('text');
   const [content, setContent] = useState('');
   const [externalUrl, setExternalUrl] = useState('');
   
+  // Media State
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -39,7 +44,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 20 * 1024 * 1024) {
-        toast({ variant: 'destructive', title: 'File too large', description: 'Vlogs must be under 20MB.' });
+        toast({ variant: 'destructive', title: 'File too large', description: 'Campus vlogs must be under 20MB.' });
         return;
       }
       setVideoFile(file);
@@ -54,7 +59,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     
     const hasMedia = imageFile || videoFile || externalUrl.trim();
     if (!content.trim() && !hasMedia) {
-        toast({ variant: 'destructive', title: 'Empty Vibe', description: 'Please add some content or media to share.' });
+        toast({ variant: 'destructive', title: 'Empty Vibe', description: 'Add a thought, photo, or link to broadcast!' });
         return;
     }
 
@@ -65,6 +70,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       let mediaUrl: string | null = null;
       let mediaType: SocialPost['mediaType'] = 'text';
 
+      // 1. PROCESS MULTIMEDIA HANDSHAKE
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
@@ -82,6 +88,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       
       const hashtags = content.match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
 
+      // 2. CONSTRUCT UNIFIED PAYLOAD
       const postData: Partial<SocialPost> = {
         authorId: auth.currentUser.uid,
         authorName: userProfile.name || "Campus Member",
@@ -95,16 +102,21 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         tags: hashtags,
         likes: 0,
         commentCount: 0,
+        type: 'regular',
         createdAt: new Date().toISOString(),
       };
 
+      // 3. BROADCAST TO ROOT COLLECTION
       await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
+      
       toast({ title: 'Vibe Shared with the Yard!' });
       onClose();
     } catch (err) { 
-        console.error(err); 
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not publish your vibe.' });
-    } finally { setLoading(false); }
+        console.error("Vibe Broadcast Failed:", err); 
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not share vibe. Try checking your signal.' });
+    } finally { 
+        setLoading(false); 
+    }
   };
 
   const resetMedia = () => {
@@ -113,7 +125,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     setPreview(null);
     setExternalUrl('');
     setPostType('text');
-  }
+  };
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[5000] flex items-center justify-center p-4">
@@ -133,7 +145,8 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             <textarea 
                 required 
                 placeholder="What's the frequency, Citizen? 😊" 
-                className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all" 
+                className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
+                value={content}
                 onChange={(e) => setContent(e.target.value)} 
             />
             
@@ -159,7 +172,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                             value={externalUrl}
                             onChange={(e) => setExternalUrl(e.target.value)}
                             placeholder="Paste link here..."
-                            className="w-full p-4 pl-12 rounded-2xl bg-muted border-none outline-none font-mono text-xs text-blue-600 focus:ring-2 focus:ring-primary transition-all"
+                            className="w-full p-4 pl-12 rounded-2xl bg-muted border-none outline-none font-mono text-xs text-blue-600 focus:ring-2 focus:ring-primary transition-all dark:bg-slate-900"
                         />
                         <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                     </div>
@@ -167,11 +180,14 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             )}
 
             {/* CHANNEL SELECTOR */}
-            <div className="flex gap-2">
+            <div className="flex gap-2 bg-muted/30 p-1 rounded-3xl border">
                 <button 
                     type="button" 
                     onClick={() => { resetMedia(); setPostType('text'); }} 
-                    className={cn("flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", postType === 'text' ? "bg-primary text-white border-primary shadow-lg" : "bg-muted border-transparent text-muted-foreground")}
+                    className={cn(
+                        "flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", 
+                        postType === 'text' ? "bg-white dark:bg-slate-800 text-primary border-primary shadow-sm" : "bg-transparent border-transparent text-muted-foreground"
+                    )}
                 >
                     <Type size={20} />
                 </button>
@@ -179,7 +195,10 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 <button 
                     type="button" 
                     onClick={() => fileInputRef.current?.click()} 
-                    className={cn("flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", postType === 'image' ? "bg-emerald-500 text-white border-emerald-500 shadow-lg" : "bg-muted border-transparent text-muted-foreground")}
+                    className={cn(
+                        "flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", 
+                        postType === 'image' ? "bg-emerald-50 text-emerald-600 border-emerald-500 shadow-sm" : "bg-transparent border-transparent text-muted-foreground"
+                    )}
                 >
                     <ImageIcon size={20} />
                 </button>
@@ -187,7 +206,10 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 <button 
                     type="button" 
                     onClick={() => videoInputRef.current?.click()} 
-                    className={cn("flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", postType === 'native' ? "bg-red-500 text-white border-red-500 shadow-lg" : "bg-muted border-transparent text-muted-foreground")}
+                    className={cn(
+                        "flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", 
+                        postType === 'native' ? "bg-red-50 text-red-600 border-red-500 shadow-sm" : "bg-transparent border-transparent text-muted-foreground"
+                    )}
                 >
                     <Video size={20} />
                 </button>
@@ -195,7 +217,10 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 <button 
                     type="button" 
                     onClick={() => { resetMedia(); setPostType('link'); }} 
-                    className={cn("flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", postType === 'link' ? "bg-blue-500 text-white border-blue-500 shadow-lg" : "bg-muted border-transparent text-muted-foreground")}
+                    className={cn(
+                        "flex-1 p-4 rounded-2xl border-2 transition-all flex items-center justify-center gap-2", 
+                        postType === 'link' ? "bg-blue-50 text-blue-600 border-blue-500 shadow-sm" : "bg-transparent border-transparent text-muted-foreground"
+                    )}
                 >
                     <Youtube size={20} />
                 </button>
@@ -206,11 +231,12 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             <input type="file" ref={videoInputRef} className="hidden" accept="video/*" onChange={handleVideoSelect} />
 
             <button 
+                type="submit"
                 disabled={loading} 
                 className="w-full py-5 bg-slate-900 dark:bg-primary text-white rounded-[2rem] font-black text-lg shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-50"
             >
               {loading ? <Loader2 className="animate-spin" /> : <Send size={20}/>}
-              Share Vibe
+              Broadcast to Yard
             </button>
           </form>
         </div>

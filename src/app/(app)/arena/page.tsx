@@ -49,7 +49,6 @@ export default function ArenaPage() {
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
     // UNIFIED QUERY: Query the flat 'campus_pulse' collection for arena entries
-    // Uses the hardened isTokenReady guard to ensure claim synchronization
     const postsQuery = useMemoFirebase(() => {
         if (!firestore || !user || !isTokenReady) return null;
         return query(
