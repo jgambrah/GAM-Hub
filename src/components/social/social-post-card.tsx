@@ -1,19 +1,17 @@
-
 'use client';
 
 import Image from 'next/image';
 import * as React from 'react';
-import type { SocialPost, User } from '@/lib/types';
+import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Flame, ThumbsUp, MessageCircle, Share2, Zap, ShieldCheck, Loader2 } from 'lucide-react';
+import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import CommentSection from './CommentSection';
-import { useToast } from '@/hooks/use-toast';
-import { Button } from '../ui/button';
+import ReactPlayer from 'react-player';
 
 const getYouTubeEmbedUrl = (url: string) => {
   if (!url) return '';
@@ -26,13 +24,13 @@ const getYouTubeEmbedUrl = (url: string) => {
 }
 
 export default function SocialPostCard({ post }: { post: SocialPost }) {
-  const { user, isAdmin } = useAuth();
+  const { user } = useAuth();
   const { firestore } = useFirebase();
-  const { toast } = useToast();
   const [isLiked, setIsLiked] = React.useState(false);
   const [likeCount, setLikeCount] = React.useState(post.likes);
   const [isProcessingLike, setIsProcessingLike] = React.useState(false);
   const [showComments, setShowComments] = React.useState(false);
+  const [showVideo, setShowVideo] = React.useState(false);
   
   const isTrending = likeCount >= 20 || post.isProtected;
 
@@ -76,19 +74,39 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl',
         isTrending ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm'
     )}>
+      {/* MULTIMEDIA RENDERING ENGINE */}
       {post.mediaType !== 'text' && (
-        <div className="relative aspect-video bg-slate-900 overflow-hidden">
+        <div className="relative aspect-video bg-slate-900 overflow-hidden group/media">
             {post.mediaType === 'image' && post.imageUrl && (
-                <Image src={post.imageUrl} alt="post" fill className="object-cover group-hover:scale-105 transition-transform duration-700" />
+                <Image src={post.imageUrl} alt="post" fill className="object-cover group-hover/media:scale-105 transition-transform duration-700" />
             )}
+            
             {post.mediaType === 'youtube' && post.mediaUrl && (
-                <iframe src={getYouTubeEmbedUrl(post.mediaUrl)} className="w-full h-full" allowFullScreen />
+                <iframe 
+                    src={getYouTubeEmbedUrl(post.mediaUrl)} 
+                    className="w-full h-full" 
+                    allow="autoplay; encrypted-media" 
+                    allowFullScreen 
+                />
             )}
+            
             {post.mediaType === 'tiktok' && post.mediaUrl && (
-                <div className="bg-black flex items-center justify-center h-full"><TikTokEmbed url={post.mediaUrl} /></div>
+                <div className="bg-black flex items-center justify-center h-full">
+                    <TikTokEmbed url={post.mediaUrl} />
+                </div>
             )}
+            
             {post.mediaType === 'video' && post.mediaUrl && (
-                <video src={post.mediaUrl} controls className="w-full h-full" />
+                <div className="w-full h-full bg-black flex items-center justify-center">
+                    <ReactPlayer 
+                        url={post.mediaUrl} 
+                        controls 
+                        width="100%" 
+                        height="100%" 
+                        light={post.imageUrl || false}
+                        playIcon={<div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl hover:scale-110 transition-transform"><Play size={32} fill="white" /></div>}
+                    />
+                </div>
             )}
         </div>
       )}
@@ -98,22 +116,30 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           <div className="flex items-center gap-3">
             <Avatar className="w-10 h-10 border-2 border-card shadow-sm">
                 <AvatarImage src={post.authorAvatarUrl} />
-                <AvatarFallback>{post.authorName?.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="font-black">{post.authorName?.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
                <p className="text-sm font-bold text-foreground">{post.authorName}</p>
-               <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">{post.campusAcronym}</p>
+               <div className="flex items-center gap-2">
+                  <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
+                  {post.mediaType !== 'text' && (
+                      <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                          {post.mediaType === 'youtube' ? <Youtube size={10} className="text-red-500" /> : <Video size={10} />} 
+                          {post.mediaType}
+                      </span>
+                  )}
+               </div>
             </div>
           </div>
         </div>
 
-        <h3 className="text-lg font-black leading-tight mb-4">{post.content}</h3>
+        <h3 className="text-lg font-bold leading-snug mb-4 text-foreground">{post.content}</h3>
 
         <div className="flex items-center justify-between pt-4 border-t border-border">
           <div className="flex items-center gap-4">
              <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex items-center gap-1.5 group/like">
                 <div className={cn("p-2 rounded-xl transition-all", isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
-                   <ThumbsUp size={18} className={isLiked ? "fill-orange-600" : ""} />
+                   <ThumbsUp size={18} className={cn(isLiked && "fill-orange-600")} />
                 </div>
                 <span className="text-xs font-black text-foreground">{likeCount}</span>
              </button>
@@ -125,7 +151,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 <span className="text-xs font-black text-foreground">{post.commentCount}</span>
              </button>
           </div>
-          <button className="p-2 bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg"><Share2 size={18} /></button>
+          <button className="p-2 bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90"><Share2 size={18} /></button>
         </div>
         
         {showComments && <CommentSection postId={post.id} />}
