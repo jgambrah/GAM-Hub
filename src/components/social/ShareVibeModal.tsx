@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
  * 
  * The multimedia broadcast center for the Yard.
  * Securely handles Text, Image/Video Uploads, and YouTube/TikTok Links.
+ * Fixed: Explicit 'cn' import and hardened submission logic.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();

@@ -4,16 +4,16 @@ import React, { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
-import { MessageSquare, Plus, Video, Camera, Type, Info, Sparkles, Trophy } from 'lucide-react';
+import { MessageSquare, Plus, Video, Camera, Type, Info, Sparkles, Search, X } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import ShareVibeModal from '@/components/social/ShareVibeModal';
 import { VictoryTakeover } from '@/components/politics/VictoryTakeover';
 import { Skeleton } from '@/components/ui/skeleton';
+import TrendingSearchTicker from '@/components/social/TrendingSearchTicker';
 
 /**
  * ElectionWinnerWatcher Component (Internal to Pulse)
  * Triggers the Victory Takeover overlay if a result is active.
- * Uses the hardened query guard to prevent claim race conditions.
  */
 function ElectionWinnerWatcher() {
   const { user, isTokenReady } = useAuth();
@@ -21,7 +21,6 @@ function ElectionWinnerWatcher() {
   const [winner, setWinner] = useState<any>(null);
 
   const winnerQuery = useMemoFirebase(() => {
-    // HARDENED HANDSHAKE: Fires only when token is ready and campus ID is stable
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     return query(
       collection(firestore, 'campus_pulse'),
@@ -67,6 +66,7 @@ function ElectionWinnerWatcher() {
 export default function PulsePage() {
   const { user, isUserLoading } = useAuth();
   const [isVibeModalOpen, setVibeModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   if (isUserLoading || !user) {
     return (
@@ -98,6 +98,28 @@ export default function PulsePage() {
               Live from {user.campusAcronym || 'The Yard'}
             </p>
           </div>
+        </div>
+
+        {/* SEARCH & TRENDS */}
+        <div className="space-y-4">
+            <div className="relative group">
+                <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
+                <input 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search vibes, hashtags, or people..."
+                    className="w-full bg-white border border-slate-200 p-6 pl-16 rounded-[2.5rem] outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent shadow-sm font-bold text-lg text-slate-900 transition-all"
+                />
+                {searchQuery && (
+                    <button 
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-6 top-1/2 -translate-y-1/2 p-2 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-500 transition-all"
+                    >
+                        <X size={16} />
+                    </button>
+                )}
+            </div>
+            <TrendingSearchTicker onSelect={setSearchQuery} />
         </div>
 
         {/* FEATURE NARRATIVE: THE LIAISON DECREE */}
@@ -134,7 +156,7 @@ export default function PulsePage() {
         </div>
 
         {/* THE FEED */}
-        <CampusPulseFeed activeCampusId={user.campusId} />
+        <CampusPulseFeed activeCampusId={user.campusId} searchQuery={searchQuery} />
       </div>
 
       {isVibeModalOpen && (
