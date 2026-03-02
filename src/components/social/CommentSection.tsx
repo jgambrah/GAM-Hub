@@ -4,15 +4,19 @@ import React, { useState } from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, addDoc, query, orderBy, serverTimestamp, updateDoc, doc, increment } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
-import { Send, Loader2, Smile, X } from 'lucide-react';
+import { Send, Loader2, Smile, X, Bold, Italic } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
+import { cn } from '@/lib/utils';
 
 export default function CommentSection({ postId }: { postId: string }) {
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isExtraBold, setIsExtraBold] = useState(false);
+  const [isItalic, setIsItalic] = useState(false);
+  
   const { firestore } = useFirebase();
   const { user: userProfile } = useAuth();
   const { toast } = useToast();
@@ -20,7 +24,6 @@ export default function CommentSection({ postId }: { postId: string }) {
 
   const commentsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    // UNIFIED PATH: Targets campus_pulse hierarchy
     return query(collection(firestore, 'campus_pulse', postId, 'comments'), orderBy('createdAt', 'asc'));
   }, [firestore, postId]);
   
@@ -37,8 +40,11 @@ export default function CommentSection({ postId }: { postId: string }) {
     setIsPosting(true);
 
     try {
+        const styleString = `${isExtraBold ? 'extrabold ' : ''}${isItalic ? 'italic' : ''}`.trim() || 'bold';
+
         await addDoc(collection(firestore, 'campus_pulse', postId, 'comments'), {
             text: text.trim(),
+            style: styleString,
             userId: userProfile.id,
             userName: userProfile.name || "Member",
             userAvatarUrl: userProfile.avatarUrl ?? "",
@@ -51,6 +57,9 @@ export default function CommentSection({ postId }: { postId: string }) {
 
         setText('');
         setShowEmojiPicker(false);
+        // Reset styles after post
+        setIsExtraBold(false);
+        setIsItalic(false);
     } catch (error) {
         toast({ variant: "destructive", title: "Error", description: "Could not post comment." });
     } finally {
@@ -61,7 +70,7 @@ export default function CommentSection({ postId }: { postId: string }) {
   return (
     <div className="mt-6 pt-6 border-t border-border relative">
       {/* COMMENTS LIST */}
-      <div className="space-y-3 max-h-48 overflow-y-auto mb-4 no-scrollbar">
+      <div className="space-y-3 max-h-60 overflow-y-auto mb-4 no-scrollbar">
         {isLoading ? (
             <Skeleton className="h-12 w-full rounded-xl" />
         ) : comments?.length === 0 ? (
@@ -69,13 +78,19 @@ export default function CommentSection({ postId }: { postId: string }) {
         ) : (
             comments?.map((c: any) => (
                 <div key={c.id} className="flex gap-2 items-start animate-in fade-in">
-                    <Avatar className="w-8 h-8">
+                    <Avatar className="w-8 h-8 flex-shrink-0">
                         <AvatarImage src={c.userAvatarUrl} />
                         <AvatarFallback>{c.userName?.charAt(0)}</AvatarFallback>
                     </Avatar>
-                    <div className="bg-muted p-3 rounded-2xl flex-1">
+                    <div className="bg-muted p-3 rounded-2xl flex-1 min-w-0">
                        <p className="text-[10px] font-black text-foreground">{c.userName}</p>
-                       <p className="text-xs text-muted-foreground mt-1">{c.text}</p>
+                       <p className={cn(
+                           "text-xs mt-1 leading-snug break-words",
+                           c.style?.includes('extrabold') ? "font-black" : "font-bold",
+                           c.style?.includes('italic') && "italic"
+                       )}>
+                           {c.text}
+                       </p>
                     </div>
                 </div>
             ))
@@ -84,7 +99,7 @@ export default function CommentSection({ postId }: { postId: string }) {
 
       {/* EMOJI PICKER OVERLAY */}
       {showEmojiPicker && (
-        <div className="absolute bottom-20 left-0 z-[100] shadow-2xl bg-card rounded-3xl p-2 border animate-in slide-in-from-bottom-4 duration-300">
+        <div className="absolute bottom-32 left-0 z-[100] shadow-2xl bg-card rounded-3xl p-2 border animate-in slide-in-from-bottom-4 duration-300">
            <div className="flex justify-end mb-2">
              <button onClick={() => setShowEmojiPicker(false)} className="p-1.5 hover:bg-muted rounded-full transition-colors text-muted-foreground">
                <X size={16}/>
@@ -93,6 +108,36 @@ export default function CommentSection({ postId }: { postId: string }) {
            <EmojiPicker onEmojiClick={onEmojiClick} />
         </div>
       )}
+
+      {/* STYLE TOOLBAR */}
+      <div className="flex items-center gap-2 mb-2 px-2">
+          <button 
+            type="button"
+            onClick={() => setIsExtraBold(!isExtraBold)}
+            className={cn(
+                "p-2 rounded-lg transition-all",
+                isExtraBold ? "bg-slate-900 text-white shadow-md" : "text-muted-foreground hover:bg-muted"
+            )}
+            title="Extra Bold"
+          >
+            <Bold size={16} />
+          </button>
+          <button 
+            type="button"
+            onClick={() => setIsItalic(!isItalic)}
+            className={cn(
+                "p-2 rounded-lg transition-all",
+                isItalic ? "bg-slate-900 text-white shadow-md" : "text-muted-foreground hover:bg-muted"
+            )}
+            title="Italic"
+          >
+            <Italic size={16} />
+          </button>
+          <div className="h-4 w-[1px] bg-border mx-1" />
+          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+              {isExtraBold || isItalic ? 'Custom Vibe Active' : 'Default Bold Vibe'}
+          </span>
+      </div>
 
       {/* COMMENT FORM */}
       <form onSubmit={postComment} className="flex items-center gap-2 bg-muted p-1.5 rounded-[2rem] border border-transparent focus-within:bg-background focus-within:border-border transition-all shadow-inner">
@@ -106,8 +151,12 @@ export default function CommentSection({ postId }: { postId: string }) {
         <input 
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Drop a comment..." 
-          className="flex-1 bg-transparent border-none outline-none text-sm font-medium px-2 text-foreground"
+          placeholder="Drop a bold comment..." 
+          className={cn(
+              "flex-1 bg-transparent border-none outline-none text-sm px-2 text-foreground transition-all",
+              isExtraBold ? "font-black" : "font-bold",
+              isItalic && "italic"
+          )}
           disabled={isPosting}
         />
         <button 
