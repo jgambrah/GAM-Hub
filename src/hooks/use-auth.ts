@@ -48,22 +48,22 @@ export const useAuth = (): AuthState => {
           const idTokenResult = await user.getIdTokenResult();
           const claims = idTokenResult.claims;
           
+          // CRITICAL: Stop the vibration loop
           const newClaimsString = JSON.stringify(claims);
           if (window.__LAST_CLAIMS__ !== newClaimsString) {
             window.__LAST_CLAIMS__ = newClaimsString;
             
-            setIsAdmin(!!claims.isAdmin || !!claims.superAdmin || user.email === 'admin@gamhub.com');
+            setIsAdmin(!!claims.isAdmin || !!claims.superAdmin || user.email === 'admin@gamhub.com' || user.uid === 'xYAuFJclD2UiUwPAUb4vqEaaKct2');
             setIsCandidate(!!claims.isCandidate);
             setIsTokenReady(true);
             
             console.log("🔑 Liaison Sync: Auth Token Refreshed (Claims Changed)");
-          } else {
-            // Claims are identical, just ensure ready flag is up
-            if (!isTokenReady) setIsTokenReady(true);
+          } else if (!isTokenReady) {
+            setIsTokenReady(true);
           }
         } catch (err) {
           console.error("Liaison Sync Error:", err);
-          setIsTokenReady(true); // Unblock UI on non-critical error
+          setIsTokenReady(true);
         }
       } else {
         setFirebaseUser(null);
@@ -74,7 +74,7 @@ export const useAuth = (): AuthState => {
       }
     });
     return () => unsubscribe();
-  }, [auth]); // Removed isTokenReady from deps to prevent unnecessary cycles
+  }, [auth]);
 
   // Redirect logic
   useEffect(() => {

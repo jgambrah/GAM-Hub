@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, addDoc } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
@@ -18,7 +19,6 @@ import { cn } from '@/lib/utils';
  * 
  * The multimedia broadcast center for the Yard.
  * Securely handles Text, Image/Video Uploads, and YouTube/TikTok Links.
- * Fixed: Explicit 'cn' import and hardened submission logic.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -61,20 +61,13 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     }
   };
 
-  /**
-   * ✅ HARDENED BROADCAST ENGINE
-   * Implements Atomic Error Logging and Logic Settle Delays to prevent crashes.
-   */
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // 1. Prevent action if already processing or re-rendering
     if (loading) return;
 
     console.log("📡 Broadcast Attempted:", { isTokenReady, userId: auth?.currentUser?.uid });
 
-    // 2. Ensure identity is synchronized
-    if (!isTokenReady || !userProfile || !auth?.currentUser) {
+    if (!isTokenReady || !userProfile || !auth?.currentUser || !firestore) {
       toast({ 
         variant: 'destructive', 
         title: 'Identity Syncing', 
@@ -115,7 +108,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaUrl = externalUrl;
       }
       
-      const hashtags = content.match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
+      const hashtags = (content || '').match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
 
       // CONSTRUCT PAYLOAD
       const postData = {
@@ -132,21 +125,20 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         likes: 0,
         commentCount: 0,
         type: 'regular',
-        isArenaEntry: false, // CRITICAL: Security Rules separation
+        isArenaEntry: false, 
         createdAt: new Date().toISOString(),
       };
 
-      // 3. BROADCAST: Using standard Firestore for immediate feedback
-      const { addDoc, collection } = await import('firebase/firestore');
+      // BROADCAST
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      toast({ title: 'Vibe Shared with the Yard!' });
+      toast({ title: 'Vibe Shared!' });
       
-      // 4. LOGIC SETTLE: Delay closing to prevent "Model is Disposed" race conditions
+      // Success delay to allow logic to settle
       setTimeout(() => onClose(), 100);
 
     } catch (err: any) { 
-        console.error("🚨 BROADCAST CRASH:", err.message); 
+        console.error("🚨 BROADCAST CRASH:", err); 
         toast({ 
           variant: 'destructive', 
           title: 'Broadcast Failed', 
@@ -183,7 +175,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
           <form onSubmit={handlePublish} className="space-y-6">
             <textarea 
-                required={postType === 'text'}
                 placeholder="What's the frequency, Citizen? 😊" 
                 className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
                 value={content}
