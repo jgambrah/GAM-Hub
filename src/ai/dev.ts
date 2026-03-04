@@ -6,3 +6,4 @@ import '@/ai/flows/generate-product-descriptions.ts';
 import '@/ai/flows/summarize-social-feed.ts';
 import '@/ai/flows/optimize-ad-creative.ts';
 import '@/ai/flows/ai-tutor-flow.ts';
+import '@/ai/flows/campus-guide-flow.ts';

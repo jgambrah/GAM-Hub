@@ -1,14 +1,17 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, X, Bot, Sparkles } from 'lucide-react';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { useFirebase } from '@/firebase';
+import { Send, X, Bot, Sparkles, Loader2 } from 'lucide-react';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc } from 'firebase/firestore';
+import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
+import { getCampusGuidance } from '@/ai/flows/campus-guide-flow';
+import { useAuth } from '@/hooks/use-auth';
 
 type AIMessage = {
   id: string;
   prompt: string;
   response?: string;
+  status?: 'thinking' | 'complete' | 'error';
   createTime: any;
 };
 
@@ -16,17 +19,19 @@ export default function CampusAIGuide() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<AIMessage[]>([]);
+  const [isAiThinking, setIsAiThinking] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { firestore, user } = useFirebase();
+  const { firestore } = useFirebase();
+  const { user, firebaseUser } = useAuth();
 
   useEffect(() => {
-    if (!user || !firestore || !isOpen) {
+    if (!firebaseUser || !firestore || !isOpen) {
       setMessages([]);
       return;
     }
 
     const q = query(
-      collection(firestore, 'users', user.uid, 'ai_assistant'),
+      collection(firestore, 'users', firebaseUser.uid, 'ai_assistant'),
       orderBy('createTime', 'asc')
     );
 
@@ -36,26 +41,47 @@ export default function CampusAIGuide() {
     });
 
     return () => unsubscribe();
-  }, [isOpen, user, firestore]);
+  }, [isOpen, firebaseUser, firestore]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isAiThinking]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !user || !firestore) return;
+    if (!input.trim() || !firebaseUser || !firestore) return;
 
     const userPrompt = input;
     setInput('');
+    setIsAiThinking(true);
 
     try {
-      await addDoc(collection(firestore, 'users', user.uid, 'ai_assistant'), {
+      // 1. Record the prompt in Firestore (Optimistic UI)
+      const docRef = await addDoc(collection(firestore, 'users', firebaseUser.uid, 'ai_assistant'), {
         prompt: userPrompt,
         createTime: serverTimestamp(),
+        status: 'thinking'
       });
+
+      // 2. Call the AI Flow directly
+      const result = await getCampusGuidance({
+        prompt: userPrompt,
+        userName: user?.name,
+        campusId: user?.campusId
+      });
+
+      // 3. Update the document with the response
+      const messageRef = doc(firestore, 'users', firebaseUser.uid, 'ai_assistant', docRef.id);
+      updateDocumentNonBlocking(messageRef, {
+        response: result.response,
+        status: 'complete'
+      });
+
     } catch (err) {
-      console.error("AI Assistant Error:", err);
+      console.error("AI Assistant Flow Error:", err);
+      // In case of error, we can optionally update the doc to show an error message
+    } finally {
+      setIsAiThinking(false);
     }
   };
 
@@ -66,7 +92,7 @@ export default function CampusAIGuide() {
         onClick={() => setIsOpen(!isOpen)}
         className="w-16 h-16 bg-primary text-primary-foreground rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform active:scale-95 border-4 border-background"
       >
-        {isOpen ? <X size={24} /> : <Bot size={28} className="animate-pulse" />}
+        {isOpen ? <X size={24} /> : <Bot size={28} className={isAiThinking ? "animate-bounce" : "animate-pulse"} />}
       </button>
 
       {/* 2. Chat Window */}
@@ -80,28 +106,49 @@ export default function CampusAIGuide() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/50">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/50 no-scrollbar">
             {messages.length === 0 && (
-                <p className="text-center text-muted-foreground text-xs mt-10">Ask me about buying, linking up, or university rules!</p>
+                <div className="text-center p-6 space-y-2 mt-10 opacity-60">
+                    <Bot className="mx-auto h-10 w-10 text-primary" />
+                    <p className="text-xs font-black uppercase tracking-widest">Akwaaba!</p>
+                    <p className="text-[10px] font-medium leading-relaxed">Ask me about buying safely with Escrow, finding pickup points, or joining the Vibe War!</p>
+                </div>
             )}
+            
             {messages.map((m) => (
-              <div key={m.id} className="space-y-2">
+              <div key={m.id} className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
                 {/* User Prompt */}
                 <div className="flex justify-end">
-                  <div className="max-w-[85%] bg-primary text-primary-foreground p-3 rounded-2xl rounded-tr-none text-xs font-medium">
+                  <div className="max-w-[85%] bg-primary text-primary-foreground p-4 rounded-3xl rounded-tr-none text-xs font-bold shadow-sm">
                     {m.prompt}
                   </div>
                 </div>
                 {/* AI Response */}
-                {m.response && (
+                {m.response ? (
                   <div className="flex justify-start">
-                    <div className="max-w-[85%] bg-card text-card-foreground p-3 rounded-2xl rounded-tl-none text-xs shadow-sm border">
+                    <div className="max-w-[85%] bg-card text-card-foreground p-4 rounded-3xl rounded-tl-none text-xs font-medium shadow-md border leading-relaxed">
                       {m.response}
                     </div>
                   </div>
+                ) : m.status === 'thinking' && (
+                    <div className="flex justify-start">
+                        <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
+                            <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">Guide is thinking...</span>
+                        </div>
+                    </div>
                 )}
               </div>
             ))}
+            
+            {isAiThinking && messages[messages.length-1]?.status !== 'thinking' && (
+                <div className="flex justify-start animate-in fade-in">
+                    <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tighter">Connecting to Hub...</span>
+                    </div>
+                </div>
+            )}
             <div ref={scrollRef} />
           </div>
 
@@ -109,11 +156,16 @@ export default function CampusAIGuide() {
             <input 
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="How do I get my MoMo payout?"
-              className="flex-1 bg-muted rounded-xl px-4 py-2 text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+              placeholder="e.g. How does Escrow work?"
+              className="flex-1 bg-muted rounded-xl px-4 py-3 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary transition-all font-medium"
+              disabled={isAiThinking}
             />
-            <button type="submit" className="p-3 bg-foreground text-background rounded-xl active:scale-95 transition-transform">
-              <Send size={16} />
+            <button 
+                type="submit" 
+                disabled={isAiThinking || !input.trim()}
+                className="p-3 bg-slate-900 text-white dark:bg-primary rounded-xl active:scale-90 transition-all disabled:opacity-30 shadow-lg"
+            >
+              <Send size={18} />
             </button>
           </form>
         </div>
