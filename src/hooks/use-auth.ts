@@ -74,7 +74,7 @@ export const useAuth = (): AuthState => {
       }
     });
     return () => unsubscribe();
-  }, [auth]);
+  }, [auth, isTokenReady]);
 
   // Redirect logic
   useEffect(() => {

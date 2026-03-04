@@ -134,7 +134,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       
       toast({ title: 'Vibe Shared!' });
       
-      // Success delay to allow logic to settle
+      // Success delay to allow logic to settle and prevent "Model Disposed" error
       setTimeout(() => onClose(), 100);
 
     } catch (err: any) { 
