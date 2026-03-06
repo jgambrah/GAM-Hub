@@ -1,17 +1,17 @@
-
 'use client';
 
 import React, { useState } from 'react';
 import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
-import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
+import { useFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
 import Image from 'next/image';
 import { TikTokEmbed } from '../social/tiktok-embed';
+import { useToast } from '@/hooks/use-toast';
 
 const getYouTubeEmbedUrl = (url: string) => {
     if (!url) return '';
@@ -26,14 +26,17 @@ const getYouTubeEmbedUrl = (url: string) => {
 }
 
 export function ArenaPostCard({ post }: { post: ArenaPost }) {
-    const { user } = useAuth();
+    const { user, isAdmin } = useAuth();
     const { firestore } = useFirebase();
+    const { toast } = useToast();
     const [localStats, setLocalStats] = React.useState({ ...post.stats, comebacks: post.comebackCount || 0 });
     const [userAction, setUserAction] = React.useState<'liked' | 'burned' | null>(null);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [showComebacks, setShowComebacks] = useState(false);
 
     const isBlocked = post.status === 'blocked';
+    const isAuthor = user?.id === post.authorId;
+    const canDelete = isAuthor || isAdmin;
 
     // LIAISON STABILIZATION: Lock embed URL to prevent iframe flickering during re-renders
     const stabilizedEmbedUrl = React.useMemo(() => {
@@ -113,6 +116,18 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
         }
     };
 
+    const handleDeletePost = () => {
+        if (!firestore) return;
+        if (window.confirm("Are you sure you want to retract this vibration from The Arena?")) {
+            const postRef = doc(firestore, 'campus_pulse', post.id);
+            deleteDocumentNonBlocking(postRef);
+            toast({
+                title: "Vibe Retracted",
+                description: "The vibration has been removed from the Arena battleground."
+            });
+        }
+    };
+
     const isShade = post.vibeType === 'shade';
 
     return (
@@ -157,11 +172,23 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                         </div>
                     </div>
                 </div>
-                 {post.createdAt && (
-                    <p className="text-[10px] text-muted-foreground font-bold flex-shrink-0">
-                        {formatDistanceToNow(post.createdAt.toDate(), { addSuffix: true })}
-                    </p>
-                )}
+                
+                <div className="flex items-center gap-3">
+                    {canDelete && !isBlocked && (
+                        <button 
+                            onClick={handleDeletePost}
+                            className="p-2 text-muted-foreground hover:text-red-500 transition-colors bg-muted/50 rounded-xl"
+                            title="Retract Vibe"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    )}
+                    {post.createdAt && (
+                        <p className="text-[10px] text-muted-foreground font-bold flex-shrink-0">
+                            {formatDistanceToNow(post.createdAt.toDate(), { addSuffix: true })}
+                        </p>
+                    )}
+                </div>
             </div>
             
             {isBlocked ? (

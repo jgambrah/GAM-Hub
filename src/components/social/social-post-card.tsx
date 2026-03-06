@@ -4,14 +4,15 @@ import Image from 'next/image';
 import * as React from 'react';
 import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video } from 'lucide-react';
+import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
-import { useFirebase } from '@/firebase';
+import { useFirebase, deleteDocumentNonBlocking } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import CommentSection from './CommentSection';
 import ReactPlayer from 'react-player';
+import { useToast } from '@/hooks/use-toast';
 
 const getYouTubeEmbedUrl = (url: string) => {
   if (!url) return '';
@@ -24,14 +25,17 @@ const getYouTubeEmbedUrl = (url: string) => {
 }
 
 export default function SocialPostCard({ post }: { post: SocialPost }) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { firestore } = useFirebase();
+  const { toast } = useToast();
   const [isLiked, setIsLiked] = React.useState(false);
   const [likeCount, setLikeCount] = React.useState(post.likes);
   const [isProcessingLike, setIsProcessingLike] = React.useState(false);
   const [showComments, setShowComments] = React.useState(false);
   
   const isTrending = likeCount >= 20 || post.isProtected;
+  const isAuthor = user?.id === post.authorId;
+  const canDelete = isAuthor || isAdmin;
 
   React.useEffect(() => {
     if (user && firestore) {
@@ -65,6 +69,18 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         console.error(error);
     } finally {
         setIsProcessingLike(false);
+    }
+  };
+
+  const handleDeletePost = () => {
+    if (!firestore) return;
+    if (window.confirm("Are you sure you want to delete this vibe from the Yard?")) {
+      const postRef = doc(firestore, 'campus_pulse', post.id);
+      deleteDocumentNonBlocking(postRef);
+      toast({
+        title: "Vibe Retracted",
+        description: "Your vibration has been removed from the Pulse."
+      });
     }
   };
 
@@ -130,6 +146,16 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                </div>
             </div>
           </div>
+
+          {canDelete && (
+            <button 
+              onClick={handleDeletePost}
+              className="p-2 text-muted-foreground hover:text-red-500 transition-colors bg-muted/50 rounded-xl"
+              title="Delete Vibe"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
 
         <h3 className="text-lg font-bold leading-snug mb-4 text-foreground">{post.content}</h3>
