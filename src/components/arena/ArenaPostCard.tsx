@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
-import { useFirebase, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -38,7 +38,7 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     const isAuthor = user?.id === post.authorId;
     const canDelete = isAuthor || isAdmin;
 
-    // LIAISON STABILIZATION: Lock embed URL to prevent iframe flickering during re-renders
+    // LIAISON STABILIZATION: Lock embed URL to prevent iframe flickering
     const stabilizedEmbedUrl = React.useMemo(() => {
         if (isBlocked) return '';
         if (post.mediaType === 'youtube' && post.mediaUrl) {
@@ -56,7 +56,6 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
 
     React.useEffect(() => {
         if (user && firestore) {
-            // UNIFIED PATH: Point to campus_pulse for interactions
             const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
             const burnRef = doc(firestore, 'campus_pulse', post.id, 'burnedBy', user.id);
 
@@ -104,7 +103,7 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
             if(statsUpdate['stats.burns']) finalUpdate['stats.burns'] = increment(statsUpdate['stats.burns']);
             
             if (Object.keys(finalUpdate).length > 0) {
-                 updateDocumentNonBlocking(postRef, finalUpdate);
+                 await updateDoc(postRef, finalUpdate);
             }
 
         } catch (error) {
@@ -116,20 +115,34 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
         }
     };
 
-    const handleDeletePost = (e: React.MouseEvent) => {
+    const handleDeletePost = async (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
 
-        if (!firestore || !post.id) return;
+        if (!firestore || !post.id) {
+            console.error("🗑️ Arena Deletion Error: Missing Post ID");
+            return;
+        }
 
         if (window.confirm("Are you sure you want to retract this vibration from The Arena?")) {
-            console.log("🗑️ Retracting Arena Vibe:", post.id);
-            const postRef = doc(firestore, 'campus_pulse', post.id);
-            deleteDocumentNonBlocking(postRef);
-            toast({
-                title: "Vibe Retracted",
-                description: "The vibration has been removed from the Arena battleground."
-            });
+            console.log("🗑️ Attempting Arena Retraction:", post.id);
+            try {
+                const postRef = doc(firestore, 'campus_pulse', post.id);
+                await deleteDoc(postRef);
+                
+                toast({
+                    title: "Vibe Retracted",
+                    description: "The vibration has been removed from the Arena battleground."
+                });
+                console.log("✅ Arena vibe successfully retracted");
+            } catch (err: any) {
+                console.error("🚨 Arena Retraction failed:", err);
+                toast({
+                    variant: 'destructive',
+                    title: "Action Blocked",
+                    description: "The Fortress denied this retraction."
+                });
+            }
         }
     };
 
@@ -179,14 +192,14 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                    {canDelete && !isBlocked && (
+                    {canDelete && (
                         <button 
                             type="button"
                             onClick={handleDeletePost}
-                            className="p-2 text-muted-foreground hover:text-red-500 transition-colors bg-muted/50 rounded-xl"
+                            className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
                             title="Retract Vibe"
                         >
-                            <Trash2 size={14} />
+                            <Trash2 size={16} />
                         </button>
                     )}
                     {post.createdAt && (

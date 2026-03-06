@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
-import { useFirebase, deleteDocumentNonBlocking } from '@/firebase';
+import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import CommentSection from './CommentSection';
@@ -72,20 +72,39 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  const handleDeletePost = (e: React.MouseEvent) => {
+  const handleDeletePost = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
-    if (!firestore || !post.id) return;
+    if (!firestore || !post.id) {
+      console.error("🗑️ Deletion Error: Missing Post ID or Firestore context.");
+      return;
+    }
 
-    if (window.confirm("Are you sure you want to delete this vibe from the Yard?")) {
-      console.log("🗑️ Retracting Vibe:", post.id);
-      const postRef = doc(firestore, 'campus_pulse', post.id);
-      deleteDocumentNonBlocking(postRef);
-      toast({
-        title: "Vibe Retracted",
-        description: "Your vibration has been removed from the Pulse."
-      });
+    if (window.confirm("Are you sure you want to retract this vibe from the Yard?")) {
+      console.log("🗑️ Attempting Vibe Retraction:", post.id);
+      
+      try {
+        // Determine the correct collection path
+        const collectionName = post.type === 'src_official' ? 'src_posts' : 'campus_pulse';
+        const postRef = doc(firestore, collectionName, post.id);
+
+        // Perform direct deletion for immediate visual response
+        await deleteDoc(postRef);
+        
+        toast({
+          title: "Vibe Retracted",
+          description: "Your vibration has been removed from the Yard."
+        });
+        console.log(`✅ Post ${post.id} successfully removed from ${collectionName}.`);
+      } catch (error: any) {
+        console.error("🚨 Vibe Retraction Failed:", error);
+        toast({
+          variant: 'destructive',
+          title: "Action Denied",
+          description: "The Fortress blocked this retraction. Ensure you are the author."
+        });
+      }
     }
   };
 
@@ -156,8 +175,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             <button 
               type="button"
               onClick={handleDeletePost}
-              className="p-2 text-muted-foreground hover:text-red-500 transition-colors bg-muted/50 rounded-xl"
-              title="Delete Vibe"
+              className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
+              title="Retract Vibe"
             >
               <Trash2 size={16} />
             </button>
