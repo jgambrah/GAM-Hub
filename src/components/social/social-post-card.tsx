@@ -72,9 +72,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  const handleDeletePost = () => {
-    if (!firestore) return;
+  const handleDeletePost = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!firestore || !post.id) return;
+
     if (window.confirm("Are you sure you want to delete this vibe from the Yard?")) {
+      console.log("🗑️ Retracting Vibe:", post.id);
       const postRef = doc(firestore, 'campus_pulse', post.id);
       deleteDocumentNonBlocking(postRef);
       toast({
@@ -149,6 +154,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
           {canDelete && (
             <button 
+              type="button"
               onClick={handleDeletePost}
               className="p-2 text-muted-foreground hover:text-red-500 transition-colors bg-muted/50 rounded-xl"
               title="Delete Vibe"

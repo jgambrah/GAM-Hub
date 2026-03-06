@@ -116,9 +116,14 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
         }
     };
 
-    const handleDeletePost = () => {
-        if (!firestore) return;
+    const handleDeletePost = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!firestore || !post.id) return;
+
         if (window.confirm("Are you sure you want to retract this vibration from The Arena?")) {
+            console.log("🗑️ Retracting Arena Vibe:", post.id);
             const postRef = doc(firestore, 'campus_pulse', post.id);
             deleteDocumentNonBlocking(postRef);
             toast({
@@ -176,6 +181,7 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                 <div className="flex items-center gap-3">
                     {canDelete && !isBlocked && (
                         <button 
+                            type="button"
                             onClick={handleDeletePost}
                             className="p-2 text-muted-foreground hover:text-red-500 transition-colors bg-muted/50 rounded-xl"
                             title="Retract Vibe"
