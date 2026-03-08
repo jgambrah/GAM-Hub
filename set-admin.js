@@ -1,3 +1,4 @@
+
 // set-admin.js
 const admin = require('firebase-admin');
 
@@ -28,14 +29,28 @@ async function grantSuperAdmin() {
       process.exit(1);
   }
   try {
+    console.log("Stamping Official Liaison Credentials...");
+
+    // A. Update Auth Custom Claims (The "Passport")
     await admin.auth().setCustomUserClaims(superAdminUID, {
       role: 'admin',
       isAdmin: true,
       superAdmin: true,
       campusId: 'all' // Allows you to bypass campus filters
     });
-    console.log(`Successfully promoted UID: ${superAdminUID} to Super Admin`);
-    console.log("Liaison, ensure you force-refresh your token in the app layout.");
+
+    // B. Update Firestore Document (The "Identity Card")
+    // This ensures the UI doesn't restrict you to a specific campus
+    const db = admin.firestore();
+    await db.collection('users').doc(superAdminUID).set({
+      campusId: 'all',
+      campusAcronym: 'GH',
+      role: 'admin',
+      userType: 'Admin'
+    }, { merge: true });
+
+    console.log(`Successfully promoted UID: ${superAdminUID} to National Liaison`);
+    console.log("Liaison, LOG OUT and LOG BACK IN to activate your Global Powers.");
     process.exit();
   } catch (error) {
     console.error("Error setting claims:", error);
