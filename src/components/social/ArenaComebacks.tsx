@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
@@ -8,7 +7,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { campuses } from '@/lib/data';
-import { Send, Zap, Loader2, Smile, ImagePlus, Video, X, Play, Youtube, Bot, ShieldAlert } from 'lucide-react';
+import { Send, Zap, Loader2, Smile, ImagePlus, Video, X, Play, Youtube, Bot, ShieldAlert, ExternalLink } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -81,7 +80,7 @@ function ComebackItem({ c, onReply }: { c: ArenaComeback, onReply: (name: string
             <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm group-hover/comeback:shadow-md transition-all">
                 {/* INLINE MULTIMEDIA EVIDENCE */}
                 {c.mediaUrl && (
-                    <div className="mb-3 rounded-xl overflow-hidden bg-black border border-border shadow-inner">
+                    <div className="mb-3 rounded-xl overflow-hidden bg-black border border-border shadow-inner relative group/media">
                         {c.mediaType === 'image' && (
                             <Image src={c.mediaUrl} width={400} height={300} className="w-full h-auto object-cover max-h-60" alt="evidence" />
                         )}
@@ -89,7 +88,17 @@ function ComebackItem({ c, onReply }: { c: ArenaComeback, onReply: (name: string
                             <video src={c.mediaUrl} controls className="w-full max-h-60" />
                         )}
                         {c.mediaType === 'youtube' && stabilizedEmbedUrl && (
-                            <iframe src={stabilizedEmbedUrl} className="w-full aspect-video h-auto" allow="autoplay; encrypted-media" allowFullScreen />
+                            <div className="relative w-full aspect-video">
+                                <iframe src={stabilizedEmbedUrl} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
+                                <a 
+                                    href={c.mediaUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="absolute bottom-2 right-2 bg-red-600 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5 hover:bg-red-700 transition-all opacity-0 group-hover/media:opacity-100"
+                                >
+                                    <Youtube size={12} fill="white" /> Open
+                                </a>
+                            </div>
                         )}
                         {c.mediaType === 'tiktok' && stabilizedEmbedUrl && (
                             <div className="bg-black flex justify-center py-2">

@@ -4,7 +4,7 @@ import Image from 'next/image';
 import * as React from 'react';
 import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2, Globe } from 'lucide-react';
+import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2, Globe, ExternalLink } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
@@ -19,7 +19,7 @@ const getYouTubeEmbedUrl = (url: string) => {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
   if (match && match[2].length === 11) {
-    return `https://www.youtube.com/embed/${match[2]}?rel=0&modestbranding=1`;
+    return `https://www.youtube.com/embed/${match[2]}?rel=0&modestbranding=1&enablejsapi=1`;
   }
   return url;
 }
@@ -130,12 +130,22 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             )}
             
             {post.mediaType === 'youtube' && post.mediaUrl && (
-                <iframe 
-                    src={getYouTubeEmbedUrl(post.mediaUrl)} 
-                    className="w-full h-full" 
-                    allow="autoplay; encrypted-media" 
-                    allowFullScreen 
-                />
+                <div className="relative w-full h-full">
+                  <iframe 
+                      src={getYouTubeEmbedUrl(post.mediaUrl)} 
+                      className="w-full h-full" 
+                      allow="autoplay; encrypted-media" 
+                      allowFullScreen 
+                  />
+                  <a 
+                    href={post.mediaUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="absolute bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-2xl flex items-center gap-2 hover:bg-red-700 transition-all opacity-0 group-hover/media:opacity-100"
+                  >
+                    <Youtube size={14} fill="white" /> Watch on YouTube
+                  </a>
+                </div>
             )}
             
             {post.mediaType === 'tiktok' && post.mediaUrl && (

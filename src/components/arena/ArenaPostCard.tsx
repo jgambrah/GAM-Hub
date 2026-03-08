@@ -5,7 +5,7 @@ import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2 } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
@@ -226,11 +226,21 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                     {post.content && <p className="text-lg font-bold text-foreground leading-tight">"{post.content}"</p>}
                     
                     {post.mediaUrl && (
-                        <div className="mt-4 rounded-2xl overflow-hidden bg-black border border-border">
+                        <div className="mt-4 rounded-2xl overflow-hidden bg-black border border-border group/media relative">
                             {post.mediaType === 'image' && <Image src={post.mediaUrl} width={500} height={300} className="w-full h-auto object-cover" alt="Post media" />}
                             {post.mediaType === 'video' && <video src={post.mediaUrl} controls className="w-full h-auto" />}
                             {post.mediaType === 'youtube' && stabilizedEmbedUrl && (
-                                <iframe src={stabilizedEmbedUrl} className="w-full h-auto aspect-video" allow="autoplay; encrypted-media" allowFullScreen />
+                                <div className="relative w-full h-full">
+                                    <iframe src={stabilizedEmbedUrl} className="w-full h-auto aspect-video" allow="autoplay; encrypted-media" allowFullScreen />
+                                    <a 
+                                        href={post.mediaUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="absolute bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-2xl flex items-center gap-2 hover:bg-red-700 transition-all opacity-0 group-hover/media:opacity-100"
+                                    >
+                                        <Youtube size={14} fill="white" /> Watch on YouTube
+                                    </a>
+                                </div>
                             )}
                             {post.mediaType === 'tiktok' && stabilizedEmbedUrl && <div className="bg-black flex justify-center"><TikTokEmbed url={stabilizedEmbedUrl} /></div>}
                         </div>
