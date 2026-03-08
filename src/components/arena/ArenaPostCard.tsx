@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
-import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
 import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -32,7 +32,7 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     const [localStats, setLocalStats] = React.useState({ ...post.stats, comebacks: post.comebackCount || 0 });
     const [userAction, setUserAction] = React.useState<'liked' | 'burned' | null>(null);
     const [isProcessing, setIsProcessing] = React.useState(false);
-    const [showComebacks, setShowComebacks] = useState(false);
+    const [showComebacks, setShowComments] = useState(false);
 
     const isBlocked = post.status === 'blocked';
     const isAuthor = user?.id === post.authorId;
@@ -251,7 +251,7 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                                 {isShade ? `${localStats?.burns || 0} Burns` : `${localStats?.likes || 0} Likes`}
                             </span>
                         </button>
-                        <button onClick={() => setShowComebacks(!showComebacks)} className="flex items-center gap-1.5 text-muted-foreground hover:text-blue-500 transition-colors">
+                        <button onClick={() => setShowComments(!showComebacks)} className="flex items-center gap-1.5 text-muted-foreground hover:text-blue-500 transition-colors">
                             <MessageSquare size={16} /> <span className="text-xs font-black">{localStats.comebacks || 0} Comebacks</span>
                         </button>
                     </div>

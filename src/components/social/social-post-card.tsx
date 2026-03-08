@@ -4,7 +4,7 @@ import Image from 'next/image';
 import * as React from 'react';
 import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2 } from 'lucide-react';
+import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2, Globe } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
@@ -36,6 +36,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isTrending = likeCount >= 20 || post.isProtected;
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
+  const isGlobalSeed = post.campusId === 'all';
 
   React.useEffect(() => {
     if (user && firestore) {
@@ -77,7 +78,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     e.stopPropagation();
     
     if (!firestore || !post.id) {
-      console.error("🗑️ Deletion Error: Missing Post ID or Firestore context.");
+      console.error("🗑️ Deletion Error: Missing Post ID.");
       return;
     }
 
@@ -109,8 +110,18 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   return (
     <div className={cn(
         'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl h-full',
-        isTrending ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm'
+        isTrending ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm',
+        isGlobalSeed && 'border-amber-200 shadow-amber-50'
     )}>
+      {/* GLOBAL BADGE */}
+      {isGlobalSeed && (
+        <div className="absolute top-4 left-4 z-20 animate-in zoom-in duration-500">
+          <div className="bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1 border-2 border-white dark:border-slate-950">
+            <Globe size={10} /> Global Vibe
+          </div>
+        </div>
+      )}
+
       {/* MULTIMEDIA RENDERING ENGINE */}
       {post.mediaType !== 'text' && (
         <div className="relative aspect-video bg-slate-900 overflow-hidden group/media">

@@ -99,7 +99,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(fileRef, imageFile);
+        await uploadBytes(fileRef, file);
         imageUrl = await getDownloadURL(fileRef);
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
@@ -184,19 +184,23 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
           <form onSubmit={handlePublish} className="space-y-6">
             
-            {/* LIAISON GLOBAL TOGGLE */}
+            {/* LIAISON GLOBAL TOGGLE (THE POWER BUTTON) */}
             {isAdmin && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl border border-amber-100 dark:border-amber-800 flex items-center justify-between animate-in slide-in-from-top-2">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-amber-500 text-slate-950 rounded-lg shadow-sm">
-                    <Globe size={16} />
+              <div className="bg-amber-50 dark:bg-amber-900/20 p-5 rounded-[2rem] border-2 border-amber-200 dark:border-amber-800 flex items-center justify-between animate-in slide-in-from-top-4 duration-500 shadow-lg shadow-amber-100/50">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-amber-500 text-slate-950 rounded-2xl shadow-md animate-pulse">
+                    <Globe size={20} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest leading-none">Global Hub Seeding</p>
-                    <p className="text-[10px] font-bold text-slate-500 mt-1">Show on ALL campuses (Future-Proof)</p>
+                    <p className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest leading-none">Global Hub Seeding</p>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-tight">Activate to show this vibe on ALL current and future campuses.</p>
                   </div>
                 </div>
-                <Switch checked={isGlobal} onCheckedChange={setIsGlobal} />
+                <Switch 
+                  checked={isGlobal} 
+                  onCheckedChange={setIsGlobal} 
+                  className="data-[state=checked]:bg-amber-500"
+                />
               </div>
             )}
 
@@ -269,10 +273,13 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             <button 
                 type="submit"
                 disabled={loading} 
-                className="w-full py-5 bg-slate-900 dark:bg-primary text-white rounded-[2rem] font-black text-lg shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-50"
+                className={cn(
+                  "w-full py-5 text-white rounded-[2rem] font-black text-lg shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-50",
+                  isGlobal && isAdmin ? "bg-amber-500 hover:bg-amber-600 shadow-amber-200" : "bg-slate-900 dark:bg-primary"
+                )}
             >
               {loading ? <Loader2 className="animate-spin" /> : <Send size={20}/>}
-              {isGlobal ? 'Broadcast Globally' : 'Broadcast to Yard'}
+              {isGlobal ? 'Seed to All Campuses' : 'Broadcast to Yard'}
             </button>
           </form>
         </div>
