@@ -4,7 +4,7 @@ import Image from 'next/image';
 import * as React from 'react';
 import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2, Globe, ExternalLink } from 'lucide-react';
+import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2, Globe, AlertTriangle } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
@@ -12,16 +12,14 @@ import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp }
 import { cn } from '@/lib/utils';
 import CommentSection from './CommentSection';
 import ReactPlayer from 'react-player';
+import YouTube, { type YouTubeProps } from 'react-youtube';
 import { useToast } from '@/hooks/use-toast';
 
-const getYouTubeEmbedUrl = (url: string) => {
-  if (!url) return '';
+const getYouTubeId = (url: string) => {
+  if (!url) return null;
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
-  if (match && match[2].length === 11) {
-    return `https://www.youtube.com/embed/${match[2]}?rel=0&modestbranding=1&enablejsapi=1`;
-  }
-  return url;
+  return (match && match[2].length === 11) ? match[2] : null;
 }
 
 export default function SocialPostCard({ post }: { post: SocialPost }) {
@@ -32,6 +30,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [likeCount, setLikeCount] = React.useState(post.likes);
   const [isProcessingLike, setIsProcessingLike] = React.useState(false);
   const [showComments, setShowComments] = React.useState(false);
+  const [isRestricted, setIsRestricted] = React.useState(false);
   
   const isTrending = likeCount >= 20 || post.isProtected;
   const isAuthor = user?.id === post.authorId;
@@ -77,35 +76,28 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     e.preventDefault();
     e.stopPropagation();
     
-    if (!firestore || !post.id) {
-      console.error("🗑️ Deletion Error: Missing Post ID.");
-      return;
-    }
+    if (!firestore || !post.id) return;
 
     if (window.confirm("Are you sure you want to retract this vibe from the Yard?")) {
-      console.log("🗑️ Attempting Vibe Retraction:", post.id);
-      
       try {
         const collectionName = post.type === 'src_official' ? 'src_posts' : 'campus_pulse';
         const postRef = doc(firestore, collectionName, post.id);
-
         await deleteDoc(postRef);
-        
-        toast({
-          title: "Vibe Retracted",
-          description: "Your vibration has been removed from the Yard."
-        });
-        console.log(`✅ Post ${post.id} successfully removed from ${collectionName}.`);
+        toast({ title: "Vibe Retracted" });
       } catch (error: any) {
-        console.error("🚨 Vibe Retraction Failed:", error);
-        toast({
-          variant: 'destructive',
-          title: "Action Denied",
-          description: "The Fortress blocked this retraction. Ensure you are the author."
-        });
+        toast({ variant: 'destructive', title: "Action Denied" });
       }
     }
   };
+
+  const onYoutubeError = (event: any) => {
+    // 101 and 150 mean the video owner restricted embedding
+    if (event.data === 101 || event.data === 150) {
+      setIsRestricted(true);
+    }
+  };
+
+  const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
 
   return (
     <div className={cn(
@@ -113,7 +105,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         isTrending ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm',
         isGlobalSeed && 'border-amber-200 shadow-amber-50'
     )}>
-      {/* GLOBAL BADGE */}
       {isGlobalSeed && (
         <div className="absolute top-4 left-4 z-20 animate-in zoom-in duration-500">
           <div className="bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1 border-2 border-white dark:border-slate-950">
@@ -122,29 +113,36 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* MULTIMEDIA RENDERING ENGINE */}
       {post.mediaType !== 'text' && (
         <div className="relative aspect-video bg-slate-900 overflow-hidden group/media">
             {post.mediaType === 'image' && post.imageUrl && (
                 <Image src={post.imageUrl} alt="post" fill className="object-cover group-hover/media:scale-105 transition-transform duration-700" />
             )}
             
-            {post.mediaType === 'youtube' && post.mediaUrl && (
+            {post.mediaType === 'youtube' && youtubeId && (
                 <div className="relative w-full h-full">
-                  <iframe 
-                      src={getYouTubeEmbedUrl(post.mediaUrl)} 
-                      className="w-full h-full" 
-                      allow="autoplay; encrypted-media" 
-                      allowFullScreen 
-                  />
-                  <a 
-                    href={post.mediaUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="absolute bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-2xl flex items-center gap-2 hover:bg-red-700 transition-all opacity-0 group-hover/media:opacity-100"
-                  >
-                    <Youtube size={14} fill="white" /> Watch on YouTube
-                  </a>
+                  {isRestricted ? (
+                    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
+                        <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                        <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
+                        <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">This creator has blocked playback inside other apps. Visit YouTube to see the full vibe.</p>
+                        <a 
+                            href={post.mediaUrl || '#'} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
+                        >
+                            <Youtube size={14} fill="white" /> Open on YouTube
+                        </a>
+                    </div>
+                  ) : (
+                    <YouTube 
+                        videoId={youtubeId}
+                        opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }}
+                        className="w-full h-full"
+                        onError={onYoutubeError}
+                    />
+                  )}
                 </div>
             )}
             

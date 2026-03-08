@@ -7,7 +7,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { campuses } from '@/lib/data';
-import { Send, Zap, Loader2, Smile, ImagePlus, Video, X, Play, Youtube, Bot, ShieldAlert, ExternalLink } from 'lucide-react';
+import { Send, Zap, Loader2, Smile, ImagePlus, Video, X, Play, Youtube, Bot, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -15,17 +15,13 @@ import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import Image from 'next/image';
 import { TikTokEmbed } from './tiktok-embed';
 import { cn } from '@/lib/utils';
+import YouTube from 'react-youtube';
 
-const getYouTubeEmbedUrl = (url: string) => {
-    if (!url) return '';
+const getYouTubeId = (url: string) => {
+    if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = url.match(regExp);
-
-    if (match && match[2].length === 11) {
-        const videoId = match[2];
-        return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&enablejsapi=1`;
-    }
-    return '';
+    return (match && match[2].length === 11) ? match[2] : null;
 }
 
 /**
@@ -33,15 +29,9 @@ const getYouTubeEmbedUrl = (url: string) => {
  * Renders an individual comeback or bot verdict with stabilized media logic.
  */
 function ComebackItem({ c, onReply }: { c: ArenaComeback, onReply: (name: string) => void }) {
-    const stabilizedEmbedUrl = useMemo(() => {
-        if (c.mediaType === 'youtube' && c.mediaUrl) {
-            return getYouTubeEmbedUrl(c.mediaUrl);
-        }
-        if (c.mediaType === 'tiktok' && c.mediaUrl) {
-            return c.mediaUrl;
-        }
-        return '';
-    }, [c.mediaUrl, c.mediaType]);
+    const [isRestricted, setIsRestricted] = useState(false);
+    
+    const youtubeId = useMemo(() => c.mediaType === 'youtube' ? getYouTubeId(c.mediaUrl || '') : null, [c.mediaUrl, c.mediaType]);
 
     const isReply = !c.isBot && c.text && c.text.startsWith('@');
 
@@ -78,7 +68,6 @@ function ComebackItem({ c, onReply }: { c: ArenaComeback, onReply: (name: string
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm group-hover/comeback:shadow-md transition-all">
-                {/* INLINE MULTIMEDIA EVIDENCE */}
                 {c.mediaUrl && (
                     <div className="mb-3 rounded-xl overflow-hidden bg-black border border-border shadow-inner relative group/media">
                         {c.mediaType === 'image' && (
@@ -87,22 +76,34 @@ function ComebackItem({ c, onReply }: { c: ArenaComeback, onReply: (name: string
                         {c.mediaType === 'video' && (
                             <video src={c.mediaUrl} controls className="w-full max-h-60" />
                         )}
-                        {c.mediaType === 'youtube' && stabilizedEmbedUrl && (
+                        {c.mediaType === 'youtube' && youtubeId && (
                             <div className="relative w-full aspect-video">
-                                <iframe src={stabilizedEmbedUrl} className="w-full h-full" allow="autoplay; encrypted-media" allowFullScreen />
-                                <a 
-                                    href={c.mediaUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="absolute bottom-2 right-2 bg-red-600 text-white px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5 hover:bg-red-700 transition-all opacity-0 group-hover/media:opacity-100"
-                                >
-                                    <Youtube size={12} fill="white" /> Open
-                                </a>
+                                {isRestricted ? (
+                                    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-4 text-center">
+                                        <AlertTriangle className="text-amber-500 mb-2" size={24} />
+                                        <p className="text-slate-400 text-[8px] mb-3">Owner restricted embedding. Open on YouTube to see proof.</p>
+                                        <a 
+                                            href={c.mediaUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="bg-red-600 text-white px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5 hover:bg-red-700"
+                                        >
+                                            <Youtube size={12} fill="white" /> Open
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <YouTube 
+                                        videoId={youtubeId}
+                                        opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }}
+                                        className="w-full h-full"
+                                        onError={(e) => { if (e.data === 101 || e.data === 150) setIsRestricted(true); }}
+                                    />
+                                )}
                             </div>
                         )}
-                        {c.mediaType === 'tiktok' && stabilizedEmbedUrl && (
+                        {c.mediaType === 'tiktok' && (
                             <div className="bg-black flex justify-center py-2">
-                                <TikTokEmbed url={stabilizedEmbedUrl} />
+                                <TikTokEmbed url={c.mediaUrl} />
                             </div>
                         )}
                     </div>
@@ -148,7 +149,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
 
   const comebacksQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    // UNIFIED PATH: Targets campus_pulse sub-collection
     return query(collection(firestore, 'campus_pulse', post.id, 'comebacks'), orderBy('createdAt', 'asc'));
   }, [firestore, post.id]);
 
@@ -210,7 +210,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         comebackData.mediaType = videoUrl.includes('youtube') || videoUrl.includes('youtu.be') ? 'youtube' : 'tiktok';
       }
       
-      // UNIFIED WRITE: Save to campus_pulse hierarchy
       await addDocumentNonBlocking(collection(firestore, 'campus_pulse', post.id, 'comebacks'), comebackData);
 
       const postRef = doc(firestore, 'campus_pulse', post.id);

@@ -1,28 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
 import Image from 'next/image';
 import { TikTokEmbed } from '../social/tiktok-embed';
 import { useToast } from '@/hooks/use-toast';
+import YouTube from 'react-youtube';
 
-const getYouTubeEmbedUrl = (url: string) => {
-    if (!url) return '';
+const getYouTubeId = (url: string) => {
+    if (!url) return null;
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = url.match(regExp);
-
-    if (match && match[2].length === 11) {
-        const videoId = match[2];
-        return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&enablejsapi=1`;
-    }
-    return '';
+    return (match && match[2].length === 11) ? match[2] : null;
 }
 
 export function ArenaPostCard({ post }: { post: ArenaPost }) {
@@ -33,22 +29,13 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     const [userAction, setUserAction] = React.useState<'liked' | 'burned' | null>(null);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [showComebacks, setShowComments] = useState(false);
+    const [isRestricted, setIsRestricted] = useState(false);
 
     const isBlocked = post.status === 'blocked';
     const isAuthor = user?.id === post.authorId;
     const canDelete = isAuthor || isAdmin;
 
-    // LIAISON STABILIZATION: Lock embed URL to prevent iframe flickering
-    const stabilizedEmbedUrl = React.useMemo(() => {
-        if (isBlocked) return '';
-        if (post.mediaType === 'youtube' && post.mediaUrl) {
-            return getYouTubeEmbedUrl(post.mediaUrl);
-        }
-        if (post.mediaType === 'tiktok' && post.mediaUrl) {
-            return post.mediaUrl;
-        }
-        return '';
-    }, [post.mediaUrl, post.mediaType, isBlocked]);
+    const youtubeId = useMemo(() => isBlocked ? null : getYouTubeId(post.mediaUrl || ''), [post.mediaUrl, isBlocked]);
 
     React.useEffect(() => {
         setLocalStats({ ...post.stats, comebacks: post.comebackCount || 0 });
@@ -119,30 +106,22 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
         e.preventDefault();
         e.stopPropagation();
 
-        if (!firestore || !post.id) {
-            console.error("🗑️ Arena Deletion Error: Missing Post ID");
-            return;
-        }
+        if (!firestore || !post.id) return;
 
         if (window.confirm("Are you sure you want to retract this vibration from The Arena?")) {
-            console.log("🗑️ Attempting Arena Retraction:", post.id);
             try {
                 const postRef = doc(firestore, 'campus_pulse', post.id);
                 await deleteDoc(postRef);
-                
-                toast({
-                    title: "Vibe Retracted",
-                    description: "The vibration has been removed from the Arena battleground."
-                });
-                console.log("✅ Arena vibe successfully retracted");
+                toast({ title: "Vibe Retracted" });
             } catch (err: any) {
-                console.error("🚨 Arena Retraction failed:", err);
-                toast({
-                    variant: 'destructive',
-                    title: "Action Blocked",
-                    description: "The Fortress denied this retraction."
-                });
+                toast({ variant: 'destructive', title: "Action Blocked" });
             }
+        }
+    };
+
+    const onYoutubeError = (event: any) => {
+        if (event.data === 101 || event.data === 150) {
+            setIsRestricted(true);
         }
     };
 
@@ -229,20 +208,33 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                         <div className="mt-4 rounded-2xl overflow-hidden bg-black border border-border group/media relative">
                             {post.mediaType === 'image' && <Image src={post.mediaUrl} width={500} height={300} className="w-full h-auto object-cover" alt="Post media" />}
                             {post.mediaType === 'video' && <video src={post.mediaUrl} controls className="w-full h-auto" />}
-                            {post.mediaType === 'youtube' && stabilizedEmbedUrl && (
-                                <div className="relative w-full h-full">
-                                    <iframe src={stabilizedEmbedUrl} className="w-full h-auto aspect-video" allow="autoplay; encrypted-media" allowFullScreen />
-                                    <a 
-                                        href={post.mediaUrl} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="absolute bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-2xl flex items-center gap-2 hover:bg-red-700 transition-all opacity-0 group-hover/media:opacity-100"
-                                    >
-                                        <Youtube size={14} fill="white" /> Watch on YouTube
-                                    </a>
+                            {post.mediaType === 'youtube' && youtubeId && (
+                                <div className="relative w-full aspect-video">
+                                    {isRestricted ? (
+                                        <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
+                                            <AlertTriangle className="text-amber-500 mb-2" size={32} />
+                                            <h4 className="text-white font-black text-[10px] uppercase tracking-widest">Restricted Entry</h4>
+                                            <p className="text-slate-400 text-[8px] mt-1 mb-4">Embedding blocked by owner. Visit YouTube to see the full shade.</p>
+                                            <a 
+                                                href={post.mediaUrl} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="bg-red-600 text-white px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2 hover:bg-red-700"
+                                            >
+                                                <Youtube size={12} fill="white" /> Open on YouTube
+                                            </a>
+                                        </div>
+                                    ) : (
+                                        <YouTube 
+                                            videoId={youtubeId}
+                                            opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }}
+                                            className="w-full h-full"
+                                            onError={onYoutubeError}
+                                        />
+                                    )}
                                 </div>
                             )}
-                            {post.mediaType === 'tiktok' && stabilizedEmbedUrl && <div className="bg-black flex justify-center"><TikTokEmbed url={stabilizedEmbedUrl} /></div>}
+                            {post.mediaType === 'tiktok' && <div className="bg-black flex justify-center"><TikTokEmbed url={post.mediaUrl} /></div>}
                         </div>
                     )}
 

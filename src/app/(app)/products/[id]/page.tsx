@@ -1,16 +1,24 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useDoc, useFirebase, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import type { Product } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Youtube } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Youtube, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
 import ReactPlayer from 'react-player';
+import YouTube from 'react-youtube';
 import { OrderConfirmationDialog } from '@/components/orders/OrderConfirmationDialog';
+
+const getYouTubeId = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -18,6 +26,7 @@ export default function ProductDetailPage() {
   const { firestore } = useFirebase();
   const id = params.id as string;
   const [isOrderDialogOpen, setIsOrderDialogOpen] = React.useState(false);
+  const [isRestricted, setIsRestricted] = useState(false);
 
   const productRef = useMemoFirebase(() => {
     if (!firestore || !id) return null;
@@ -25,6 +34,8 @@ export default function ProductDetailPage() {
   }, [firestore, id]);
 
   const { data: product, isLoading } = useDoc<Product>(productRef);
+
+  const youtubeId = useMemo(() => product ? getYouTubeId(product.videoUrl || '') : null, [product]);
 
   if (isLoading) {
     return (
@@ -57,7 +68,6 @@ export default function ProductDetailPage() {
 
   const isService = product.productType === 'service';
   const hasVideo = !!(product.videoUrl || product.nativeVideoUrl);
-  const isYoutube = !!product.videoUrl && (product.videoUrl.includes('youtube.com') || product.videoUrl.includes('youtu.be'));
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24">
@@ -66,7 +76,6 @@ export default function ProductDetailPage() {
       </Button>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-        {/* LEFT SIDE: MEDIA SUITE */}
         <div className="space-y-8">
           <div className="relative aspect-square rounded-[3.5rem] overflow-hidden border-8 border-white shadow-2xl bg-muted group">
             <Image 
@@ -98,9 +107,9 @@ export default function ProductDetailPage() {
                       <h4 className="font-bold text-sm">Product Walkthrough</h4>
                     </div>
                   </div>
-                  {isYoutube && product.videoUrl && (
+                  {isRestricted && (
                     <a 
-                      href={product.videoUrl} 
+                      href={product.videoUrl || '#'} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
@@ -111,19 +120,34 @@ export default function ProductDetailPage() {
                </div>
 
                <div className="aspect-video rounded-[2rem] overflow-hidden bg-black border-4 border-white/5 shadow-inner relative z-10">
-                  <ReactPlayer 
-                    url={product.nativeVideoUrl || product.videoUrl || ''} 
-                    width="100%" 
-                    height="100%" 
-                    controls 
-                    className="absolute top-0 left-0"
-                  />
+                  {youtubeId ? (
+                    isRestricted ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 bg-slate-900">
+                            <AlertTriangle className="text-amber-500 mb-2" />
+                            <p className="text-xs text-slate-400">Embedding restricted by owner. Visit YouTube to see the explainer.</p>
+                        </div>
+                    ) : (
+                        <YouTube 
+                            videoId={youtubeId}
+                            opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }}
+                            className="absolute top-0 left-0 w-full h-full"
+                            onError={(e) => { if (e.data === 101 || e.data === 150) setIsRestricted(true); }}
+                        />
+                    )
+                  ) : (
+                    <ReactPlayer 
+                        url={product.nativeVideoUrl || ''} 
+                        width="100%" 
+                        height="100%" 
+                        controls 
+                        className="absolute top-0 left-0"
+                    />
+                  )}
                </div>
             </div>
           )}
         </div>
 
-        {/* RIGHT SIDE: PRODUCT INTEL */}
         <div className="flex flex-col gap-10">
           <div className="space-y-6">
             <div>
@@ -131,13 +155,13 @@ export default function ProductDetailPage() {
                 <span className="bg-primary/10 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest border border-primary/5">{product.category}</span>
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 py-1 rounded-full border border-slate-100 bg-slate-50">{product.campusAcronym}</span>
               </div>
-              <h1 className="text-4xl md:text-5xl font-black text-slate-900 leading-tight tracking-tighter">{product.name}</h1>
+              <h1 className="text-4xl md:text-5xl font-black text-slate-900 leading-tight tracking-tighter dark:text-white">{product.name}</h1>
               
               <div className="mt-6 flex flex-wrap items-center gap-6">
                 {isService ? (
                     <div className="text-4xl font-black text-blue-600 tracking-tight">{product.interestRate || 'Consultation Req.'}</div>
                 ) : (
-                    <div className="text-4xl font-black text-slate-900 tracking-tight">GHS {product.price.toFixed(2)}</div>
+                    <div className="text-4xl font-black text-slate-900 tracking-tight dark:text-white">GHS {product.price.toFixed(2)}</div>
                 )}
                 <div className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 px-4 py-2 rounded-2xl text-xs font-black flex items-center gap-2 border border-emerald-100 dark:border-emerald-900/50 shadow-sm">
                     <ShieldCheck size={16} /> Liaison Verified
