@@ -6,14 +6,14 @@ import { collection, query, where, orderBy, limit, QueryConstraint } from 'fireb
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import SocialPostCard from './social-post-card';
-import { Sparkles, RefreshCcw, SearchX } from 'lucide-react';
+import { Sparkles, RefreshCcw, SearchX, Globe } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 
 /**
  * CampusPulseFeed Component
  * 
  * THE HARDENED PULSE: Targets the flat 'campus_pulse' collection.
- * Now includes search query support for filtering through the Yard's vibrations.
+ * Includes search query support and LIAISON GLOBAL BROADCAST awareness.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -35,9 +35,9 @@ export default function CampusPulseFeed({
         const pulseRef = collection(firestore, 'campus_pulse');
         const constraints: QueryConstraint[] = [];
         
-        // Segregation Logic
+        // SEEDING LOGIC: If a specific campus is selected, also fetch 'all' (Liaison global vibes)
         if (activeCampusId !== 'all') {
-            constraints.push(where('campusId', '==', activeCampusId));
+            constraints.push(where('campusId', 'in', [activeCampusId, 'all']));
         }
 
         if (filterTag && filterTag !== 'All') {
@@ -49,7 +49,7 @@ export default function CampusPulseFeed({
         }
 
         constraints.push(orderBy('createdAt', 'desc'));
-        constraints.push(limit(50)); // Fetch a larger batch for better search results
+        constraints.push(limit(50)); 
 
         return query(pulseRef, ...constraints);
     }, [firestore, activeCampusId, filterTag, tab, user?.id, isTokenReady]);
@@ -148,7 +148,16 @@ export default function CampusPulseFeed({
                 </div>
             ) : (
                 filteredPosts.map((post) => (
-                    <SocialPostCard key={post.id} post={post} />
+                    <div key={post.id} className="relative group">
+                        {post.campusId === 'all' && (
+                            <div className="absolute -top-2 -right-2 z-20 animate-in zoom-in duration-500">
+                                <div className="bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1 border-2 border-card">
+                                    <Globe size={10} /> Global Vibe
+                                </div>
+                            </div>
+                        )}
+                        <SocialPostCard post={post} />
+                    </div>
                 ))
             )}
         </div>

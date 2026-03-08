@@ -8,27 +8,30 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { 
   ImageIcon, Type, X, Send, 
-  Video, Sparkles, Youtube, Loader2, Link as LinkIcon 
+  Video, Sparkles, Youtube, Loader2, Link as LinkIcon, Globe, ShieldAlert 
 } from 'lucide-react';
 import Image from 'next/image';
 import type { SocialPost } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 
 /**
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
  * Securely handles Text, Image/Video Uploads, and YouTube/TikTok Links.
+ * Liaison Update: Supports Global Broadcasts to all campuses.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
-  const { isTokenReady } = useAuth();
+  const { isTokenReady, isAdmin } = useAuth();
   const { toast } = useToast();
   
   // Vibe State
   const [postType, setPostType] = useState<'text' | 'image' | 'native' | 'link'>('text');
   const [content, setContent] = useState('');
   const [externalUrl, setExternalUrl] = useState('');
+  const [isGlobal, setIsGlobal] = useState(false);
   
   // Media State
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -65,7 +68,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     e.preventDefault();
     if (loading) return;
 
-    console.log("📡 Broadcast Attempted:", { isTokenReady, userId: auth?.currentUser?.uid });
+    console.log("📡 Broadcast Attempted:", { isTokenReady, userId: auth?.currentUser?.uid, isGlobal });
 
     if (!isTokenReady || !userProfile || !auth?.currentUser || !firestore) {
       toast({ 
@@ -110,13 +113,17 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       
       const hashtags = (content || '').match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
 
+      // LIAISON SEEDING LOGIC: 'all' campusId makes post visible to everyone
+      const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
+      const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
+
       // CONSTRUCT PAYLOAD
       const postData = {
         authorId: auth.currentUser.uid,
         authorName: userProfile.name || "Campus Member",
         authorAvatarUrl: userProfile.avatarUrl ?? "",
-        campusId: userProfile.campusId ?? "all",
-        campusAcronym: userProfile.campusAcronym ?? "GH",
+        campusId: targetCampusId,
+        campusAcronym: targetCampusAcronym,
         content: content || "",
         mediaType: mediaType,
         imageUrl: imageUrl,
@@ -126,15 +133,15 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         commentCount: 0,
         type: 'regular',
         isArenaEntry: false, 
+        isLiaisonSeed: isGlobal && isAdmin,
         createdAt: new Date().toISOString(),
       };
 
       // BROADCAST
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      toast({ title: 'Vibe Shared!' });
+      toast({ title: isGlobal ? 'Global Vibe Broadcasted!' : 'Vibe Shared!' });
       
-      // Success delay to allow logic to settle and prevent "Model Disposed" error
       setTimeout(() => onClose(), 100);
 
     } catch (err: any) { 
@@ -169,11 +176,30 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             <div className="p-3 bg-indigo-500 text-white rounded-2xl shadow-lg"><Sparkles size={24}/></div>
             <div>
               <h2 className="text-3xl font-black text-foreground tracking-tight">Share Your Vibe</h2>
-              <p className="text-sm font-medium text-muted-foreground italic">Broadcasting to {userProfile?.campusAcronym || 'The Yard'}</p>
+              <p className="text-sm font-medium text-muted-foreground italic">
+                {isGlobal && isAdmin ? 'Broadcasting to National Hub' : `Broadcasting to ${userProfile?.campusAcronym || 'The Yard'}`}
+              </p>
             </div>
           </div>
 
           <form onSubmit={handlePublish} className="space-y-6">
+            
+            {/* LIAISON GLOBAL TOGGLE */}
+            {isAdmin && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-2xl border border-amber-100 dark:border-amber-800 flex items-center justify-between animate-in slide-in-from-top-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-amber-500 text-slate-950 rounded-lg shadow-sm">
+                    <Globe size={16} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest leading-none">Global Hub Seeding</p>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1">Show on ALL campuses (Future-Proof)</p>
+                  </div>
+                </div>
+                <Switch checked={isGlobal} onCheckedChange={setIsGlobal} />
+              </div>
+            )}
+
             <textarea 
                 placeholder="What's the frequency, Citizen? 😊" 
                 className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
@@ -246,7 +272,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 className="w-full py-5 bg-slate-900 dark:bg-primary text-white rounded-[2rem] font-black text-lg shadow-2xl flex items-center justify-center gap-3 active:scale-95 transition-all disabled:opacity-50"
             >
               {loading ? <Loader2 className="animate-spin" /> : <Send size={20}/>}
-              Broadcast to Yard
+              {isGlobal ? 'Broadcast Globally' : 'Broadcast to Yard'}
             </button>
           </form>
         </div>

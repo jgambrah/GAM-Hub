@@ -85,11 +85,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       console.log("🗑️ Attempting Vibe Retraction:", post.id);
       
       try {
-        // Determine the correct collection path
         const collectionName = post.type === 'src_official' ? 'src_posts' : 'campus_pulse';
         const postRef = doc(firestore, collectionName, post.id);
 
-        // Perform direct deletion for immediate visual response
         await deleteDoc(postRef);
         
         toast({
@@ -110,7 +108,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   return (
     <div className={cn(
-        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl',
+        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl h-full',
         isTrending ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm'
     )}>
       {/* MULTIMEDIA RENDERING ENGINE */}
