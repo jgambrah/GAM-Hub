@@ -7,7 +7,7 @@ import { doc } from 'firebase/firestore';
 import type { Product } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Landmark } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Youtube } from 'lucide-react';
 import Image from 'next/image';
 import ReactPlayer from 'react-player';
 import { OrderConfirmationDialog } from '@/components/orders/OrderConfirmationDialog';
@@ -57,6 +57,7 @@ export default function ProductDetailPage() {
 
   const isService = product.productType === 'service';
   const hasVideo = !!(product.videoUrl || product.nativeVideoUrl);
+  const isYoutube = !!product.videoUrl && (product.videoUrl.includes('youtube.com') || product.videoUrl.includes('youtu.be'));
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24">
@@ -89,12 +90,24 @@ export default function ProductDetailPage() {
                   <PlayCircle size={150} />
                </div>
                
-               <div className="flex items-center gap-3 mb-6 relative z-10">
-                  <div className="p-3 bg-white/10 rounded-2xl border border-white/5"><Video size={20} className="text-blue-400" /></div>
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Official Showcase</p>
-                    <h4 className="font-bold text-sm">Product Walkthrough</h4>
+               <div className="flex items-center justify-between mb-6 relative z-10">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-white/10 rounded-2xl border border-white/5"><Video size={20} className="text-blue-400" /></div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">Official Showcase</p>
+                      <h4 className="font-bold text-sm">Product Walkthrough</h4>
+                    </div>
                   </div>
+                  {isYoutube && product.videoUrl && (
+                    <a 
+                      href={product.videoUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
+                    >
+                      <Youtube size={14} fill="white" /> Watch on YouTube
+                    </a>
+                  )}
                </div>
 
                <div className="aspect-video rounded-[2rem] overflow-hidden bg-black border-4 border-white/5 shadow-inner relative z-10">

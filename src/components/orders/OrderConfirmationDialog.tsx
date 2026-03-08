@@ -15,7 +15,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { addDocumentNonBlocking, useFirestore } from '@/firebase';
 import { 
   Loader2, ShoppingCart, Building2, MapPin, UserCheck, 
-  Landmark, Globe, UserPlus, ExternalLink, Send, Navigation, PlayCircle, X 
+  Landmark, Globe, UserPlus, ExternalLink, Send, Navigation, PlayCircle, X, Youtube 
 } from 'lucide-react';
 import { collection, serverTimestamp } from 'firebase/firestore';
 import type { Product, PickupPoint } from '@/lib/types';
@@ -70,6 +70,7 @@ export function OrderConfirmationDialog({ product, open, onOpenChange }: OrderCo
   const [deliveryType, setDeliveryType] = React.useState<'pickup' | 'office'>(isStaff ? 'office' : 'pickup');
   
   const hasVideo = !!(product.videoUrl || product.nativeVideoUrl);
+  const isYoutube = !!product.videoUrl && (product.videoUrl.includes('youtube.com') || product.videoUrl.includes('youtu.be'));
 
   // Validation logic
   const isReadyToOrder = () => {
@@ -234,12 +235,24 @@ export function OrderConfirmationDialog({ product, open, onOpenChange }: OrderCo
                             width="100%" 
                             height="100%" 
                         />
-                        <button 
-                            onClick={() => setShowVideo(false)}
-                            className="absolute top-4 right-4 z-10 p-2 bg-black/50 text-white rounded-full hover:bg-black"
-                        >
-                            <X size={16} />
-                        </button>
+                        <div className="absolute top-4 right-4 z-10 flex gap-2">
+                            {isYoutube && product.videoUrl && (
+                                <a 
+                                    href={product.videoUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="p-2 bg-red-600 text-white rounded-full hover:bg-red-700 shadow-lg"
+                                >
+                                    <Youtube size={16} fill="white" />
+                                </a>
+                            )}
+                            <button 
+                                onClick={() => setShowVideo(false)}
+                                className="p-2 bg-black/50 text-white rounded-full hover:bg-black"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
