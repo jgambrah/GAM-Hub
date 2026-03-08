@@ -8,12 +8,20 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, BookOpen, Users, Sparkles, GraduationCap, ArrowRight, BrainCircuit, Bot, Lock, ShieldCheck, Landmark, Star } from 'lucide-react';
+import { 
+    Loader2, Plus, BookOpen, Users, Sparkles, GraduationCap, 
+    ArrowRight, BrainCircuit, Bot, Lock, ShieldCheck, Landmark, 
+    Star, Wand2, X, FileText, CheckCircle2 
+} from 'lucide-react';
 import type { StudyRoom as StudyRoomType, User } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { 
+    Dialog, DialogContent, DialogDescription, 
+    DialogFooter, DialogHeader, DialogTitle 
+} from '@/components/ui/dialog';
 import StudyRoomInterface from '@/components/study/StudyRoom';
 import { cn } from '@/lib/utils';
+import { getAcademicDailyBriefing, type AcademicSummaryOutput } from '@/ai/flows/academic-vibe-summary-flow';
 
 function CreateRoomModal({ user, open, setOpen }: { user: User, open: boolean, setOpen: (open: boolean) => void }) {
     const { firestore } = useFirebase();
@@ -121,7 +129,7 @@ function CreateRoomModal({ user, open, setOpen }: { user: User, open: boolean, s
 }
 
 export default function StudyPage() {
-    const { user, isUserLoading } = useAuth();
+    const { user, isUserLoading, isTokenReady } = useAuth();
     const { firestore } = useFirebase();
     const { toast } = useToast();
     
@@ -129,10 +137,14 @@ export default function StudyPage() {
     const [activeRoomId, setActiveRoomId] = React.useState<string | null>(null);
     const [isLoadingLab, setIsLoadingLab] = React.useState(false);
 
-    // 1. DYNAMIC QUERY: Fetch departmental rooms (Excluding private labs)
-    // Order by isOfficial first, then by creation date
+    // AI Briefing State
+    const [isBriefingOpen, setIsBriefingOpen] = React.useState(false);
+    const [isBriefingLoading, setIsBriefingLoading] = React.useState(false);
+    const [briefingData, setBriefingData] = React.useState<AcademicSummaryOutput | null>(null);
+
+    // 1. DYNAMIC QUERY: Fetch departmental rooms
     const roomsQuery = useMemoFirebase(() => {
-        if (!firestore || !user?.major || !user?.campusId) return null;
+        if (!firestore || !user?.major || !user?.campusId || !isTokenReady) return null;
         return query(
             collection(firestore, 'study_rooms'),
             where('campusId', '==', user.campusId),
@@ -141,7 +153,7 @@ export default function StudyPage() {
             orderBy('isOfficial', 'desc'),
             orderBy('createdAt', 'desc')
         );
-    }, [firestore, user?.major, user?.campusId]);
+    }, [firestore, user?.major, user?.campusId, isTokenReady]);
 
     const { data: rooms, isLoading: isLoadingRooms } = useCollection<StudyRoomType>(roomsQuery);
 
@@ -169,6 +181,35 @@ export default function StudyPage() {
             toast({ variant: 'destructive', title: 'Liaison Error', description: 'Could not launch private lab.' });
         } finally {
             setIsLoadingLab(false);
+        }
+    };
+
+    const handleGenerateBriefing = async () => {
+        if (!rooms || rooms.length === 0 || !user?.major) {
+            toast({ variant: 'destructive', title: "Not enough activity", description: "The department needs more live study rooms to generate a briefing." });
+            return;
+        }
+        
+        setIsBriefingLoading(true);
+        setIsBriefingOpen(true);
+        try {
+            // Aggregate room context: Titles and content snippets
+            const roomContext = rooms
+                .slice(0, 5)
+                .map(r => `[TOPIC: ${r.title}] NOTES: ${r.content?.substring(0, 250) || 'Active discussion in progress.'}`)
+                .join('\n---\n');
+
+            const result = await getAcademicDailyBriefing({
+                major: user.major,
+                roomData: roomContext
+            });
+            
+            setBriefingData(result);
+        } catch (err) {
+            console.error(err);
+            toast({ variant: 'destructive', title: "Professor is busy", description: "Could not generate departmental briefing." });
+        } finally {
+            setIsBriefingLoading(false);
         }
     };
 
@@ -200,12 +241,20 @@ export default function StudyPage() {
                     </div>
                 </div>
                 
-                <button 
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-indigo-600 transition-all active:scale-95 shadow-xl shadow-slate-200 dark:shadow-none w-full md:w-auto"
-                >
-                    <Plus size={18} /> Start New Session
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                    <button 
+                        onClick={handleGenerateBriefing}
+                        className="bg-indigo-50 text-indigo-600 px-8 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all active:scale-95 shadow-sm"
+                    >
+                        <BrainCircuit size={18} /> Daily Briefing
+                    </button>
+                    <button 
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-indigo-600 transition-all active:scale-95 shadow-xl shadow-slate-200 dark:shadow-none"
+                    >
+                        <Plus size={18} /> Start New Session
+                    </button>
+                </div>
             </div>
 
             {/* AI TUTOR PROMO CARD: PERSONAL LAB LAUNCHER */}
@@ -328,6 +377,98 @@ export default function StudyPage() {
             {activeRoomId && (
                 <StudyRoomInterface roomId={activeRoomId} onClose={() => setActiveRoomId(null)} />
             )}
+
+            {/* --- DEPARTMENTAL BRIEFING MODAL --- */}
+            <Dialog open={isBriefingOpen} onOpenChange={setIsBriefingOpen}>
+                <DialogContent className="sm:max-w-2xl p-0 rounded-[3rem] overflow-hidden border-none shadow-2xl">
+                    <DialogHeader className="p-8 bg-indigo-600 text-white flex flex-row items-center justify-between space-y-0">
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-white/20 rounded-2xl shadow-inner">
+                                <ShieldCheck size={28} className="text-white" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-2xl font-black">Daily Prof's Briefing</DialogTitle>
+                                <DialogDescription className="text-indigo-100 font-bold uppercase text-[10px] tracking-widest mt-1">
+                                    {user.major} • Academic Strategy
+                                </DialogDescription>
+                            </div>
+                        </div>
+                        <button onClick={() => setIsBriefingOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                            <X size={24} />
+                        </button>
+                    </DialogHeader>
+
+                    <div className="p-10 bg-slate-50 dark:bg-slate-950 overflow-y-auto max-h-[70vh] no-scrollbar">
+                        {isBriefingLoading ? (
+                            <div className="flex flex-col items-center justify-center py-20 space-y-6">
+                                <div className="relative">
+                                    <div className="w-20 h-20 border-4 border-indigo-600/20 rounded-full animate-spin border-t-indigo-600" />
+                                    <BrainCircuit className="absolute inset-0 m-auto text-indigo-600 animate-pulse" size={32} />
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest">Consulting Academic Registry</p>
+                                    <p className="text-xs text-slate-400 mt-2 italic font-medium">Head Professor is analyzing today's vibrations...</p>
+                                </div>
+                            </div>
+                        ) : briefingData ? (
+                            <div className="space-y-10 animate-in fade-in zoom-in-95 duration-500">
+                                {/* SECTION 1: THE SUMMARY */}
+                                <div className="space-y-4">
+                                    <h4 className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <FileText size={14} /> Today's Focus
+                                    </h4>
+                                    <div className="p-6 bg-white dark:bg-card rounded-[2rem] border-2 border-slate-100 dark:border-border shadow-sm">
+                                        <p className="text-lg font-medium text-slate-700 dark:text-slate-300 leading-relaxed">
+                                            {briefingData.summary}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* SECTION 2: HOT TOPICS */}
+                                <div className="space-y-4">
+                                    <h4 className="text-[10px] font-black text-amber-600 uppercase tracking-[0.2em] flex items-center gap-2">
+                                        <Star size={14} fill="currentColor" /> Hottest Topics in the Hub
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        {briefingData.hotTopics.map((topic, i) => (
+                                            <div key={topic} className="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900 rounded-2xl flex items-center gap-3">
+                                                <span className="text-xl font-black text-amber-200">0{i+1}</span>
+                                                <p className="text-xs font-black text-amber-900 dark:text-amber-400 uppercase tracking-tight leading-tight">{topic}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* SECTION 3: PROF'S ADVICE */}
+                                <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-2xl">
+                                    <div className="absolute right-0 top-0 p-6 opacity-10 rotate-12">
+                                        <ShieldCheck size={120} />
+                                    </div>
+                                    <div className="relative z-10">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <div className="p-2 bg-amber-500 rounded-xl text-slate-950"><Bot size={18} /></div>
+                                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-amber-500">Prof's Daily Word</span>
+                                        </div>
+                                        <p className="text-lg font-black italic leading-relaxed text-indigo-50">
+                                            "{briefingData.profAdvice}"
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+
+                    <div className="p-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-border flex items-center justify-between">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.4em]">Official Liaison Academic Intel • GH 🇬🇭</p>
+                        <Button 
+                            onClick={() => setIsBriefingOpen(false)}
+                            className="bg-slate-900 text-white rounded-xl font-black text-xs px-8"
+                        >
+                            Understood
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
