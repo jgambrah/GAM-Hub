@@ -34,7 +34,7 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
   // The queue engine handles them all; no pre-filtering here
   React.useEffect(() => {
     if (posts.length > 0) addToQueue(posts);
-  }, [posts.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [posts.length, addToQueue]); // Added addToQueue to dependencies
 
   const hasActive = !!activePostId;
 
@@ -52,10 +52,10 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
       {/* ── Feed + sidebar ──────────────────────────────────────────────────── */}
       <div className="flex gap-6 items-start w-full">
 
-        {/* Post grid */}
+        {/* Post grid - Refined to 2 columns for a more premium look */}
         <div className={cn(
           'grid gap-6 transition-all duration-500 min-w-0',
-          !hasActive && 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 flex-1',
+          !hasActive && 'grid-cols-1 lg:grid-cols-2 flex-1',
           hasActive  && 'grid-cols-1 flex-1'
         )}>
           {posts.map(post => (
