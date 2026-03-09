@@ -91,6 +91,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   }, [isActiveVibe]);
 
   // ── Image/text countdown ticker ───────────────────────────────────────────
+  // Shows a visual countdown so the student knows when auto-advance fires.
   React.useEffect(() => {
     if (countdownRef.current) clearInterval(countdownRef.current);
 
@@ -162,6 +163,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
+  // Called by video players when they reach the end
   const handleEnd = () => {
     if (isContinuous) {
       toast({ title: 'Matching Next Vibe…', description: 'Liaison AI is keeping the Yard alive.' });
@@ -198,6 +200,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     playsinline: 1,
   }), [isActiveVibe]);
 
+  // ── Aspect ratio per media type ───────────────────────────────────────────
+  // Videos go cinematic when active; images keep square-ish; text has no media zone.
   const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
 
   return (
@@ -223,6 +227,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {/* Active controls bar */}
       {isActiveVibe && (
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
           {isContinuous && (
@@ -230,6 +235,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <FastForward size={10} fill="white" /> ACTIVE VIBE
             </div>
           )}
+          {/* Countdown badge for image/text auto-advance */}
           {countdown !== null && (
             <div className="flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white px-2.5 py-1.5 rounded-xl text-[10px] font-black tabular-nums">
               Next in {countdown}s
@@ -245,18 +251,21 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {/* ── Media zone — renders for image, youtube, tiktok, video ────────── */}
       {post.mediaType !== 'text' && (
         <div className={cn(
           'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
 
+          {/* IMAGE */}
           {post.mediaType === 'image' && post.imageUrl && (
             <Image src={post.imageUrl} alt="post" fill
               className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')}
             />
           )}
 
+          {/* YOUTUBE */}
           {post.mediaType === 'youtube' && youtubeId && (
             <div className="relative w-full h-full">
               {isRestricted ? (
@@ -287,14 +296,17 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </div>
           )}
 
+          {/* TIKTOK */}
           {post.mediaType === 'tiktok' && post.mediaUrl && (
             <div className="bg-black flex items-center justify-center h-full">
               <TikTokEmbed url={post.mediaUrl} />
             </div>
           )}
 
+          {/* NATIVE VIDEO */}
           {post.mediaType === 'video' && post.mediaUrl && (
             <div className="w-full h-full bg-black flex items-center justify-center">
+              {/* Poster until first activation */}
               {!reactPlayerMounted && !isActiveVibe && (
                 <div className="absolute inset-0 cursor-pointer group/poster" onClick={() => setActivePost(post)}>
                   {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover" />}
@@ -320,6 +332,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {/* ── Info zone ────────────────────────────────────────────────────────── */}
       <div className={cn(
         'flex flex-col transition-all duration-500',
         isActiveVibe ? 'p-8 md:flex-row md:items-start md:gap-8' : 'p-6'
@@ -336,6 +349,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               </p>
               <div className="flex items-center gap-2">
                 <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
+                {/* Media type badge — human readable label for ALL types */}
                 <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
                   <MediaIcon mediaType={post.mediaType} size={10} />
                   {getMediaLabel(post.mediaType)}
