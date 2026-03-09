@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import type { SocialPost } from '@/lib/types';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
@@ -23,7 +23,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [isContinuous, setIsContinuous] = useState(false);
   const { user } = useAuth();
 
-  const setActivePost = async (post: SocialPost | null) => {
+  const setActivePost = useCallback(async (post: SocialPost | null) => {
     if (!post) {
       setActivePostId(null);
       return;
@@ -57,13 +57,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       } catch (err) {
         console.error("Liaison Matcher Error:", err);
         // Fallback: move selected post to front of existing queue
-        const rest = queue.filter(p => p.id !== post.id);
-        setQueue([post, ...rest]);
+        setQueue(prev => {
+            const rest = prev.filter(p => p.id !== post.id);
+            return [post, ...rest];
+        });
       }
     }
-  };
+  }, [isContinuous, queue, user?.interests]);
 
-  const playNext = () => {
+  const playNext = useCallback(() => {
     if (queue.length <= 1) return;
     
     // Find current index
@@ -73,18 +75,22 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const nextPost = queue[nextIndex];
     if (nextPost) {
       setActivePostId(nextPost.id);
-      // Auto-scroll logic could go here if needed
     }
-  };
+  }, [activePostId, queue]);
 
-  const addToQueue = (posts: SocialPost[]) => {
+  const addToQueue = useCallback((posts: SocialPost[]) => {
     // Only add unique posts
     setQueue(prev => {
       const existingIds = new Set(prev.map(p => p.id));
-      const newPosts = posts.filter(p => !existingIds.has(p.id) && (p.mediaType === 'youtube' || p.mediaType === 'tiktok' || p.mediaType === 'video'));
+      const newPosts = posts.filter(p => 
+        !existingIds.has(p.id) && 
+        (p.mediaType === 'youtube' || p.mediaType === 'tiktok' || p.mediaType === 'video')
+      );
+      
+      if (newPosts.length === 0) return prev; // Prevent unnecessary state updates
       return [...prev, ...newPosts];
     });
-  };
+  }, []);
 
   return (
     <VibePlayerContext.Provider

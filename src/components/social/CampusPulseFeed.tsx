@@ -105,8 +105,11 @@ export default function CampusPulseFeed({
 
     // Sync feed posts with Vibe Player Queue
     useEffect(() => {
-        if (filteredPosts.length > 0) {
-            addToQueue(filteredPosts);
+        if (filteredPosts && filteredPosts.length > 0) {
+            const videoPosts = filteredPosts.filter(p => p.mediaType === 'youtube' || p.mediaType === 'tiktok' || p.mediaType === 'video');
+            if (videoPosts.length > 0) {
+                addToQueue(videoPosts);
+            }
         }
     }, [filteredPosts, addToQueue]);
 
