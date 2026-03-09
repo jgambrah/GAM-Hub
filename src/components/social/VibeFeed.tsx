@@ -1,84 +1,81 @@
 'use client';
 
-import React, { useMemo } from 'react';
+/**
+ * VibeFeed
+ * --------
+ * The main campus feed shell. Composes:
+ *   - VibeMoodBar    — mood filter strip
+ *   - VibeHistoryPanel — recently played dropdown
+ *   - Post grid      — SocialPostCards with expand-in-place active state
+ *   - UpNextPanel    — smart queue sidebar (slides in when something plays)
+ *
+ * Usage:
+ *   <VibeFeed posts={posts} />
+ */
+
+import React from 'react';
 import type { SocialPost } from '@/lib/types';
 import SocialPostCard from './social-post-card';
-import { useVibePlayer } from './VibePlayerContext';
+import UpNextPanel from './UpNextPanel';
 import VibeMoodBar from './VibeMoodBar';
 import VibeHistoryPanel from './VibeHistoryPanel';
+import { useVibePlayer } from './VibePlayerContext';
 import { cn } from '@/lib/utils';
-import { Sparkles } from 'lucide-react';
 
 interface VibeFeedProps {
   posts: SocialPost[];
-  searchQuery?: string;
   className?: string;
 }
 
-export default function VibeFeed({ posts, searchQuery, className }: VibeFeedProps) {
-  const { activePostId, addToQueue, activeMood } = useVibePlayer();
+export default function VibeFeed({ posts, className }: VibeFeedProps) {
+  const { activePostId, addToQueue } = useVibePlayer();
 
+  // Register ALL posts — text, image, video, youtube, tiktok
+  // The queue engine handles them all; no pre-filtering here
   React.useEffect(() => {
-    // Add ALL posts to queue regardless of media type
     if (posts.length > 0) addToQueue(posts);
-  }, [posts, addToQueue]);
+  }, [posts.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isSearchActive = !!searchQuery && searchQuery.trim().length > 0;
-  
-  const { projectedPost, gridPosts } = useMemo(() => {
-    if (isSearchActive || !activePostId) {
-      return { projectedPost: null, gridPosts: posts };
-    }
-    
-    const active = posts.find(p => p.id === activePostId);
-    if (!active) return { projectedPost: null, gridPosts: posts };
-
-    const others = posts.filter(p => p.id !== activePostId);
-    return { projectedPost: active, gridPosts: others };
-  }, [posts, activePostId, isSearchActive]);
+  const hasActive = !!activePostId;
 
   return (
-    <div className={cn('w-full space-y-8', className)}>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
-        <VibeMoodBar />
+    <div className={cn('flex flex-col gap-5 w-full', className)}>
+
+      {/* ── Toolbar: mood bar + history button ─────────────────────────────── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <VibeMoodBar />
+        </div>
         <VibeHistoryPanel />
       </div>
 
-      {projectedPost && (
-        <div className="animate-in fade-in slide-in-from-top-4 duration-700">
-          <SocialPostCard post={projectedPost} />
-          
-          <div className="mt-12 mb-6 px-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/10 rounded-xl">
-                  <Sparkles size={16} className="text-blue-500" />
-                </div>
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-                  {activeMood === 'all' ? 'More in the Yard' : `Discover more ${activeMood} vibes`}
-                </h4>
-              </div>
-              <div className="h-[1px] flex-1 bg-slate-100 dark:bg-slate-800 mx-6" />
+      {/* ── Feed + sidebar ──────────────────────────────────────────────────── */}
+      <div className="flex gap-6 items-start w-full">
+
+        {/* Post grid */}
+        <div className={cn(
+          'grid gap-6 transition-all duration-500 min-w-0',
+          !hasActive && 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 flex-1',
+          hasActive  && 'grid-cols-1 flex-1'
+        )}>
+          {posts.map(post => (
+            <SocialPostCard key={post.id} post={post} />
+          ))}
+        </div>
+
+        {/* Up Next sidebar */}
+        <div className={cn(
+          'flex-shrink-0 transition-all duration-500 overflow-hidden',
+          hasActive
+            ? 'w-80 opacity-100 translate-x-0'
+            : 'w-0 opacity-0 translate-x-4 pointer-events-none'
+        )}>
+          <div className="sticky top-6">
+            <UpNextPanel />
           </div>
         </div>
-      )}
 
-      <div className={cn(
-        "grid gap-6 transition-all duration-500",
-        isSearchActive 
-          ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" 
-          : "grid-cols-1 sm:grid-cols-2"
-      )}>
-        {gridPosts.map(post => (
-          <SocialPostCard key={post.id} post={post} />
-        ))}
       </div>
-
-      {posts.length === 0 && (
-        <div className="py-32 text-center bg-white dark:bg-card rounded-[3rem] border-4 border-dashed border-slate-50 dark:border-slate-800">
-          <p className="text-slate-300 font-black uppercase tracking-[0.4em] text-xs">The Yard is Silent</p>
-          <p className="text-xs text-slate-400 mt-2 italic">No vibes matching your search or mood were found.</p>
-        </div>
-      )}
     </div>
   );
 }
