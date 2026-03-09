@@ -29,6 +29,10 @@ export interface ReactionBurst {
 }
 
 // ─── SIMILARITY ENGINE ────────────────────────────────────────────────────────
+/**
+ * computeVibeScore
+ * Calculates relevance based on metadata and active mood.
+ */
 function computeVibeScore(current: SocialPost, candidate: SocialPost, mood: VibeMood): number {
   let score = 0;
 
@@ -37,19 +41,23 @@ function computeVibeScore(current: SocialPost, candidate: SocialPost, mood: Vibe
   const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
   score += sharedTags.length * 10;
 
-  // 2. Mood Boost (30 pts)
+  // 2. Mood Boost (30 pts) - The "Significance" of clicking a Mood
   if (mood !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === mood)!;
     const moodTagSet = new Set(moodDef.tags);
+    // If post contains any tag matching the mood category, give it a big boost
     if ((candidate.tags || []).some(t => moodTagSet.has(t.toLowerCase()))) {
       score += 30;
     }
   }
 
+  // 3. Metadata consistency
   if (candidate.mediaType === current.mediaType) score += 15;
   if (candidate.campusId === current.campusId) score += 10;
   else if (candidate.campusId === 'all' || current.campusId === 'all') score += 5;
   if (candidate.authorId === current.authorId) score += 8;
+  
+  // 4. Momentum
   score += Math.min((candidate.likes || 0) / 5, 12);
 
   return score;
@@ -70,6 +78,7 @@ function buildSmartQueue(current: SocialPost, pool: SocialPost[], mood: VibeMood
 function buildReason(current: SocialPost, candidate: SocialPost, mood: VibeMood): string {
   const parts: string[] = [];
   
+  // Explain the Mood relevance if matched
   if (mood !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === mood)!;
     const moodTagSet = new Set(moodDef.tags);
