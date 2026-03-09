@@ -2,9 +2,9 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { useVibePlayer, type QueueEntry } from './VibePlayerContext';
+import { useVibePlayer, type QueueEntry, getMediaLabel } from './VibePlayerContext';
 import { cn } from '@/lib/utils';
-import { Youtube, Video, Zap, ListVideo, Loader2, ChevronRight } from 'lucide-react';
+import { Youtube, Video, Zap, ListVideo, Loader2, ChevronRight, Image as ImageIcon, FileText } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export default function UpNextPanel() {
@@ -22,7 +22,6 @@ export default function UpNextPanel() {
 
   return (
     <div className="w-full flex flex-col gap-3 max-h-[calc(100vh-3rem)] overflow-y-auto scrollbar-none pb-6">
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-1 sticky top-0 bg-background/80 backdrop-blur-sm py-2 z-10">
         <div className="flex items-center gap-2">
           <ListVideo size={16} className="text-blue-500" />
@@ -51,7 +50,6 @@ export default function UpNextPanel() {
         </button>
       </div>
 
-      {/* ── Mood Badge ─────────────────────────────────────────────────────── */}
       {activeMood !== 'all' && (
         <div className="bg-slate-900 text-white rounded-2xl px-4 py-2 flex items-center gap-2 animate-in slide-in-from-top-2 mx-1">
           <span className="text-xs">✨</span>
@@ -61,22 +59,22 @@ export default function UpNextPanel() {
         </div>
       )}
 
-      {/* ── Now Playing pill ───────────────────────────────────────────────── */}
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl px-4 py-2.5 flex items-center gap-2 mx-1">
         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 flex-shrink-0">
-          Now Playing
-        </span>
-        <span className="text-[10px] text-foreground/70 truncate flex-1">
-          {activePost.content}
-        </span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-[8px] font-black uppercase tracking-widest text-blue-500">
+            Playing {getMediaLabel(activePost.mediaType)}
+          </span>
+          <span className="text-[10px] text-foreground/70 truncate font-medium">
+            {activePost.content}
+          </span>
+        </div>
       </div>
 
-      {/* ── Queue list ─────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-1">
         {upNext.length === 0 && !isLoadingQueue ? (
           <div className="text-center py-8 text-muted-foreground text-xs italic">
-            No similar vibes found yet — keep scrolling!
+            No more vibes found in the Yard.
           </div>
         ) : (
           upNext.map((entry, i) => (
@@ -111,19 +109,25 @@ function UpNextCard({
   onSelect: () => void;
 }) {
   const { post, reason } = entry;
-  const isYoutube = post.mediaType === 'youtube';
+  const mediaLabel = getMediaLabel(post.mediaType);
 
   return (
     <button
       onClick={onSelect}
       className="group w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-muted/60 active:scale-[0.98] transition-all text-left"
     >
-      <div className="relative w-24 h-[54px] rounded-xl overflow-hidden bg-slate-800 flex-shrink-0 shadow-sm">
+      <div className="relative w-24 h-[54px] rounded-xl overflow-hidden bg-slate-800 flex-shrink-0 shadow-sm border border-border/50">
         {post.imageUrl ? (
           <Image src={post.imageUrl} alt="" fill className="object-cover" />
+        ) : post.mediaType === 'text' ? (
+          <div className="absolute inset-0 p-2 bg-slate-900 text-white flex flex-col justify-center overflow-hidden">
+            <p className="text-[6px] font-bold leading-tight opacity-60 line-clamp-4">
+              {post.content}
+            </p>
+          </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-slate-500">
-            {isYoutube ? <Youtube size={18} className="text-red-500/60" /> : <Video size={18} />}
+            {post.mediaType === 'youtube' ? <Youtube size={18} className="text-red-500/60" /> : <Video size={18} />}
           </div>
         )}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
@@ -132,8 +136,13 @@ function UpNextCard({
             className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-md"
           />
         </div>
-        <div className="absolute bottom-1 left-1.5 bg-black/70 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md">
-          {position}
+        <div className="absolute bottom-1 left-1.5 flex gap-1 items-center">
+          <div className="bg-black/70 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md">
+            {position}
+          </div>
+          <div className="bg-blue-600/80 text-white text-[6px] font-black px-1 py-0.5 rounded-md uppercase tracking-tighter">
+            {mediaLabel}
+          </div>
         </div>
       </div>
 
@@ -144,7 +153,7 @@ function UpNextCard({
         <div className="flex items-center gap-1.5 mb-1">
           <Avatar className="w-4 h-4">
             <AvatarImage src={post.authorAvatarUrl || ''} />
-            <AvatarFallback className="text-[8px]">{post.authorName?.charAt(0)}</AvatarFallback>
+            <AvatarFallback className="text-[8px] font-black">{post.authorName?.charAt(0)}</AvatarFallback>
           </Avatar>
           <span className="text-[9px] text-muted-foreground truncate">{post.authorName}</span>
         </div>

@@ -30,7 +30,6 @@ const getYouTubeId = (url: string) => {
   return match && match[2].length === 11 ? match[2] : null;
 };
 
-// Media type icon — used in badges and mini fallback thumbnails
 function MediaIcon({ mediaType, size = 14 }: { mediaType: SocialPost['mediaType']; size?: number }) {
   if (mediaType === 'youtube') return <Youtube size={size} className="text-red-500" />;
   if (mediaType === 'tiktok')  return <Video size={size} className="text-pink-400" />;
@@ -51,18 +50,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
 
-  // YouTube refs
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
   const [ytMuted, setYtMuted] = React.useState(false);
-
-  // ReactPlayer — keep real player mounted once activated
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
-
-  // Image/text countdown display (shows remaining seconds)
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-
   const cardRef = React.useRef<HTMLDivElement>(null);
 
   const isAuthor = user?.id === post.authorId;
@@ -71,39 +64,32 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
-  // ── Register ALL post types into global pool on mount ─────────────────────
   React.useEffect(() => {
     addToQueue([post]);
-  }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [post.id, addToQueue, post]);
 
-  // ── Mount real ReactPlayer when first activated ───────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && post.mediaType === 'video') {
       setReactPlayerMounted(true);
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // ── Scroll into view when activated ──────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
 
-  // ── Image/text countdown ticker ───────────────────────────────────────────
-  // Shows a visual countdown so the student knows when auto-advance fires.
   React.useEffect(() => {
     if (countdownRef.current) clearInterval(countdownRef.current);
 
     if (isActiveVibe && isContinuous && mediaCategory !== 'video') {
-      const totalSecs = DISPLAY_DURATIONS[mediaCategory as keyof typeof DISPLAY_DURATIONS] / 1000;
+      const totalSecs = DISPLAY_DURATIONS[mediaCategory] / 1000;
       setCountdown(totalSecs);
       countdownRef.current = setInterval(() => {
         setCountdown(prev => {
           if (prev === null || prev <= 1) {
             if (countdownRef.current) clearInterval(countdownRef.current);
-            // Programmatically advance to the next vibe after delay
-            playNext();
             return null;
           }
           return prev - 1;
@@ -114,9 +100,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
 
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-  }, [isActiveVibe, isContinuous, mediaCategory, playNext]);
+  }, [isActiveVibe, isContinuous, mediaCategory]);
 
-  // ── YouTube pause when another card becomes active ───────────────────────
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (!isActiveVibe && ytReadyRef.current && ytPlayerRef.current) {
@@ -124,7 +109,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // Firebase like state
   React.useEffect(() => {
     if (!user || !firestore) return;
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
@@ -165,7 +149,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  // Called by video players when they reach the end
   const handleEnd = () => {
     if (isContinuous) {
       toast({ title: 'Matching Next Vibe…', description: 'Liaison AI is keeping the Yard alive.' });
@@ -176,12 +159,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const onYoutubeReady = (event: any) => {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
-    if (isActiveVibe) {
-      try {
-        event.target.unMute();
-        event.target.setVolume(100);
-      } catch (_) {}
-    }
   };
 
   const onYoutubePlay = () => {
@@ -208,7 +185,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     playsinline: 1,
   }), [isActiveVibe]);
 
-  // ── Aspect ratio per media type ───────────────────────────────────────────
   const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
 
   return (
@@ -229,7 +205,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       {isGlobalSeed && (
         <div className="absolute top-4 left-4 z-20 animate-in zoom-in duration-500">
           <div className="bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1 border-2 border-white dark:border-slate-950">
-            <Globe size={10} /> Global Vibe
+            <Globe size(10) /> Global Vibe
           </div>
         </div>
       )}
@@ -238,7 +214,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
           {isContinuous && (
             <div className="flex items-center gap-1 bg-blue-500 text-white px-2.5 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest animate-pulse shadow-lg">
-              <FastForward size={10} fill="white" /> ACTIVE VIBE
+              <FastForward size(10) fill="white" /> ACTIVE VIBE
             </div>
           )}
           {countdown !== null && (
@@ -251,7 +227,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             className="p-2 bg-black/60 backdrop-blur-sm text-white rounded-xl hover:bg-black/80 transition-all active:scale-95"
             title="Collapse"
           >
-            <Minimize2 size={14} />
+            <Minimize2 size(14) />
           </button>
         </div>
       )}
@@ -261,7 +237,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
-
           {post.mediaType === 'image' && post.imageUrl && (
             <Image src={post.imageUrl} alt="post" fill
               className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')}
@@ -272,7 +247,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             <div className="relative w-full h-full">
               {isRestricted ? (
                 <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
-                  <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                  <AlertTriangle className="text-amber-500 mb-4" size(48) />
                   <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
                   <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">
                     Playback restricted inside other apps. Visit YouTube to see the full vibe.
@@ -280,7 +255,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer"
                     className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
                   >
-                    <Youtube size={14} fill="white" /> Open on YouTube
+                    <Youtube size(14) fill="white" /> Open on YouTube
                   </a>
                 </div>
               ) : (
@@ -311,7 +286,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover" />}
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                     <div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
-                      <Play size={32} fill="white" />
+                      <Play size(32) fill="white" />
                     </div>
                   </div>
                 </div>
@@ -322,7 +297,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   playing={isActiveVibe}
                   playsinline
                   onStart={() => setActivePost(post)}
-                  onEnded={handleEnd}
+                  onEnd={handleEnd}
                   config={{ file: { attributes: { playsInline: true, preload: 'auto' } } }}
                 />
               )}
@@ -348,7 +323,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <div className="flex items-center gap-2">
                 <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
                 <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                  <MediaIcon mediaType={post.mediaType} size={10} />
+                  <MediaIcon mediaType={post.mediaType} size(10) />
                   {getMediaLabel(post.mediaType)}
                 </span>
               </div>
@@ -357,7 +332,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <button type="button" onClick={handleDeletePost}
                 className="ml-auto p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
               >
-                <Trash2 size={16} />
+                <Trash2 size(16) />
               </button>
             )}
           </div>
@@ -398,7 +373,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <button type="button" onClick={handleDeletePost}
                 className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
               >
-                <Trash2 size={16} />
+                <Trash2 size(16) />
               </button>
             )}
             <button className={cn('bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90', isActiveVibe ? 'p-3' : 'p-2')}>

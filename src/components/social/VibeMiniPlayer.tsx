@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { useVibePlayer, VIBE_MOODS } from './VibePlayerContext';
+import { useVibePlayer, VIBE_MOODS, getMediaCategory } from './VibePlayerContext';
 import { cn } from '@/lib/utils';
 import {
   Play, Pause, SkipBack, SkipForward, X,
@@ -52,6 +52,7 @@ export default function VibeMiniPlayer() {
 
   const shouldShow = isMiniPlayerVisible && !isCardVisible && !isDismissed && !!activePost;
   const moodDef = VIBE_MOODS.find(m => m.id === activeMood);
+  const mediaCat = activePost ? getMediaCategory(activePost.mediaType) : 'text';
 
   const scrollToActive = () => {
     const el = document.querySelector(`[data-post-id="${activePostId}"]`);
@@ -71,13 +72,17 @@ export default function VibeMiniPlayer() {
     >
       <div className="bg-card/95 backdrop-blur-xl border border-border rounded-[2rem] shadow-2xl shadow-black/20 overflow-hidden">
         <div className="h-0.5 bg-muted overflow-hidden">
-          <div
-            className={cn(
-              'h-full bg-blue-500 transition-all duration-1000',
-              isPlaying && 'animate-[progressPulse_3s_ease-in-out_infinite]'
-            )}
-            style={{ width: '45%' }}
-          />
+          {mediaCat === 'video' ? (
+            <div
+              className={cn(
+                'h-full bg-blue-500 transition-all duration-1000',
+                isPlaying && 'animate-[progressPulse_3s_ease-in-out_infinite]'
+              )}
+              style={{ width: '45%' }}
+            />
+          ) : (
+            <div className="h-full bg-blue-500/30 w-full" />
+          )}
         </div>
 
         <div className="flex items-center gap-4 px-5 py-3">
@@ -87,6 +92,12 @@ export default function VibeMiniPlayer() {
           >
             {activePost.imageUrl ? (
               <Image src={activePost.imageUrl} alt="" fill className="object-cover" />
+            ) : activePost.mediaType === 'text' ? (
+              <div className="absolute inset-0 p-1 bg-slate-900 text-white flex flex-col justify-center overflow-hidden">
+                <p className="text-[4px] leading-tight font-black opacity-60">
+                  {activePost.content.substring(0, 40)}
+                </p>
+              </div>
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 {activePost.mediaType === 'youtube'
@@ -110,7 +121,7 @@ export default function VibeMiniPlayer() {
             <div className="flex items-center gap-1.5 mt-0.5">
               <Avatar className="w-4 h-4">
                 <AvatarImage src={activePost.authorAvatarUrl} />
-                <AvatarFallback className="text-[7px]">{activePost.authorName?.charAt(0)}</AvatarFallback>
+                <AvatarFallback className="text-[7px] font-black">{activePost.authorName?.charAt(0)}</AvatarFallback>
               </Avatar>
               <span className="text-[10px] text-muted-foreground truncate">{activePost.authorName}</span>
               {moodDef && moodDef.id !== 'all' && (
@@ -126,12 +137,14 @@ export default function VibeMiniPlayer() {
               <SkipBack size={16} />
             </button>
 
-            <button
-              onClick={() => setIsPlaying(p => !p)}
-              className="w-10 h-10 flex items-center justify-center bg-foreground text-background rounded-2xl shadow-md hover:scale-105 active:scale-95 transition-all"
-            >
-              {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-            </button>
+            {mediaCat === 'video' && (
+              <button
+                onClick={() => setIsPlaying(p => !p)}
+                className="w-10 h-10 flex items-center justify-center bg-foreground text-background rounded-2xl shadow-md hover:scale-105 active:scale-95 transition-all"
+              >
+                {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+              </button>
+            )}
 
             <button onClick={playNext} className="w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-all">
               <SkipForward size={16} />

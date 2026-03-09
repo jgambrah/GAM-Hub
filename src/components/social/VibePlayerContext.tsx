@@ -5,6 +5,34 @@ import type { SocialPost } from '@/lib/types';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
 
+// ─── MEDIA TYPE HELPERS ───────────────────────────────────────────────────────
+export type MediaCategory = 'video' | 'image' | 'text';
+
+export function getMediaCategory(mediaType: SocialPost['mediaType']): MediaCategory {
+  if (mediaType === 'youtube' || mediaType === 'video' || mediaType === 'tiktok') return 'video';
+  if (mediaType === 'image') return 'image';
+  return 'text';
+}
+
+// Human-readable label for display in UI chips
+export function getMediaLabel(mediaType: SocialPost['mediaType']): string {
+  const map: Record<string, string> = {
+    youtube: 'YouTube',
+    video: 'Video',
+    tiktok: 'TikTok',
+    image: 'Photo',
+    text: 'Post',
+  };
+  return map[mediaType || 'text'] ?? 'Vibe';
+}
+
+// Auto-advance duration (ms) for non-video posts in continuous mode
+export const DISPLAY_DURATIONS: Record<MediaCategory, number> = {
+  video: 0,      // driven by onEnd event — no timer needed
+  image: 8000,   // 8 seconds
+  text: 6000,    // 6 seconds
+};
+
 // ─── MOOD SYSTEM ──────────────────────────────────────────────────────────────
 export type VibeMood = 'all' | 'hype' | 'chill' | 'study' | 'flex';
 
@@ -16,64 +44,50 @@ export const VIBE_MOODS: { id: VibeMood; label: string; emoji: string; tags: str
   { id: 'flex',  label: 'Flex',      emoji: '💎', tags: ['flex', 'drip', 'swag', 'bars', 'rap', 'afrotrap', 'drill'] },
 ];
 
-// ─── MEDIA CATEGORIES & DURATIONS ─────────────────────────────────────────────
-export type MediaCategory = 'video' | 'image' | 'text';
-
-export const DISPLAY_DURATIONS = {
-  video: 0, // videos play until they end
-  image: 6000, // 6 seconds for images
-  text: 8000,  // 8 seconds for text posts
-};
-
-export function getMediaCategory(type?: SocialPost['mediaType']): MediaCategory {
-  if (type === 'video' || type === 'youtube' || type === 'tiktok') return 'video';
-  if (type === 'image') return 'image';
-  return 'text';
-}
-
-export function getMediaLabel(type?: SocialPost['mediaType']): string {
-  if (type === 'youtube') return 'YouTube';
-  if (type === 'tiktok') return 'TikTok';
-  if (type === 'video') return 'Vlog';
-  if (type === 'image') return 'Photo';
-  return 'Vibe';
-}
-
 // ─── REACTION SYSTEM ──────────────────────────────────────────────────────────
 export type VibeReaction = '🔥' | '🌊' | '💎' | '👑' | '⚡';
-
 export const REACTIONS: VibeReaction[] = ['🔥', '🌊', '💎', '👑', '⚡'];
 
 export interface ReactionBurst {
   id: string;
   emoji: VibeReaction;
-  x: number;   // 0-100 % from left
-  y: number;   // 0-100 % from top
+  x: number;
+  y: number;
 }
 
 // ─── SIMILARITY ENGINE ────────────────────────────────────────────────────────
-function computeVibeScore(current: SocialPost, candidate: SocialPost, mood: VibeMood): number {
+function computeVibeScore(current: SocialPost, candidate: SocialPost): number {
   let score = 0;
 
-  // 1. Tag overlap (up to 50 pts)
+  // 1. Tag overlap — strongest signal (10 pts per shared tag)
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
   score += sharedTags.length * 10;
 
-  // 2. Mood Boost (30 pts)
-  if (mood !== 'all') {
-    const moodDef = VIBE_MOODS.find(m => m.id === mood)!;
-    const moodTagSet = new Set(moodDef.tags);
-    if ((candidate.tags || []).some(t => moodTagSet.has(t.toLowerCase()))) {
-      score += 30;
-    }
+  // 2. Same media category (video/image/text) — 8 pts
+  //    Same exact type (youtube/tiktok/video) — bonus 7 pts on top
+  const currentCat = getMediaCategory(current.mediaType);
+  const candidateCat = getMediaCategory(candidate.mediaType);
+  if (candidateCat === currentCat) {
+    score += 8;
+    if (candidate.mediaType === current.mediaType) score += 7;
   }
 
-  // 3. Media match (15 pts)
-  if (candidate.mediaType === current.mediaType) score += 15;
-
-  // 4. Same campus (10 pts)
+  // 3. Campus relevance
   if (candidate.campusId === current.campusId) score += 10;
+  else if (candidate.campusId === 'all' || current.campusId === 'all') score += 5;
+
+  // 4. Same creator
+  if (candidate.authorId === current.authorId) score += 8;
+
+  // 5. Engagement momentum
+  score += Math.min((candidate.likes || 0) / 5, 12);
+
+  // 6. Recency boost
+  if (candidate.createdAt) {
+    const ageDays = (Date.now() - new Date(candidate.createdAt).getTime()) / 86_400_000;
+    if (ageDays < 7) score += Math.max(0, 5 - ageDays);
+  }
 
   return score;
 }
@@ -81,29 +95,37 @@ function computeVibeScore(current: SocialPost, candidate: SocialPost, mood: Vibe
 function buildSmartQueue(current: SocialPost, pool: SocialPost[], mood: VibeMood): SocialPost[] {
   const candidates = pool.filter(p => p.id !== current.id);
 
-  return candidates
-    .map(p => ({ post: p, score: computeVibeScore(current, p, mood) }))
+  let sorted = candidates;
+  if (mood !== 'all') {
+    const moodTagSet = new Set(VIBE_MOODS.find(m => m.id === mood)!.tags);
+    sorted = [...candidates].sort((a, b) => {
+      const aMatch = (a.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ? 1 : 0;
+      const bMatch = (b.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ? 1 : 0;
+      return bMatch - aMatch;
+    });
+  }
+
+  return sorted
+    .map(p => ({ post: p, score: computeVibeScore(current, p) }))
     .sort((a, b) => b.score - a.score)
     .map(s => s.post);
 }
 
-function buildReason(current: SocialPost, candidate: SocialPost, mood: VibeMood): string {
+function buildReason(current: SocialPost, candidate: SocialPost): string {
   const parts: string[] = [];
-  if (mood !== 'all') {
-    const moodDef = VIBE_MOODS.find(m => m.id === mood)!;
-    const moodTagSet = new Set(moodDef.tags);
-    if ((candidate.tags || []).some(t => moodTagSet.has(t.toLowerCase()))) {
-      parts.push(`${moodDef.emoji} ${moodDef.label} vibe`);
-    }
-  }
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const shared = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
+
   if (shared.length > 0) parts.push(`#${shared[0]}`);
+  if (candidate.campusId === current.campusId) parts.push('Same campus');
+  if (candidate.authorId === current.authorId) parts.push('Same creator');
+  if (getMediaCategory(candidate.mediaType) === getMediaCategory(current.mediaType) && parts.length < 2) {
+    parts.push(getMediaLabel(candidate.mediaType));
+  }
   if (parts.length === 0) parts.push('Trending on the Yard');
   return parts.slice(0, 2).join(' · ');
 }
 
-// ─── TYPES ────────────────────────────────────────────────────────────────────
 export interface QueueEntry {
   post: SocialPost;
   score: number;
@@ -150,19 +172,30 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
   const { user } = useAuth();
 
+  const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const queueRef = useRef<SocialPost[]>([]);
   const allPostsRef = useRef<SocialPost[]>([]);
   const activePostIdRef = useRef<string | null>(null);
+  const activePostRef = useRef<SocialPost | null>(null);
   const isContinuousRef = useRef(false);
   const activeMoodRef = useRef<VibeMood>('all');
 
   React.useEffect(() => { queueRef.current = queue; }, [queue]);
   React.useEffect(() => { allPostsRef.current = allPosts; }, [allPosts]);
   React.useEffect(() => { activePostIdRef.current = activePostId; }, [activePostId]);
+  React.useEffect(() => { activePostRef.current = activePost; }, [activePost]);
   React.useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
   React.useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
 
   const isMiniPlayerVisible = !!activePostId;
+
+  const clearDisplayTimer = useCallback(() => {
+    if (displayTimerRef.current) {
+      clearTimeout(displayTimerRef.current);
+      displayTimerRef.current = null;
+    }
+  }, []);
 
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
@@ -170,8 +203,8 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 10).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, mood),
-        reason: buildReason(current, p, mood),
+        score: computeVibeScore(current, p),
+        reason: buildReason(current, p),
       }));
 
     setQueue([current, ...localRanked]);
@@ -197,11 +230,39 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
     } catch (err) {
-      console.warn('AI matcher busy:', err);
+      console.warn('AI matcher unavailable:', err);
     }
   }, [user?.interests]);
 
+  const pushToHistory = useCallback((post: SocialPost) => {
+    setHistory(prev => {
+      const filtered = prev.filter(p => p.id !== post.id);
+      return [post, ...filtered].slice(0, HISTORY_MAX);
+    });
+  }, []);
+
+  const startDisplayTimer = useCallback((post: SocialPost) => {
+    clearDisplayTimer();
+    const cat = getMediaCategory(post.mediaType);
+    const duration = DISPLAY_DURATIONS[cat];
+    if (duration > 0 && isContinuousRef.current) {
+      displayTimerRef.current = setTimeout(() => {
+        const currentQueue = queueRef.current;
+        const currentId = activePostIdRef.current;
+        if (currentQueue.length <= 1) return;
+        const idx = currentQueue.findIndex(p => p.id === currentId);
+        const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
+        if (nextPost) {
+          setActivePostId(nextPost.id);
+          setActivePostState(nextPost);
+          pushToHistory(nextPost);
+        }
+      }, duration);
+    }
+  }, [clearDisplayTimer, pushToHistory]);
+
   const setActivePost = useCallback((post: SocialPost | null) => {
+    clearDisplayTimer();
     if (!post) {
       setActivePostId(null);
       setActivePostState(null);
@@ -209,13 +270,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     }
     setActivePostId(post.id);
     setActivePostState(post);
-    setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX));
+    pushToHistory(post);
     rebuildQueue(post, allPostsRef.current, activeMoodRef.current);
-  }, [rebuildQueue]);
+    startDisplayTimer(post);
+  }, [rebuildQueue, pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const setActiveMood = useCallback((mood: VibeMood) => {
     setActiveMoodState(mood);
-    const current = activePostIdRef.current ? allPostsRef.current.find(p => p.id === activePostIdRef.current) : null;
+    const current = activePostRef.current;
     if (current) rebuildQueue(current, allPostsRef.current, mood);
   }, [rebuildQueue]);
 
@@ -224,32 +286,54 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const currentId = activePostIdRef.current;
     if (currentQueue.length <= 1) return;
     const idx = currentQueue.findIndex(p => p.id === currentId);
-    const nextPost = currentQueue[(idx + 1) % currentQueue.length];
-    if (nextPost) setActivePost(nextPost);
-  }, [setActivePost]);
+    const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
+    if (nextPost) {
+      clearDisplayTimer();
+      setActivePostId(nextPost.id);
+      setActivePostState(nextPost);
+      pushToHistory(nextPost);
+      startDisplayTimer(nextPost);
+    }
+  }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const playPrev = useCallback(() => {
-    if (history.length < 2) return;
-    setActivePost(history[1]);
-  }, [history, setActivePost]);
+    setHistory(prev => {
+      if (prev.length < 2) return prev;
+      const prevPost = prev[1];
+      clearDisplayTimer();
+      setActivePostId(prevPost.id);
+      setActivePostState(prevPost);
+      rebuildQueue(prevPost, allPostsRef.current, activeMoodRef.current);
+      startDisplayTimer(prevPost);
+      return prev.slice(1);
+    });
+  }, [rebuildQueue, clearDisplayTimer, startDisplayTimer]);
 
   const addToQueue = useCallback((posts: SocialPost[]) => {
     setAllPosts(prev => {
       const existingIds = new Set(prev.map(p => p.id));
       const incoming = posts.filter(p => !existingIds.has(p.id));
-      return [...prev, ...incoming];
+      if (incoming.length === 0) return prev;
+      const merged = [...prev, ...incoming];
+      const currentPost = activePostRef.current;
+      if (currentPost && isContinuousRef.current) {
+        setTimeout(() => rebuildQueue(currentPost, merged, activeMoodRef.current), 0);
+      }
+      return merged;
     });
-  }, []);
+    setQueue(prev => {
+      if (prev.length > 0) return prev;
+      return [...posts];
+    });
+  }, [rebuildQueue]);
 
   const sendReaction = useCallback((emoji: VibeReaction) => {
     const postId = activePostIdRef.current;
     if (!postId) return;
-
     setReactionCounts(prev => {
       const postCounts = prev[postId] || { '🔥': 0, '🌊': 0, '💎': 0, '👑': 0, '⚡': 0 };
       return { ...prev, [postId]: { ...postCounts, [emoji]: postCounts[emoji] + 1 } };
     });
-
     const burst: ReactionBurst = {
       id: `${Date.now()}-${Math.random()}`,
       emoji,
@@ -257,12 +341,12 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       y: 20 + Math.random() * 60,
     };
     setReactionBursts(prev => [...prev, burst]);
-    setTimeout(() => {
-      setReactionBursts(prev => prev.filter(b => b.id !== burst.id));
-    }, 1200);
+    setTimeout(() => setReactionBursts(prev => prev.filter(b => b.id !== burst.id)), 1200);
   }, []);
 
   const clearHistory = useCallback(() => setHistory([]), []);
+
+  React.useEffect(() => () => clearDisplayTimer(), [clearDisplayTimer]);
 
   return (
     <VibePlayerContext.Provider value={{

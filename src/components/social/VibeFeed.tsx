@@ -19,11 +19,9 @@ export default function VibeFeed({ posts, searchQuery, className }: VibeFeedProp
   const { activePostId, addToQueue, activeMood } = useVibePlayer();
 
   React.useEffect(() => {
-    const mediaPosts = posts.filter(
-      p => p.mediaType === 'youtube' || p.mediaType === 'video' || p.mediaType === 'tiktok'
-    );
-    if (mediaPosts.length > 0) addToQueue(mediaPosts);
-  }, [posts.length, addToQueue]);
+    // Add ALL posts to queue regardless of media type
+    if (posts.length > 0) addToQueue(posts);
+  }, [posts, addToQueue]);
 
   const isSearchActive = !!searchQuery && searchQuery.trim().length > 0;
   
@@ -41,14 +39,11 @@ export default function VibeFeed({ posts, searchQuery, className }: VibeFeedProp
 
   return (
     <div className={cn('w-full space-y-8', className)}>
-      
-      {/* 🎭 MOOD & HISTORY BAR */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
         <VibeMoodBar />
         <VibeHistoryPanel />
       </div>
 
-      {/* 🎬 PROJECTED VIDEO (THEATER MODE) */}
       {projectedPost && (
         <div className="animate-in fade-in slide-in-from-top-4 duration-700">
           <SocialPostCard post={projectedPost} />
@@ -67,7 +62,6 @@ export default function VibeFeed({ posts, searchQuery, className }: VibeFeedProp
         </div>
       )}
 
-      {/* 📱 FEED GRID */}
       <div className={cn(
         "grid gap-6 transition-all duration-500",
         isSearchActive 
