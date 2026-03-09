@@ -74,7 +74,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   // ── Register ALL post types into global pool on mount ─────────────────────
   React.useEffect(() => {
     addToQueue([post]);
-  }, [post.id, addToQueue, post]);
+  }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Mount real ReactPlayer when first activated ───────────────────────────
   React.useEffect(() => {
