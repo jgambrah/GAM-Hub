@@ -16,6 +16,29 @@ export const VIBE_MOODS: { id: VibeMood; label: string; emoji: string; tags: str
   { id: 'flex',  label: 'Flex',      emoji: '💎', tags: ['flex', 'drip', 'swag', 'bars', 'rap', 'afrotrap', 'drill'] },
 ];
 
+// ─── MEDIA CATEGORIES & DURATIONS ─────────────────────────────────────────────
+export type MediaCategory = 'video' | 'image' | 'text';
+
+export const DISPLAY_DURATIONS = {
+  video: 0, // videos play until they end
+  image: 6000, // 6 seconds for images
+  text: 8000,  // 8 seconds for text posts
+};
+
+export function getMediaCategory(type?: SocialPost['mediaType']): MediaCategory {
+  if (type === 'video' || type === 'youtube' || type === 'tiktok') return 'video';
+  if (type === 'image') return 'image';
+  return 'text';
+}
+
+export function getMediaLabel(type?: SocialPost['mediaType']): string {
+  if (type === 'youtube') return 'YouTube';
+  if (type === 'tiktok') return 'TikTok';
+  if (type === 'video') return 'Vlog';
+  if (type === 'image') return 'Photo';
+  return 'Vibe';
+}
+
 // ─── REACTION SYSTEM ──────────────────────────────────────────────────────────
 export type VibeReaction = '🔥' | '🌊' | '💎' | '👑' | '⚡';
 
@@ -37,7 +60,7 @@ function computeVibeScore(current: SocialPost, candidate: SocialPost, mood: Vibe
   const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
   score += sharedTags.length * 10;
 
-  // 2. Mood Boost (30 pts) - Added mood awareness to scoring
+  // 2. Mood Boost (30 pts)
   if (mood !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === mood)!;
     const moodTagSet = new Set(moodDef.tags);
@@ -46,7 +69,7 @@ function computeVibeScore(current: SocialPost, candidate: SocialPost, mood: Vibe
     }
   }
 
-  // 3. Same media type (15 pts)
+  // 3. Media match (15 pts)
   if (candidate.mediaType === current.mediaType) score += 15;
 
   // 4. Same campus (10 pts)
@@ -56,10 +79,7 @@ function computeVibeScore(current: SocialPost, candidate: SocialPost, mood: Vibe
 }
 
 function buildSmartQueue(current: SocialPost, pool: SocialPost[], mood: VibeMood): SocialPost[] {
-  const candidates = pool.filter(
-    p => p.id !== current.id &&
-      (p.mediaType === 'youtube' || p.mediaType === 'video' || p.mediaType === 'tiktok')
-  );
+  const candidates = pool.filter(p => p.id !== current.id);
 
   return candidates
     .map(p => ({ post: p, score: computeVibeScore(current, p, mood) }))

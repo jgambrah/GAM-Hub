@@ -6,7 +6,8 @@ import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play,
-  Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2
+  Video, Trash2, Globe, AlertTriangle, FastForward,
+  Minimize2, Image as ImageIcon, FileText
 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
@@ -19,7 +20,7 @@ import CommentSection from './CommentSection';
 import ReactPlayer from 'react-player';
 import YouTube from 'react-youtube';
 import { useToast } from '@/hooks/use-toast';
-import { useVibePlayer } from './VibePlayerContext';
+import { useVibePlayer, getMediaCategory, getMediaLabel, DISPLAY_DURATIONS } from './VibePlayerContext';
 import { VibeReactionBar } from './VibeReactions';
 
 const getYouTubeId = (url: string) => {
@@ -28,6 +29,15 @@ const getYouTubeId = (url: string) => {
   const match = url.match(regExp);
   return match && match[2].length === 11 ? match[2] : null;
 };
+
+// Media type icon — used in badges and mini fallback thumbnails
+function MediaIcon({ mediaType, size = 14 }: { mediaType: SocialPost['mediaType']; size?: number }) {
+  if (mediaType === 'youtube') return <Youtube size={size} className="text-red-500" />;
+  if (mediaType === 'tiktok')  return <Video size={size} className="text-pink-400" />;
+  if (mediaType === 'video')   return <Video size={size} className="text-blue-400" />;
+  if (mediaType === 'image')   return <ImageIcon size={size} className="text-green-400" />;
+  return <FileText size={size} className="text-slate-400" />;
+}
 
 export default function SocialPostCard({ post }: { post: SocialPost }) {
   const { user, isAdmin } = useAuth();
@@ -41,16 +51,17 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
 
-  // ── YouTube state ─────────────────────────────────────────────────────────
+  // YouTube refs
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
-  // Track whether this card was the active vibe when the YT player mounted.
   const [ytMuted, setYtMuted] = React.useState(false);
 
-  // ── ReactPlayer state ─────────────────────────────────────────────────────
-  // We keep the real player always mounted once the card has been activated
-  // at least once, so it's never unmounted mid-playback.
+  // ReactPlayer — keep real player mounted once activated
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
+
+  // Image/text countdown display (shows remaining seconds)
+  const [countdown, setCountdown] = React.useState<number | null>(null);
+  const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cardRef = React.useRef<HTMLDivElement>(null);
 
@@ -58,34 +69,58 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const canDelete = isAuthor || isAdmin;
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
+  const mediaCategory = getMediaCategory(post.mediaType);
 
-  // Mount the real ReactPlayer as soon as this card becomes active
+  // ── Register ALL post types into global pool on mount ─────────────────────
+  React.useEffect(() => {
+    addToQueue([post]);
+  }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Mount real ReactPlayer when first activated ───────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && post.mediaType === 'video') {
       setReactPlayerMounted(true);
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // Register into global matching pool
-  React.useEffect(() => {
-    if (post.mediaType === 'youtube' || post.mediaType === 'video' || post.mediaType === 'tiktok') {
-      addToQueue([post]);
-    }
-  }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Smooth scroll into view when this card becomes active
+  // ── Scroll into view when activated ──────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
 
-  // ── YouTube programmatic play/pause ──────────────────────────────────────
-  // Pause logic (pausing is always permitted)
+  // ── Image/text countdown ticker ───────────────────────────────────────────
+  // Shows a visual countdown so the student knows when auto-advance fires.
+  React.useEffect(() => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+
+    if (isActiveVibe && isContinuous && mediaCategory !== 'video') {
+      const totalSecs = DISPLAY_DURATIONS[mediaCategory as keyof typeof DISPLAY_DURATIONS] / 1000;
+      setCountdown(totalSecs);
+      countdownRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            if (countdownRef.current) clearInterval(countdownRef.current);
+            // Programmatically advance to the next vibe after delay
+            playNext();
+            return null;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      setCountdown(null);
+    }
+
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
+  }, [isActiveVibe, isContinuous, mediaCategory, playNext]);
+
+  // ── YouTube pause when another card becomes active ───────────────────────
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (!isActiveVibe && ytReadyRef.current && ytPlayerRef.current) {
-      try { ytPlayerRef.current.pauseVideo(); } catch (_) { /* ignore */ }
+      try { ytPlayerRef.current.pauseVideo(); } catch (_) { }
     }
   }, [isActiveVibe, post.mediaType]);
 
@@ -130,6 +165,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
+  // Called by video players when they reach the end
   const handleEnd = () => {
     if (isContinuous) {
       toast({ title: 'Matching Next Vibe…', description: 'Liaison AI is keeping the Yard alive.' });
@@ -137,11 +173,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  // ── YouTube ready and play handshake ────────────────────────────────────
   const onYoutubeReady = (event: any) => {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
-    // Immediate unmute attempt on ready if active
     if (isActiveVibe) {
       try {
         event.target.unMute();
@@ -150,37 +184,32 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  const onYoutubePlay = (event: any) => {
+  const onYoutubePlay = () => {
     setActivePost(post);
-    // Programmatic unmute when playback actually starts
-    if (ytPlayerRef.current) {
+    if (ytMuted && ytPlayerRef.current) {
       try {
         ytPlayerRef.current.unMute();
         ytPlayerRef.current.setVolume(100);
         setYtMuted(false);
-      } catch (_) { /* ignore */ }
+      } catch (_) { }
     }
   };
 
-  const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
+  React.useEffect(() => {
+    if (isActiveVibe && post.mediaType === 'youtube') setYtMuted(true);
+  }, [isActiveVibe, post.mediaType]);
 
-  // ── YouTube playerVars ────────────────────────────────────────────────────
-  // mute: 1 is the magic key for autoplay reliability across browsers
+  const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
+  const ytKey = `${post.id}-${isActiveVibe ? 'active' : 'idle'}`;
   const ytPlayerVars = React.useMemo(() => ({
-    rel: 0,
-    modestbranding: 1,
+    rel: 0, modestbranding: 1,
     autoplay: isActiveVibe ? 1 : 0,
     mute: isActiveVibe ? 1 : 0,
     playsinline: 1,
   }), [isActiveVibe]);
 
-  const ytKey = `${post.id}-${isActiveVibe ? 'active' : 'idle'}`;
-
-  React.useEffect(() => {
-    if (isActiveVibe && post.mediaType === 'youtube') {
-      setYtMuted(true); 
-    }
-  }, [isActiveVibe, post.mediaType]);
+  // ── Aspect ratio per media type ───────────────────────────────────────────
+  const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
 
   return (
     <div
@@ -212,6 +241,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <FastForward size={10} fill="white" /> ACTIVE VIBE
             </div>
           )}
+          {countdown !== null && (
+            <div className="flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white px-2.5 py-1.5 rounded-xl text-[10px] font-black tabular-nums">
+              Next in {countdown}s
+            </div>
+          )}
           <button
             onClick={() => setActivePost(null)}
             className="p-2 bg-black/60 backdrop-blur-sm text-white rounded-xl hover:bg-black/80 transition-all active:scale-95"
@@ -222,11 +256,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* ── Media zone ───────────────────────────────────────────────────────── */}
       {post.mediaType !== 'text' && (
         <div className={cn(
           'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
-          isActiveVibe ? 'aspect-video md:aspect-[21/9]' : 'aspect-video group/media'
+          isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
 
           {post.mediaType === 'image' && post.imageUrl && (
@@ -254,11 +287,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 <YouTube
                   key={ytKey}
                   videoId={youtubeId}
-                  opts={{
-                    width: '100%',
-                    height: '100%',
-                    playerVars: ytPlayerVars,
-                  }}
+                  opts={{ width: '100%', height: '100%', playerVars: ytPlayerVars }}
                   className="w-full h-full"
                   onReady={onYoutubeReady}
                   onPlay={onYoutubePlay}
@@ -278,13 +307,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           {post.mediaType === 'video' && post.mediaUrl && (
             <div className="w-full h-full bg-black flex items-center justify-center">
               {!reactPlayerMounted && !isActiveVibe && (
-                <div
-                  className="absolute inset-0 cursor-pointer group/poster"
-                  onClick={() => setActivePost(post)}
-                >
-                  {post.imageUrl && (
-                    <Image src={post.imageUrl} alt="" fill className="object-cover" />
-                  )}
+                <div className="absolute inset-0 cursor-pointer group/poster" onClick={() => setActivePost(post)}>
+                  {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover" />}
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                     <div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
                       <Play size={32} fill="white" />
@@ -292,26 +316,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   </div>
                 </div>
               )}
-
               {(reactPlayerMounted || isActiveVibe) && (
                 <ReactPlayer
-                  url={post.mediaUrl}
-                  controls
-                  width="100%"
-                  height="100%"
+                  url={post.mediaUrl} controls width="100%" height="100%"
                   playing={isActiveVibe}
-                  muted={false}
                   playsinline
                   onStart={() => setActivePost(post)}
                   onEnded={handleEnd}
-                  config={{
-                    file: {
-                      attributes: {
-                        playsInline: true,
-                        preload: 'auto',
-                      },
-                    },
-                  }}
+                  config={{ file: { attributes: { playsInline: true, preload: 'auto' } } }}
                 />
               )}
             </div>
@@ -319,7 +331,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* ── Info zone ────────────────────────────────────────────────────────── */}
       <div className={cn(
         'flex flex-col transition-all duration-500',
         isActiveVibe ? 'p-8 md:flex-row md:items-start md:gap-8' : 'p-6'
@@ -336,18 +347,15 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               </p>
               <div className="flex items-center gap-2">
                 <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
-                {post.mediaType !== 'text' && (
-                  <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                    {post.mediaType === 'youtube' ? <Youtube size={10} className="text-red-500" /> : <Video size={10} />}
-                    {post.mediaType}
-                  </span>
-                )}
+                <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                  <MediaIcon mediaType={post.mediaType} size={10} />
+                  {getMediaLabel(post.mediaType)}
+                </span>
               </div>
             </div>
             {canDelete && !isActiveVibe && (
               <button type="button" onClick={handleDeletePost}
                 className="ml-auto p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
-                title="Retract Vibe"
               >
                 <Trash2 size={16} />
               </button>
@@ -378,7 +386,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               </div>
               <span className={cn('font-black text-foreground', isActiveVibe ? 'text-sm' : 'text-xs')}>{likeCount}</span>
             </button>
-
             <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-1.5">
               <div className={cn('bg-muted text-muted-foreground rounded-xl transition-all', isActiveVibe ? 'p-3' : 'p-2')}>
                 <MessageCircle size={isActiveVibe ? 22 : 18} />
@@ -386,12 +393,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <span className={cn('font-black text-foreground', isActiveVibe ? 'text-sm' : 'text-xs')}>{post.commentCount}</span>
             </button>
           </div>
-
           <div className="flex items-center gap-2">
             {canDelete && isActiveVibe && (
               <button type="button" onClick={handleDeletePost}
                 className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
-                title="Retract Vibe"
               >
                 <Trash2 size={16} />
               </button>
