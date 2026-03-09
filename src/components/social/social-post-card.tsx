@@ -4,11 +4,16 @@ import Image from 'next/image';
 import * as React from 'react';
 import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2, Globe, AlertTriangle, FastForward } from 'lucide-react';
+import {
+  ThumbsUp, MessageCircle, Share2, Youtube, Play,
+  Video, Trash2, Globe, AlertTriangle, FastForward
+} from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
-import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import {
+  doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp
+} from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import CommentSection from './CommentSection';
 import ReactPlayer from 'react-player';
@@ -20,65 +25,62 @@ const getYouTubeId = (url: string) => {
   if (!url) return null;
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
   const match = url.match(regExp);
-  return (match && match[2].length === 11) ? match[2] : null;
-}
+  return match && match[2].length === 11 ? match[2] : null;
+};
 
 export default function SocialPostCard({ post }: { post: SocialPost }) {
   const { user, isAdmin } = useAuth();
   const { firestore } = useFirebase();
   const { toast } = useToast();
   const { activePostId, isContinuous, playNext, setActivePost } = useVibePlayer();
-  
+
   const [isLiked, setIsLiked] = React.useState(false);
   const [likeCount, setLikeCount] = React.useState(post.likes);
   const [isProcessingLike, setIsProcessingLike] = React.useState(false);
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
-  
-  // Player references for programmatic control
+
+  // Tracks whether the YouTube IFrame API player is ready to receive commands
   const ytPlayerRef = React.useRef<any>(null);
-  
+  const ytReadyRef = React.useRef(false);
+
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
 
-  // LIAISON SYNC: Handle automatic playback when this card becomes active
+  // ─── SYNCHRONIZED PLAYBACK HOOK ──────────────────────────────────────────────
+  // When this card becomes the active vibe, command its player to play.
+  // Uses ytReadyRef to guard against the race where isActiveVibe becomes true
+  // before the YouTube IFrame has finished initialising.
   React.useEffect(() => {
+    if (post.mediaType !== 'youtube') return;
+
     if (isActiveVibe) {
-      if (post.mediaType === 'youtube' && ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.playVideo();
-        } catch (e) {
-          console.warn("YouTube play blocked:", e);
-        }
+      if (ytReadyRef.current && ytPlayerRef.current) {
+        try { ytPlayerRef.current.playVideo(); } catch (e) { console.warn('YT play blocked:', e); }
       }
+      // If not ready yet, onYoutubeReady will call playVideo() once it fires
     } else {
-      // Pause if another vibe becomes active
-      if (post.mediaType === 'youtube' && ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.pauseVideo();
-        } catch (e) {}
+      if (ytReadyRef.current && ytPlayerRef.current) {
+        try { ytPlayerRef.current.pauseVideo(); } catch (e) { /* ignore */ }
       }
     }
   }, [isActiveVibe, post.mediaType]);
 
+  // ─── FIREBASE: CHECK EXISTING LIKE ───────────────────────────────────────────
   React.useEffect(() => {
-    if (user && firestore) {
-      const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
-      getDoc(likeRef).then(docSnap => {
-        if (docSnap.exists()) setIsLiked(true);
-      });
-    }
+    if (!user || !firestore) return;
+    const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
+    getDoc(likeRef).then(snap => { if (snap.exists()) setIsLiked(true); });
   }, [firestore, user, post.id]);
 
+  // ─── HANDLERS ────────────────────────────────────────────────────────────────
   const handleLike = async () => {
     if (!user || !firestore || isProcessingLike) return;
     setIsProcessingLike(true);
-
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
     const postRef = doc(firestore, 'campus_pulse', post.id);
-
     try {
       if (isLiked) {
         await deleteDoc(likeRef);
@@ -92,58 +94,64 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         setIsLiked(true);
       }
     } catch (error) {
-        console.error(error);
+      console.error(error);
     } finally {
-        setIsProcessingLike(false);
+      setIsProcessingLike(false);
     }
   };
 
   const handleDeletePost = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
     if (!firestore || !post.id) return;
-
-    if (window.confirm("Are you sure you want to retract this vibe from the Yard?")) {
+    if (window.confirm('Are you sure you want to retract this vibe from the Yard?')) {
       try {
         const collectionName = post.type === 'src_official' ? 'src_posts' : 'campus_pulse';
-        const postRef = doc(firestore, collectionName, post.id);
-        await deleteDoc(postRef);
-        toast({ title: "Vibe Retracted" });
-      } catch (error: any) {
-        toast({ variant: 'destructive', title: "Action Denied" });
+        await deleteDoc(doc(firestore, collectionName, post.id));
+        toast({ title: 'Vibe Retracted' });
+      } catch {
+        toast({ variant: 'destructive', title: 'Action Denied' });
       }
     }
   };
 
   const handleEnd = () => {
     if (isContinuous) {
-      toast({ 
-        title: "Matching Next Vibe...", 
-        description: "Liaison AI is keeping the Yard alive." 
+      toast({
+        title: 'Matching Next Vibe…',
+        description: 'Liaison AI is keeping the Yard alive.',
       });
-      // Small delay to let the toast appear before the jump
+      // Small delay lets the toast appear before the jump
       setTimeout(() => playNext(), 500);
     }
   };
 
+  // ─── YOUTUBE READY HANDSHAKE ─────────────────────────────────────────────────
+  // Store a ref to the IFrame player and mark it as ready.
+  // If this card is already the active vibe when the player finishes loading
+  // (e.g. auto-advance arrived before iframe init completed), start playback now.
   const onYoutubeReady = (event: any) => {
     ytPlayerRef.current = event.target;
-    // If it becomes ready and is already the active vibe, play it
+    ytReadyRef.current = true;
     if (isActiveVibe) {
-      event.target.playVideo();
+      try { event.target.playVideo(); } catch (e) { console.warn('YT play blocked on ready:', e); }
     }
   };
 
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
 
+  // ─── RENDER ───────────────────────────────────────────────────────────────────
   return (
-    <div className={cn(
+    <div
+      className={cn(
         'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl h-full flex flex-col',
-        post.likes >= 20 || post.isProtected ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm',
+        post.likes >= 20 || post.isProtected
+          ? 'border-orange-200 shadow-xl shadow-orange-50'
+          : 'border-border shadow-sm',
         isGlobalSeed && 'border-amber-200 shadow-amber-50',
         isActiveVibe && 'ring-4 ring-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.3)]'
-    )}>
+      )}
+    >
       {isGlobalSeed && (
         <div className="absolute top-4 left-4 z-20 animate-in zoom-in duration-500">
           <div className="bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1 border-2 border-white dark:border-slate-950">
@@ -154,61 +162,84 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
       {post.mediaType !== 'text' && (
         <div className="relative aspect-video bg-slate-900 overflow-hidden group/media flex-shrink-0">
-            {post.mediaType === 'image' && post.imageUrl && (
-                <Image src={post.imageUrl} alt="post" fill className="object-cover group-hover/media:scale-105 transition-transform duration-700" />
-            )}
-            
-            {post.mediaType === 'youtube' && youtubeId && (
-                <div className="relative w-full h-full">
-                  {isRestricted ? (
-                    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
-                        <AlertTriangle className="text-amber-500 mb-4" size={48} />
-                        <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
-                        <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">Playback restricted inside other apps. Visit YouTube to see the full vibe.</p>
-                        <a 
-                            href={post.mediaUrl || '#'} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
-                        >
-                            <Youtube size={14} fill="white" /> Open on YouTube
-                        </a>
-                    </div>
-                  ) : (
-                    <YouTube 
-                        videoId={youtubeId}
-                        opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: isActiveVibe ? 1 : 0 } }}
-                        className="w-full h-full"
-                        onReady={onYoutubeReady}
-                        onPlay={() => setActivePost(post)}
-                        onEnd={handleEnd}
-                        onError={(e) => { if (e.data === 101 || e.data === 150) setIsRestricted(true); }}
-                    />
-                  )}
+          {post.mediaType === 'image' && post.imageUrl && (
+            <Image
+              src={post.imageUrl}
+              alt="post"
+              fill
+              className="object-cover group-hover/media:scale-105 transition-transform duration-700"
+            />
+          )}
+
+          {post.mediaType === 'youtube' && youtubeId && (
+            <div className="relative w-full h-full">
+              {isRestricted ? (
+                <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
+                  <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                  <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
+                  <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">
+                    Playback restricted inside other apps. Visit YouTube to see the full vibe.
+                  </p>
+                  <a
+                    href={post.mediaUrl || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
+                  >
+                    <Youtube size={14} fill="white" /> Open on YouTube
+                  </a>
                 </div>
-            )}
-            
-            {post.mediaType === 'tiktok' && post.mediaUrl && (
-                <div className="bg-black flex items-center justify-center h-full">
-                    <TikTokEmbed url={post.mediaUrl} />
-                </div>
-            )}
-            
-            {post.mediaType === 'video' && post.mediaUrl && (
-                <div className="w-full h-full bg-black flex items-center justify-center">
-                    <ReactPlayer 
-                        url={post.mediaUrl} 
-                        controls 
-                        width="100%" 
-                        height="100%" 
-                        playing={isActiveVibe}
-                        onStart={() => setActivePost(post)}
-                        onEnded={handleEnd}
-                        light={post.imageUrl || false}
-                        playIcon={<div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl hover:scale-110 transition-transform"><Play size={32} fill="white" /></div>}
-                    />
-                </div>
-            )}
+              ) : (
+                <YouTube
+                  videoId={youtubeId}
+                  opts={{
+                    width: '100%',
+                    height: '100%',
+                    playerVars: {
+                      rel: 0,
+                      modestbranding: 1,
+                      // Never rely on autoplay prop alone — programmatic play handles it
+                      autoplay: 0,
+                    },
+                  }}
+                  className="w-full h-full"
+                  onReady={onYoutubeReady}
+                  // onPlay fires when the user OR the programmatic command starts playback
+                  onPlay={() => setActivePost(post)}
+                  onEnd={handleEnd}
+                  onError={e => {
+                    if (e.data === 101 || e.data === 150) setIsRestricted(true);
+                  }}
+                />
+              )}
+            </div>
+          )}
+
+          {post.mediaType === 'tiktok' && post.mediaUrl && (
+            <div className="bg-black flex items-center justify-center h-full">
+              <TikTokEmbed url={post.mediaUrl} />
+            </div>
+          )}
+
+          {post.mediaType === 'video' && post.mediaUrl && (
+            <div className="w-full h-full bg-black flex items-center justify-center">
+              <ReactPlayer
+                url={post.mediaUrl}
+                controls
+                width="100%"
+                height="100%"
+                playing={isActiveVibe}
+                onStart={() => setActivePost(post)}
+                onEnded={handleEnd}
+                light={post.imageUrl || false}
+                playIcon={
+                  <div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl hover:scale-110 transition-transform">
+                    <Play size={32} fill="white" />
+                  </div>
+                }
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -216,38 +247,43 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
             <Avatar className="w-10 h-10 border-2 border-card shadow-sm">
-                <AvatarImage src={post.authorAvatarUrl} />
-                <AvatarFallback className="font-black">{post.authorName?.charAt(0)}</AvatarFallback>
+              <AvatarImage src={post.authorAvatarUrl} />
+              <AvatarFallback className="font-black">{post.authorName?.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-               <p className="text-sm font-bold text-foreground">{post.authorName}</p>
-               <div className="flex items-center gap-2">
-                  <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
-                  {post.mediaType !== 'text' && (
-                      <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                          {post.mediaType === 'youtube' ? <Youtube size={10} className="text-red-500" /> : <Video size={10} />} 
-                          {post.mediaType}
-                      </span>
-                  )}
-               </div>
+              <p className="text-sm font-bold text-foreground">{post.authorName}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">
+                  {post.campusAcronym}
+                </p>
+                {post.mediaType !== 'text' && (
+                  <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
+                    {post.mediaType === 'youtube'
+                      ? <Youtube size={10} className="text-red-500" />
+                      : <Video size={10} />}
+                    {post.mediaType}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Badge only shows when actively playing in continuous mode */}
             {isActiveVibe && isContinuous && (
-                <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-lg text-[8px] font-black uppercase animate-pulse">
-                    <FastForward size={10} fill="white" /> ACTIVE VIBE
-                </div>
+              <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-lg text-[8px] font-black uppercase animate-pulse">
+                <FastForward size={10} fill="white" /> ACTIVE VIBE
+              </div>
             )}
             {canDelete && (
-                <button 
+              <button
                 type="button"
                 onClick={handleDeletePost}
                 className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
                 title="Retract Vibe"
-                >
+              >
                 <Trash2 size={16} />
-                </button>
+              </button>
             )}
           </div>
         </div>
@@ -256,23 +292,33 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
         <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
           <div className="flex items-center gap-4">
-             <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex items-center gap-1.5 group/like">
-                <div className={cn("p-2 rounded-xl transition-all", isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
-                   <ThumbsUp size={18} className={cn(isLiked && "fill-orange-600")} />
-                </div>
-                <span className="text-xs font-black text-foreground">{likeCount}</span>
-             </button>
+            <button
+              onClick={handleLike}
+              disabled={!user || isProcessingLike}
+              className="flex items-center gap-1.5 group/like"
+            >
+              <div className={cn('p-2 rounded-xl transition-all', isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
+                <ThumbsUp size={18} className={cn(isLiked && 'fill-orange-600')} />
+              </div>
+              <span className="text-xs font-black text-foreground">{likeCount}</span>
+            </button>
 
-             <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-1.5 group/comment">
-                <div className="p-2 bg-muted text-muted-foreground rounded-xl">
-                   <MessageCircle size={18} />
-                </div>
-                <span className="text-xs font-black text-foreground">{post.commentCount}</span>
-             </button>
+            <button
+              onClick={() => setShowComments(!showComments)}
+              className="flex items-center gap-1.5 group/comment"
+            >
+              <div className="p-2 bg-muted text-muted-foreground rounded-xl">
+                <MessageCircle size={18} />
+              </div>
+              <span className="text-xs font-black text-foreground">{post.commentCount}</span>
+            </button>
           </div>
-          <button className="p-2 bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90"><Share2 size={18} /></button>
+
+          <button className="p-2 bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90">
+            <Share2 size={18} />
+          </button>
         </div>
-        
+
         {showComments && <CommentSection postId={post.id} />}
       </div>
     </div>

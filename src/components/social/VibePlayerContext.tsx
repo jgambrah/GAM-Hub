@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import type { SocialPost } from '@/lib/types';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
@@ -23,65 +23,86 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [isContinuous, setIsContinuous] = useState(false);
   const { user } = useAuth();
 
-  const setActivePost = useCallback(async (post: SocialPost | null) => {
+  // Use refs to avoid stale closures in callbacks while keeping referential stability
+  const queueRef = useRef<SocialPost[]>([]);
+  const activePostIdRef = useRef<string | null>(null);
+  const isContinuousRef = useRef(false);
+
+  // Keep refs in sync with state
+  React.useEffect(() => { queueRef.current = queue; }, [queue]);
+  React.useEffect(() => { activePostIdRef.current = activePostId; }, [activePostId]);
+  React.useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
+
+  const reorderQueueWithAI = useCallback(async (post: SocialPost, currentQueue: SocialPost[]) => {
+    try {
+      const availablePosts = currentQueue
+        .filter(p => p.id !== post.id)
+        .map(p => ({ id: p.id, content: p.content, tags: p.tags || [] }));
+
+      const recommendation = await getRecommendedVibes({
+        currentPostContent: post.content,
+        userInterests: user?.interests || [],
+        availablePosts: availablePosts.slice(0, 20),
+      });
+
+      const newQueueIds = recommendation.recommendedPostIds;
+      const matchedPosts = newQueueIds
+        .map(id => currentQueue.find(p => p.id === id))
+        .filter((p): p is SocialPost => !!p);
+
+      const remaining = currentQueue.filter(
+        p => p.id !== post.id && !newQueueIds.includes(p.id)
+      );
+
+      setQueue([post, ...matchedPosts, ...remaining]);
+    } catch (err) {
+      console.warn('Liaison Vibe Matcher failed, falling back to sequential:', err);
+    }
+  }, [user?.interests]);
+
+  // Called when a user manually clicks play, or when a card's onPlay fires
+  const setActivePost = useCallback((post: SocialPost | null) => {
     if (!post) {
       setActivePostId(null);
       return;
     }
 
-    // Set as active instantly for UI feedback
     setActivePostId(post.id);
 
-    // If continuous mode is ON, intelligently rebuild the queue starting from this post
-    if (isContinuous && queue.length > 0) {
-      try {
-        const availablePosts = queue.filter(p => p.id !== post.id).map(p => ({
-          id: p.id,
-          content: p.content,
-          tags: p.tags || []
-        }));
-
-        const recommendation = await getRecommendedVibes({
-          currentPostContent: post.content,
-          userInterests: user?.interests || [],
-          availablePosts: availablePosts.slice(0, 20)
-        });
-
-        const newQueueIds = recommendation.recommendedPostIds;
-        const matchedPosts = newQueueIds
-          .map(id => queue.find(p => p.id === id))
-          .filter(p => !!p) as SocialPost[];
-        
-        const remaining = queue.filter(p => p.id !== post.id && !newQueueIds.includes(p.id));
-        setQueue([post, ...matchedPosts, ...remaining]);
-      } catch (err) {
-        console.warn("Liaison Vibe Matcher failed, falling back to sequential:", err);
-      }
+    if (isContinuousRef.current && queueRef.current.length > 0) {
+      reorderQueueWithAI(post, queueRef.current);
     }
-  }, [isContinuous, queue, user?.interests]);
+  }, [reorderQueueWithAI]);
 
+  // Called when a video ends — advances the queue without triggering AI reorder
+  // (AI reorder will fire via setActivePost once the next card's onPlay event fires)
   const playNext = useCallback(() => {
-    if (queue.length <= 1) return;
-    
-    // Find where we are in the current queue
-    const currentIndex = queue.findIndex(p => p.id === activePostId);
-    const nextIndex = (currentIndex + 1) % queue.length;
-    
-    const nextPost = queue[nextIndex];
+    const currentQueue = queueRef.current;
+    const currentId = activePostIdRef.current;
+
+    if (currentQueue.length <= 1) return;
+
+    const currentIndex = currentQueue.findIndex(p => p.id === currentId);
+    // If not found (-1), start from 0; otherwise advance
+    const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % currentQueue.length;
+    const nextPost = currentQueue[nextIndex];
+
     if (nextPost) {
-      console.log("📡 Vibe-Stream: Advancing to next vibration:", nextPost.id);
+      console.log('📡 Vibe-Stream: Advancing to next vibration:', nextPost.id);
+      // Only update the ID here — the SocialPostCard useEffect will trigger playback.
+      // setActivePost (with AI reorder) fires when that card's onPlay event fires.
       setActivePostId(nextPost.id);
     }
-  }, [activePostId, queue]);
+  }, []); // No deps needed — reads from refs
 
   const addToQueue = useCallback((posts: SocialPost[]) => {
     setQueue(prev => {
       const existingIds = new Set(prev.map(p => p.id));
-      const newPosts = posts.filter(p => 
-        !existingIds.has(p.id) && 
-        (p.mediaType === 'youtube' || p.mediaType === 'tiktok' || p.mediaType === 'video')
+      const newPosts = posts.filter(
+        p =>
+          !existingIds.has(p.id) &&
+          (p.mediaType === 'youtube' || p.mediaType === 'tiktok' || p.mediaType === 'video')
       );
-      
       if (newPosts.length === 0) return prev;
       return [...prev, ...newPosts];
     });
