@@ -111,8 +111,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   React.useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
 
   // ── Rebuild the smart queue whenever the active vibe changes ─────────────────
-  // Phase 1: instant local scoring → shown immediately (no loading spinner)
-  // Phase 2: AI refinement → quietly upgrades the order once the response lands
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[]) => {
     setIsLoadingQueue(true);
 
@@ -156,7 +154,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setUpNext(makeUpNext(finalRanked));
     } catch (err) {
       console.warn('AI vibe matcher unavailable, using local scores:', err);
-      // Phase 1 results remain — no regression
     }
   }, [user?.interests]);
 
@@ -173,7 +170,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [rebuildQueue]);
 
   // ── playNext ──────────────────────────────────────────────────────────────────
-  // Only advances the ID — queue rebuild fires via the next card's onPlay → setActivePost
   const playNext = useCallback(() => {
     const currentQueue = queueRef.current;
     const currentId = activePostIdRef.current;
@@ -186,11 +182,11 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       console.log('📡 Vibe-Stream → advancing to:', nextPost.content.slice(0, 40));
       setActivePostId(nextPost.id);
       setActivePostState(nextPost);
+      rebuildQueue(nextPost, allPostsRef.current);
     }
-  }, []);
+  }, [rebuildQueue]);
 
   // ── addToQueue ────────────────────────────────────────────────────────────────
-  // Feed calls this to register all loaded posts into the matching pool
   const addToQueue = useCallback((posts: SocialPost[]) => {
     setAllPosts(prev => {
       const existingIds = new Set(prev.map(p => p.id));
@@ -198,18 +194,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       if (incoming.length === 0) return prev;
       const merged = [...prev, ...incoming];
 
-      // If something is already playing, quietly re-score with the expanded pool
       const currentId = activePostIdRef.current;
       const currentPost = currentId ? merged.find(p => p.id === currentId) : null;
       if (currentPost && isContinuousRef.current) {
-        // Fire async but don't await — UI updates silently
         setTimeout(() => rebuildQueue(currentPost, merged), 0);
       }
 
       return merged;
     });
 
-    // Seed the playback queue if it's empty
     setQueue(prev => {
       if (prev.length > 0) return prev;
       return posts.filter(

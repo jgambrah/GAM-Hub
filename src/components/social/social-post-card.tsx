@@ -220,7 +220,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
             <Avatar className="w-10 h-10 border-2 border-card shadow-sm">
-              <AvatarImage src={post.authorAvatarUrl || ''} />
+              <AvatarImage src={post.authorAvatarUrl} />
               <AvatarFallback className="font-black">{post.authorName?.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>

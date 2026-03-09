@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { useVibePlayer } from './VibePlayerContext';
+import { useVibePlayer, type QueueEntry } from './VibePlayerContext';
 import { cn } from '@/lib/utils';
 import { Youtube, Video, Zap, ListVideo, Loader2, ChevronRight } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -27,7 +27,6 @@ export default function UpNextPanel() {
           )}
         </div>
 
-        {/* Autoplay toggle — mirrors YouTube's autoplay switch */}
         <button
           onClick={() => setIsContinuous(!isContinuous)}
           className={cn(
@@ -85,13 +84,12 @@ export default function UpNextPanel() {
   );
 }
 
-// ─── Individual queued vibe card ─────────────────────────────────────────────
 function UpNextCard({
   entry,
   position,
   onSelect,
 }: {
-  entry: import('./VibePlayerContext').QueueEntry;
+  entry: QueueEntry;
   position: number;
   onSelect: () => void;
 }) {
@@ -103,7 +101,6 @@ function UpNextCard({
       onClick={onSelect}
       className="group w-full flex items-center gap-3 p-2.5 rounded-2xl hover:bg-muted/60 active:scale-[0.98] transition-all text-left"
     >
-      {/* Thumbnail */}
       <div className="relative w-20 h-[45px] rounded-xl overflow-hidden bg-slate-800 flex-shrink-0 shadow-sm">
         {post.imageUrl ? (
           <Image src={post.imageUrl} alt="" fill className="object-cover" />
@@ -118,13 +115,11 @@ function UpNextCard({
             className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
           />
         </div>
-        {/* Position badge */}
         <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[8px] font-black px-1 rounded">
           {position}
         </div>
       </div>
 
-      {/* Meta */}
       <div className="flex-1 min-w-0">
         <p className="text-[11px] font-bold text-foreground line-clamp-2 leading-tight mb-1">
           {post.content}
@@ -136,7 +131,6 @@ function UpNextCard({
           </Avatar>
           <span className="text-[9px] text-muted-foreground truncate">{post.authorName}</span>
         </div>
-        {/* Match reason — the "why" chip */}
         <div className="mt-1 flex items-center gap-1">
           <Zap size={8} className="text-blue-400 flex-shrink-0" />
           <span className="text-[9px] font-black text-blue-400 uppercase tracking-wider truncate">
@@ -148,7 +142,6 @@ function UpNextCard({
   );
 }
 
-// ─── Loading skeleton ─────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
     <div className="flex items-center gap-3 p-2.5 rounded-2xl animate-pulse">
