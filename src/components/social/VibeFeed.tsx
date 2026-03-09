@@ -5,6 +5,7 @@ import type { SocialPost } from '@/lib/types';
 import SocialPostCard from './social-post-card';
 import { useVibePlayer } from './VibePlayerContext';
 import VibeMoodBar from './VibeMoodBar';
+import VibeHistoryPanel from './VibeHistoryPanel';
 import { cn } from '@/lib/utils';
 import { Sparkles, Zap } from 'lucide-react';
 
@@ -41,8 +42,11 @@ export default function VibeFeed({ posts, searchQuery, className }: VibeFeedProp
   return (
     <div className={cn('w-full space-y-8', className)}>
       
-      {/* 🎭 MOOD BAR */}
-      <VibeMoodBar />
+      {/* 🎭 MOOD & HISTORY BAR */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-2">
+        <VibeMoodBar />
+        <VibeHistoryPanel />
+      </div>
 
       {/* 🎬 PROJECTED VIDEO (THEATER MODE) */}
       {projectedPost && (
@@ -63,7 +67,7 @@ export default function VibeFeed({ posts, searchQuery, className }: VibeFeedProp
         </div>
       )}
 
-      {/* 📱 FEED GRID (2-COLUMN ALIGNMENT) */}
+      {/* 📱 FEED GRID */}
       <div className={cn(
         "grid gap-6 transition-all duration-500",
         isSearchActive 
