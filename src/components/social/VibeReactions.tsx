@@ -61,13 +61,12 @@ function ReactionParticle({ burst }: { burst: any }) {
 
   return (
     <div
-      className="absolute text-4xl"
+      className="absolute text-4xl animate-reaction-burst"
       style={{
         left: `${burst.x}%`,
         top: `${burst.y}%`,
         ['--drift-x' as any]: `${driftX}px`,
         ['--scale' as any]: scale,
-        animation: 'reactionBurst 1.2s ease-out forwards',
       }}
     >
       {burst.emoji}

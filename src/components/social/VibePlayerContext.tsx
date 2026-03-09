@@ -37,7 +37,7 @@ function computeVibeScore(current: SocialPost, candidate: SocialPost, mood: Vibe
   const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
   score += sharedTags.length * 10;
 
-  // 2. Mood Boost (30 pts)
+  // 2. Mood Boost (30 pts) - Added mood awareness to scoring
   if (mood !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === mood)!;
     const moodTagSet = new Set(moodDef.tags);

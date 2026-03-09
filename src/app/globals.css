@@ -57,12 +57,24 @@
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .animate-reaction-burst {
+    animation: reactionBurst 1.2s ease-out forwards;
+  }
 }
 
 @keyframes reactionBurst {
-  0%   { transform: translateY(0) scale(0.5); opacity: 1; }
-  40%  { transform: translateY(-60px) scale(var(--scale)); opacity: 1; }
-  100% { transform: translateY(-140px) translateX(var(--drift-x)) scale(0.3); opacity: 0; }
+  0%   { transform: translateY(0px)    scale(0.5); opacity: 1; }
+  40%  { transform: translateY(-60px)  scale(var(--scale, 1.5)); opacity: 1; }
+  100% { transform: translateY(-140px) translateX(var(--drift-x, 0px)) scale(0.3); opacity: 0; }
 }
 
 @keyframes progressPulse {
@@ -70,6 +82,7 @@
   50%       { width: 65%; }
 }
 
-.animate-reaction-burst {
-  animation: reactionBurst 1.2s ease-out forwards;
+@keyframes progressPulseMobile {
+  0%, 100% { width: 30%; }
+  50%       { width: 65%; }
 }

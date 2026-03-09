@@ -64,7 +64,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       }
     } else {
       if (ytReadyRef.current && ytPlayerRef.current) {
-        try { ytPlayerRef.current.pauseVideo(); } catch (_) { /* ignore */ }
+        try { ytPlayerRef.current.pauseVideo(); } catch (_) { }
       }
     }
   }, [isActiveVibe, post.mediaType]);
