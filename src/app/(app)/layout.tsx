@@ -21,6 +21,7 @@ import { doc } from 'firebase/firestore';
 import type { LiveBroadcast } from '@/lib/types';
 import { CampusLiveTV } from '@/components/social/CampusLiveTV';
 import { VibePlayerProvider } from '@/components/social/VibePlayerContext';
+import { VibeReactionBursts } from '@/components/social/VibeReactions';
 
 function AuthGatedLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -57,10 +58,6 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
         }
     };
 
-    const handleAdminBypass = async () => {
-        window.location.reload();
-    };
-
     if (isUserLoading) {
         return (
             <div className="flex h-screen items-center justify-center">
@@ -75,6 +72,7 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
         return (
             <>
                 {isLive && campus?.id && <CampusLiveTV campusId={campus.id} />}
+                <VibeReactionBursts />
                 <div className="flex min-h-screen bg-background">
                     <AppSidebar />
                     <div className="flex flex-1 flex-col">
@@ -117,12 +115,6 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
                         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-6">
                             Handshake Protocol Active
                         </p>
-                        <button 
-                          onDoubleClick={handleAdminBypass} 
-                          className="mt-10 text-[8px] text-muted-foreground/10 hover:text-muted-foreground/40 transition-colors"
-                        >
-                          Liaison Bypass (Double Click)
-                        </button>
                     </CardContent>
                 </Card>
             </div>
@@ -133,6 +125,7 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
         return (
             <>
                 {isLive && campus?.id && <CampusLiveTV campusId={campus.id} />}
+                <VibeReactionBursts />
                 <div className="flex min-h-screen bg-background">
                     <AppSidebar />
                     <div className="flex flex-1 flex-col">

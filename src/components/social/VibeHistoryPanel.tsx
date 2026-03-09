@@ -25,7 +25,7 @@ export default function VibeHistoryPanel() {
         )}
       >
         <History size={14} />
-        <span>History</span>
+        <span>Recently Played</span>
         <span className="bg-blue-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
           {history.length}
         </span>

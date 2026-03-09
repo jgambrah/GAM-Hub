@@ -20,7 +20,7 @@ import ReactPlayer from 'react-player';
 import YouTube from 'react-youtube';
 import { useToast } from '@/hooks/use-toast';
 import { useVibePlayer } from './VibePlayerContext';
-import ReactionLayer from './ReactionLayer';
+import { VibeReactionBar } from './VibeReactions';
 
 const getYouTubeId = (url: string) => {
   if (!url) return null;
@@ -50,7 +50,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
 
-  // Register into matching pool
+  // Sync state with matching pool
   React.useEffect(() => {
     if (post.mediaType === 'youtube' || post.mediaType === 'video' || post.mediaType === 'tiktok') {
       addToQueue([post]);
@@ -118,7 +118,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   const handleEnd = () => {
     if (isContinuous) {
-      toast({ title: 'Matching Next Vibe…', description: 'Liaison AI is keeping the Yard alive.' });
+      toast({ title: 'Matching Next Vibe…' });
       setTimeout(() => playNext(), 500);
     }
   };
@@ -127,7 +127,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
     if (isActiveVibe) {
-      try { event.target.playVideo(); } catch (e) { console.warn('YT play on ready blocked:', e); }
+      try { event.target.playVideo(); } catch (e) { console.warn('YT play blocked:', e); }
     }
   };
 
@@ -144,7 +144,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             : 'border-border shadow-sm hover:shadow-xl'
         ),
         isGlobalSeed && !isActiveVibe && 'border-amber-200 shadow-amber-50',
-        isActiveVibe && 'border-blue-500 ring-4 ring-blue-500/20 shadow-[0_30px_100px_rgba(59,130,246,0.15)] col-span-full'
+        isActiveVibe && 'border-blue-500 ring-4 ring-blue-500/20 shadow-2xl col-span-full'
       )}
     >
       {isGlobalSeed && (
@@ -155,19 +155,16 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* 🎮 REACTION LAYER (ONLY PROJECTED) */}
-      {isActiveVibe && <ReactionLayer />}
-
       {/* Media zone */}
       {post.mediaType !== 'text' && (
         <div className={cn(
-          "relative bg-slate-900 overflow-hidden group/media flex-shrink-0 transition-all duration-500",
+          "relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500",
           isActiveVibe ? "aspect-video md:aspect-[21/9]" : "aspect-video"
         )}>
           {post.mediaType === 'image' && post.imageUrl && (
             <Image
               src={post.imageUrl} alt="post" fill
-              className="object-cover group-hover/media:scale-105 transition-transform duration-700"
+              className="object-cover group-hover:scale-105 transition-transform duration-700"
             />
           )}
 
@@ -177,12 +174,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
                   <AlertTriangle className="text-amber-500 mb-4" size={48} />
                   <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
-                  <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">
-                    Playback restricted inside other apps. Visit YouTube to see the full vibe.
-                  </p>
+                  <p className="text-slate-400 text-[10px] mt-2 mb-6">Playback restricted. Open on YouTube to watch.</p>
                   <a
                     href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer"
-                    className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
+                    className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700"
                   >
                     <Youtube size={14} fill="white" /> Open on YouTube
                   </a>
@@ -196,8 +191,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                     playerVars: { 
                       rel: 0, 
                       modestbranding: 1, 
-                      autoplay: isActiveVibe ? 1 : 0,
-                      mute: 0 
+                      autoplay: isActiveVibe ? 1 : 0 
                     } 
                   }}
                   className="w-full h-full"
@@ -250,9 +244,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 </p>
                 {post.mediaType !== 'text' && (
                   <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                    {post.mediaType === 'youtube'
-                      ? <Youtube size={10} className="text-red-500" />
-                      : <Video size={10} />}
+                    {post.mediaType === 'youtube' ? <Youtube size={10} className="text-red-500" /> : <Video size={10} />}
                     {post.mediaType}
                   </span>
                 )}
@@ -278,7 +270,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <button
                 type="button" onClick={handleDeletePost}
                 className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
-                title="Retract Vibe"
               >
                 <Trash2 size={16} />
               </button>
@@ -287,6 +278,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
 
         <h3 className={cn("font-bold leading-snug mb-6 text-foreground flex-1", isActiveVibe ? "text-2xl" : "text-lg")}>{post.content}</h3>
+
+        {isActiveVibe && (
+          <div className="mb-8 animate-in slide-in-from-left-2 duration-500">
+            <VibeReactionBar postId={post.id} />
+          </div>
+        )}
 
         <div className={cn(
             "flex items-center justify-between border-t border-border mt-auto",

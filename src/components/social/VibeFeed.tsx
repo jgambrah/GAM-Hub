@@ -7,7 +7,7 @@ import { useVibePlayer } from './VibePlayerContext';
 import VibeMoodBar from './VibeMoodBar';
 import VibeHistoryPanel from './VibeHistoryPanel';
 import { cn } from '@/lib/utils';
-import { Sparkles, Zap } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 interface VibeFeedProps {
   posts: SocialPost[];
