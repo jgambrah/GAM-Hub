@@ -23,7 +23,7 @@ export default function UpNextPanel() {
   return (
     <div className="w-full max-w-sm flex flex-col gap-3 bg-white dark:bg-card p-6 rounded-[2.5rem] border shadow-sm h-fit">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-1">
+      <div className="flex items-center justify-between px-1 sticky top-0 bg-inherit py-2 z-10">
         <div className="flex items-center gap-2">
           <ListVideo size={16} className="text-blue-500" />
           <span className="text-sm font-black uppercase tracking-widest text-foreground">
@@ -51,12 +51,12 @@ export default function UpNextPanel() {
         </button>
       </div>
 
-      {/* ── Mood Badge — only visible if active mood is not 'all' ──────────── */}
+      {/* ── Mood Badge ─────────────────────────────────────────────────────── */}
       {activeMood !== 'all' && (
         <div className="bg-slate-900 text-white rounded-2xl px-4 py-2 flex items-center gap-2 animate-in slide-in-from-top-2">
           <span className="text-xs">✨</span>
           <span className="text-[10px] font-black uppercase tracking-widest">
-            {activeMood} queue enabled
+            {activeMood} vibe enabled
           </span>
         </div>
       )}

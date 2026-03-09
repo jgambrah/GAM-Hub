@@ -65,6 +65,11 @@
   100% { transform: translateY(-140px) translateX(var(--drift-x)) scale(0.3); opacity: 0; }
 }
 
+@keyframes progressPulse {
+  0%, 100% { width: 30%; }
+  50%       { width: 65%; }
+}
+
 .animate-reaction-burst {
   animation: reactionBurst 1.2s ease-out forwards;
 }

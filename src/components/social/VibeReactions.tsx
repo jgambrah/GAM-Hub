@@ -1,11 +1,5 @@
 'use client';
 
-/**
- * VibeReactions
- * -------------
- * Provides real-time social engagement for vibrations.
- */
-
 import React from 'react';
 import { useVibePlayer, REACTIONS, type VibeReaction } from './VibePlayerContext';
 import { cn } from '@/lib/utils';

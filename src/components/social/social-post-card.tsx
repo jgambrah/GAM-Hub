@@ -50,14 +50,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
 
-  // Sync state with matching pool
   React.useEffect(() => {
     if (post.mediaType === 'youtube' || post.mediaType === 'video' || post.mediaType === 'tiktok') {
       addToQueue([post]);
     }
   }, [post.id, addToQueue]);
 
-  // Synchronized Playback Handshake
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (isActiveVibe) {
@@ -136,6 +134,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   return (
     <div
       ref={cardRef}
+      data-post-id={post.id}
       className={cn(
         'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 flex flex-col',
         !isActiveVibe && (
@@ -155,7 +154,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* Media zone */}
       {post.mediaType !== 'text' && (
         <div className={cn(
           "relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500",

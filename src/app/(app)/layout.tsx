@@ -22,6 +22,7 @@ import type { LiveBroadcast } from '@/lib/types';
 import { CampusLiveTV } from '@/components/social/CampusLiveTV';
 import { VibePlayerProvider } from '@/components/social/VibePlayerContext';
 import { VibeReactionBursts } from '@/components/social/VibeReactions';
+import VibeMiniPlayer from '@/components/social/VibeMiniPlayer';
 
 function AuthGatedLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -85,6 +86,7 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
                     <ImpersonatorTool onRoleChange={setViewMode} />
                     <BottomNav />
                 </div>
+                <VibeMiniPlayer />
             </>
         );
     }
@@ -137,6 +139,7 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
                     <CampusAIGuide />
                     <BottomNav />
                 </div>
+                <VibeMiniPlayer />
             </>
         )
     }

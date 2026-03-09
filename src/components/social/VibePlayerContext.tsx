@@ -111,6 +111,7 @@ interface VibePlayerContextType {
   reactionBursts: ReactionBurst[];
   sendReaction: (emoji: VibeReaction) => void;
   reactionCounts: Record<string, Record<VibeReaction, number>>;
+  isMiniPlayerVisible: boolean;
 }
 
 const VibePlayerContext = createContext<VibePlayerContextType | undefined>(undefined);
@@ -140,6 +141,8 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   React.useEffect(() => { activePostIdRef.current = activePostId; }, [activePostId]);
   React.useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
   React.useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
+
+  const isMiniPlayerVisible = !!activePostId;
 
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
@@ -249,6 +252,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       activeMood, setActiveMood,
       history, clearHistory,
       reactionBursts, sendReaction, reactionCounts,
+      isMiniPlayerVisible,
     }}>
       {children}
     </VibePlayerContext.Provider>
