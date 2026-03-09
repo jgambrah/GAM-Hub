@@ -20,6 +20,7 @@ import ReactPlayer from 'react-player';
 import YouTube from 'react-youtube';
 import { useToast } from '@/hooks/use-toast';
 import { useVibePlayer } from './VibePlayerContext';
+import ReactionLayer from './ReactionLayer';
 
 const getYouTubeId = (url: string) => {
   if (!url) return null;
@@ -56,7 +57,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [post.id, addToQueue]);
 
-  // Synchronized Playback
+  // Synchronized Playback Handshake
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (isActiveVibe) {
@@ -143,7 +144,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             : 'border-border shadow-sm hover:shadow-xl'
         ),
         isGlobalSeed && !isActiveVibe && 'border-amber-200 shadow-amber-50',
-        isActiveVibe && 'border-blue-500 ring-4 ring-blue-500/20 shadow-[0_30px_100px_rgba(59,130,246,0.15)]'
+        isActiveVibe && 'border-blue-500 ring-4 ring-blue-500/20 shadow-[0_30px_100px_rgba(59,130,246,0.15)] col-span-full'
       )}
     >
       {isGlobalSeed && (
@@ -154,11 +155,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {/* 🎮 REACTION LAYER (ONLY PROJECTED) */}
+      {isActiveVibe && <ReactionLayer />}
+
       {/* Media zone */}
       {post.mediaType !== 'text' && (
         <div className={cn(
           "relative bg-slate-900 overflow-hidden group/media flex-shrink-0 transition-all duration-500",
-          isActiveVibe ? "aspect-video lg:aspect-[21/9]" : "aspect-video"
+          isActiveVibe ? "aspect-video md:aspect-[21/9]" : "aspect-video"
         )}>
           {post.mediaType === 'image' && post.imageUrl && (
             <Image
@@ -192,7 +196,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                     playerVars: { 
                       rel: 0, 
                       modestbranding: 1, 
-                      autoplay: isActiveVibe ? 1 : 0, // CRITICAL: Explicit autoplay instruction
+                      autoplay: isActiveVibe ? 1 : 0,
                       mute: 0 
                     } 
                   }}

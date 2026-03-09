@@ -8,13 +8,20 @@ import { Youtube, Video, Zap, ListVideo, Loader2, ChevronRight } from 'lucide-re
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export default function UpNextPanel() {
-  const { activePost, upNext, isLoadingQueue, isContinuous, setActivePost, setIsContinuous } =
-    useVibePlayer();
+  const { 
+    activePost, 
+    upNext, 
+    isLoadingQueue, 
+    isContinuous, 
+    setActivePost, 
+    setIsContinuous,
+    activeMood 
+  } = useVibePlayer();
 
   if (!activePost) return null;
 
   return (
-    <div className="w-full max-w-sm flex flex-col gap-3 bg-white dark:bg-card p-6 rounded-[2.5rem] border shadow-sm">
+    <div className="w-full max-w-sm flex flex-col gap-3 bg-white dark:bg-card p-6 rounded-[2.5rem] border shadow-sm h-fit">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
@@ -44,6 +51,16 @@ export default function UpNextPanel() {
         </button>
       </div>
 
+      {/* ── Mood Badge — only visible if active mood is not 'all' ──────────── */}
+      {activeMood !== 'all' && (
+        <div className="bg-slate-900 text-white rounded-2xl px-4 py-2 flex items-center gap-2 animate-in slide-in-from-top-2">
+          <span className="text-xs">✨</span>
+          <span className="text-[10px] font-black uppercase tracking-widest">
+            {activeMood} queue enabled
+          </span>
+        </div>
+      )}
+
       {/* ── Now Playing pill ───────────────────────────────────────────────── */}
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl px-4 py-2.5 flex items-center gap-2">
         <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
@@ -56,30 +73,32 @@ export default function UpNextPanel() {
       </div>
 
       {/* ── Queue list ─────────────────────────────────────────────────────── */}
-      {upNext.length === 0 && !isLoadingQueue ? (
-        <div className="text-center py-8 text-muted-foreground text-xs italic">
-          No similar vibes found yet — keep scrolling!
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {upNext.map((entry, i) => (
-            <UpNextCard
-              key={entry.post.id}
-              entry={entry}
-              position={i + 1}
-              onSelect={() => setActivePost(entry.post)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto no-scrollbar">
+        {upNext.length === 0 && !isLoadingQueue ? (
+          <div className="text-center py-8 text-muted-foreground text-xs italic">
+            No similar vibes found yet — keep scrolling!
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {upNext.map((entry, i) => (
+              <UpNextCard
+                key={entry.post.id}
+                entry={entry}
+                position={i + 1}
+                onSelect={() => setActivePost(entry.post)}
+              />
+            ))}
+          </div>
+        )}
 
-      {isLoadingQueue && upNext.length === 0 && (
-        <div className="flex flex-col gap-2">
-          {[...Array(4)].map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </div>
-      )}
+        {isLoadingQueue && upNext.length === 0 && (
+          <div className="flex flex-col gap-2">
+            {[...Array(4)].map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
