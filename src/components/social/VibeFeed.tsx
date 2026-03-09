@@ -6,12 +6,7 @@
  * The main campus feed shell. Composes:
  *   - VibeMoodBar    — mood filter strip
  *   - VibeHistoryPanel — recently played dropdown
- *   - Feed grid      — SocialPostCards with expand-in-place active state
- *
- * The sidebar (UpNextPanel) is now handled by the parent page to prevent duplication.
- *
- * Usage:
- *   <VibeFeed posts={posts} />
+ *   - Theater-Top Feed — Ensures active vibe is always solo at the top.
  */
 
 import React from 'react';
@@ -33,9 +28,11 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
   // Register ALL posts into the global pool on mount
   React.useEffect(() => {
     if (posts.length > 0) addToQueue(posts);
-  }, [posts.length, addToQueue]);
+  }, [posts, addToQueue]);
 
-  const hasActive = !!activePostId;
+  // LIAISON THEATER LOGIC: Identify the active post to float it to the top
+  const activePost = posts.find(p => p.id === activePostId);
+  const otherPosts = posts.filter(p => p.id !== activePostId);
 
   return (
     <div className={cn('flex flex-col gap-5 w-full', className)}>
@@ -48,19 +45,25 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
         <VibeHistoryPanel />
       </div>
 
-      {/* ── Feed Grid ──────────────────────────────────────────────────────── */}
-      {/* 
-          Theater-Grid Protocol: 
-          If a vibe is active, we go single column to let it claim the full width.
-          Otherwise, we show a professional two-column discovery grid.
-      */}
-      <div className={cn(
-        'grid gap-6 transition-all duration-500 min-w-0',
-        hasActive ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
-      )}>
-        {posts.map(post => (
-          <SocialPostCard key={post.id} post={post} />
-        ))}
+      {/* ── Feed Layout ────────────────────────────────────────────────────── */}
+      <div className="space-y-8">
+        
+        {/* 1. THE STAGE: Active Vibe solo at the top */}
+        {activePost && (
+          <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+            <SocialPostCard post={activePost} />
+          </div>
+        )}
+
+        {/* 2. THE DISCOVERY GRID: Remaining vibes in a professional 2-column layout */}
+        <div className={cn(
+          'grid gap-6 transition-all duration-500 min-w-0',
+          activePostId ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
+        )}>
+          {otherPosts.map(post => (
+            <SocialPostCard key={post.id} post={post} />
+          ))}
+        </div>
       </div>
     </div>
   );
