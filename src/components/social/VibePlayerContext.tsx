@@ -180,11 +180,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
     if (nextPost) {
       console.log('📡 Vibe-Stream → advancing to:', nextPost.content.slice(0, 40));
-      setActivePostId(nextPost.id);
-      setActivePostState(nextPost);
-      rebuildQueue(nextPost, allPostsRef.current);
+      // Explicitly call the full setter to ensure auto-play handshake fires
+      setActivePost(nextPost);
     }
-  }, [rebuildQueue]);
+  }, [setActivePost]);
 
   // ── addToQueue ────────────────────────────────────────────────────────────────
   const addToQueue = useCallback((posts: SocialPost[]) => {

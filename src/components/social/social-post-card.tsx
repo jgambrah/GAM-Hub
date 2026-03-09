@@ -186,7 +186,16 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               ) : (
                 <YouTube
                   videoId={youtubeId}
-                  opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: 0 } }}
+                  opts={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    playerVars: { 
+                      rel: 0, 
+                      modestbranding: 1, 
+                      autoplay: isActiveVibe ? 1 : 0, // CRITICAL: Explicit autoplay instruction
+                      mute: 0 
+                    } 
+                  }}
                   className="w-full h-full"
                   onReady={onYoutubeReady}
                   onPlay={() => setActivePost(post)}
