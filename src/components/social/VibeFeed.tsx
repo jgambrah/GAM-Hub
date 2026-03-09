@@ -34,7 +34,7 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
   // The queue engine handles them all; no pre-filtering here
   React.useEffect(() => {
     if (posts.length > 0) addToQueue(posts);
-  }, [posts.length, addToQueue]); // Added addToQueue to dependencies
+  }, [posts.length, addToQueue]);
 
   const hasActive = !!activePostId;
 
