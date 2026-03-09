@@ -44,12 +44,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   // ── YouTube state ─────────────────────────────────────────────────────────
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
-  // Track whether this card was the active vibe when the YT player mounted.
-  const [ytMuted, setYtMuted] = React.useState(false);
 
   // ── ReactPlayer state ─────────────────────────────────────────────────────
-  // We keep the real player always mounted once the card has been activated
-  // at least once, so it's never unmounted mid-playback.
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
 
   const cardRef = React.useRef<HTMLDivElement>(null);
@@ -135,39 +131,43 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
+  // ── Aggressive Unmute Logic ───────────────────────────────────────────────
+  const performAudioHandshake = (player: any) => {
+    if (!player) return;
+    try {
+      if (typeof player.unMute === 'function') player.unMute();
+      if (typeof player.setVolume === 'function') player.setVolume(100);
+    } catch (e) {
+      console.warn('Audio handshake failed:', e);
+    }
+  };
+
   const onYoutubeReady = (event: any) => {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
+    if (isActiveVibe) {
+      performAudioHandshake(event.target);
+      try { event.target.playVideo(); } catch (e) { console.warn('YT ignite blocked:', e); }
+    }
   };
 
-  const onYoutubePlay = () => {
+  const onYoutubePlay = (event: any) => {
     setActivePost(post);
-    if (ytMuted && ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.unMute();
-        ytPlayerRef.current.setVolume(100);
-        setYtMuted(false);
-      } catch (_) { }
-    }
+    performAudioHandshake(event.target);
   };
 
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
 
+  // ── Player Config ─────────────────────────────────────────────────────────
   const ytPlayerVars = React.useMemo(() => ({
     rel: 0,
     modestbranding: 1,
     autoplay: isActiveVibe ? 1 : 0,
-    mute: isActiveVibe ? 1 : 0,
+    mute: 0, // Start unmuted; browser fallback will handle if needed
     playsinline: 1,
   }), [isActiveVibe]);
 
   const ytKey = `${post.id}-${isActiveVibe ? 'active' : 'idle'}`;
-
-  React.useEffect(() => {
-    if (isActiveVibe && post.mediaType === 'youtube') {
-      setYtMuted(true);
-    }
-  }, [isActiveVibe, post.mediaType]);
 
   return (
     <div
@@ -283,6 +283,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   height="100%"
                   playing={isActiveVibe}
                   muted={false}
+                  volume={1}
                   playsinline
                   onStart={() => setActivePost(post)}
                   onEnded={handleEnd}
