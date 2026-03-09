@@ -1,5 +1,15 @@
 'use client';
 
+/**
+ * VibeFeed
+ * --------
+ * Implements the Refined Theater-Grid layout.
+ * - Active video is "Projected Big" at the very top of the feed stack.
+ * - Remaining vibrations are neatly aligned in a two-column grid below.
+ * - Intelligently minimizes to a standard grid during active search.
+ * - No internal sidebar — relies on the page-level sidebar for the playlist.
+ */
+
 import React, { useMemo } from 'react';
 import type { SocialPost } from '@/lib/types';
 import SocialPostCard from './social-post-card';
@@ -13,19 +23,10 @@ interface VibeFeedProps {
   className?: string;
 }
 
-/**
- * VibeFeed
- * --------
- * Implements the Refined Theater-Grid layout.
- * - Active video is "Projected Big" at the very top of the feed.
- * - Remaining videos are neatly aligned in a two-column grid below.
- * - No internal sidebar (duplicate removed) — relies on the page-level sidebar.
- * - Reverts to standard grid during active search.
- */
 export default function VibeFeed({ posts, searchQuery, className }: VibeFeedProps) {
   const { activePostId, addToQueue } = useVibePlayer();
 
-  // Register all media posts into the matching engine
+  // Register all media posts into the matching pool
   React.useEffect(() => {
     const mediaPosts = posts.filter(
       p => p.mediaType === 'youtube' || p.mediaType === 'video' || p.mediaType === 'tiktok'
