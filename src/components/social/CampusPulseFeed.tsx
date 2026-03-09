@@ -10,6 +10,7 @@ import { Sparkles, RefreshCcw, SearchX, Globe, FastForward, Zap } from 'lucide-r
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer } from './VibePlayerContext';
 import { Switch } from '../ui/switch';
+import { cn } from '@/lib/utils';
 
 export default function CampusPulseFeed({
     activeCampusId,
