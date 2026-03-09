@@ -158,7 +158,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       {post.mediaType !== 'text' && (
         <div className={cn(
           "relative bg-slate-900 overflow-hidden group/media flex-shrink-0 transition-all duration-500",
-          isActiveVibe ? "aspect-video md:aspect-[21/9]" : "aspect-video"
+          isActiveVibe ? "aspect-video lg:aspect-[21/9]" : "aspect-video"
         )}>
           {post.mediaType === 'image' && post.imageUrl && (
             <Image

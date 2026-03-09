@@ -46,8 +46,8 @@ export default function UpNextPanel() {
 
       {/* ── Now Playing pill ───────────────────────────────────────────────── */}
       <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl px-4 py-2.5 flex items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-blue-500">
+        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+        <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 flex-shrink-0">
           Now Playing
         </span>
         <span className="text-[10px] text-foreground/70 truncate flex-1">
@@ -109,7 +109,7 @@ function UpNextCard({
             {isYoutube ? <Youtube size={18} className="text-red-500/60" /> : <Video size={18} />}
           </div>
         )}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
           <ChevronRight
             size={16}
             className="text-white opacity-0 group-hover:opacity-100 transition-opacity"
