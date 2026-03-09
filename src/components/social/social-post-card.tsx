@@ -6,7 +6,7 @@ import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play,
-  Video, Trash2, Globe, AlertTriangle, FastForward
+  Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2
 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
@@ -42,20 +42,23 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
+  const cardRef = React.useRef<HTMLDivElement>(null);
 
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
 
-  // Register this post into the global matching pool on mount
+  // Scroll into view when activated
   React.useEffect(() => {
-    if (post.mediaType === 'youtube' || post.mediaType === 'video' || post.mediaType === 'tiktok') {
-      addToQueue([post]);
+    if (isActiveVibe && cardRef.current) {
+      setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     }
-  }, [post.id, addToQueue]);
+  }, [isActiveVibe]);
 
-  // ─── SYNCHRONIZED PLAYBACK ────────────────────────────────────────────────
+  // Synchronized Playback
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (isActiveVibe) {
@@ -69,7 +72,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // ─── FIREBASE LIKE STATE ─────────────────────────────────────────────────
   React.useEffect(() => {
     if (!user || !firestore) return;
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
@@ -122,7 +124,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  // ─── YOUTUBE READY HANDSHAKE ──────────────────────────────────────────────
   const onYoutubeReady = (event: any) => {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
@@ -135,13 +136,16 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   return (
     <div
+      ref={cardRef}
       className={cn(
-        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl h-full flex flex-col',
-        post.likes >= 20 || post.isProtected
-          ? 'border-orange-200 shadow-xl shadow-orange-50'
-          : 'border-border shadow-sm',
+        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 h-full flex flex-col',
+        !isActiveVibe && (
+          post.likes >= 20 || post.isProtected
+            ? 'border-orange-200 shadow-xl shadow-orange-50'
+            : 'border-border shadow-sm'
+        ),
         isGlobalSeed && 'border-amber-200 shadow-amber-50',
-        isActiveVibe && 'ring-4 ring-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.3)]'
+        isActiveVibe && 'ring-4 ring-blue-500 shadow-[0_0_60px_rgba(59,130,246,0.3)] col-span-full z-10'
       )}
     >
       {isGlobalSeed && (
@@ -152,8 +156,20 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {isActiveVibe && (
+        <button
+          onClick={() => setActivePost(null)}
+          className="absolute top-4 right-4 z-30 p-2.5 bg-black/60 backdrop-blur-md text-white rounded-2xl hover:bg-black transition-all active:scale-90"
+        >
+          <Minimize2 size={18} />
+        </button>
+      )}
+
       {post.mediaType !== 'text' && (
-        <div className="relative aspect-video bg-slate-900 overflow-hidden group/media flex-shrink-0">
+        <div className={cn(
+          "relative bg-slate-900 overflow-hidden group/media flex-shrink-0 transition-all duration-500",
+          isActiveVibe ? "aspect-[21/9]" : "aspect-video"
+        )}>
           {post.mediaType === 'image' && post.imageUrl && (
             <Image
               src={post.imageUrl} alt="post" fill
@@ -216,15 +232,15 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      <div className="p-6 flex-1 flex flex-col">
+      <div className={cn("flex flex-col flex-1 transition-all duration-500", isActiveVibe ? "p-10" : "p-6")}>
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
-            <Avatar className="w-10 h-10 border-2 border-card shadow-sm">
+            <Avatar className={cn("border-2 border-card shadow-sm transition-all", isActiveVibe ? "w-14 h-14" : "w-10 h-10")}>
               <AvatarImage src={post.authorAvatarUrl} />
               <AvatarFallback className="font-black">{post.authorName?.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <p className="text-sm font-bold text-foreground">{post.authorName}</p>
+              <p className={cn("font-bold text-foreground", isActiveVibe ? "text-lg" : "text-sm")}>{post.authorName}</p>
               <div className="flex items-center gap-2">
                 <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">
                   {post.campusAcronym}
@@ -243,11 +259,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
           <div className="flex items-center gap-2">
             {isActiveVibe && isContinuous && (
-              <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-lg text-[8px] font-black uppercase animate-pulse">
+              <div className="flex items-center gap-1 bg-blue-500 text-white px-3 py-1.5 rounded-xl text-[8px] font-black uppercase animate-pulse shadow-lg">
                 <FastForward size={10} fill="white" /> ACTIVE VIBE
               </div>
             )}
-            {canDelete && (
+            {canDelete && !isActiveVibe && (
               <button
                 type="button" onClick={handleDeletePost}
                 className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
@@ -259,31 +275,45 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           </div>
         </div>
 
-        <h3 className="text-lg font-bold leading-snug mb-4 text-foreground flex-1">{post.content}</h3>
+        <h3 className={cn("font-bold leading-snug mb-6 text-foreground flex-1", isActiveVibe ? "text-2xl" : "text-lg")}>{post.content}</h3>
 
-        <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
-          <div className="flex items-center gap-4">
-            <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex items-center gap-1.5">
-              <div className={cn('p-2 rounded-xl transition-all', isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
-                <ThumbsUp size={18} className={cn(isLiked && 'fill-orange-600')} />
+        <div className="flex items-center justify-between pt-6 border-t border-border mt-auto">
+          <div className="flex items-center gap-6">
+            <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex items-center gap-2">
+              <div className={cn('rounded-2xl transition-all', isActiveVibe ? 'p-3.5' : 'p-2', isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
+                <ThumbsUp size={isActiveVibe ? 24 : 18} className={cn(isLiked && 'fill-orange-600')} />
               </div>
-              <span className="text-xs font-black text-foreground">{likeCount}</span>
+              <span className={cn("font-black text-foreground", isActiveVibe ? "text-base" : "text-xs")}>{likeCount}</span>
             </button>
 
-            <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-1.5">
-              <div className="p-2 bg-muted text-muted-foreground rounded-xl">
-                <MessageCircle size={18} />
+            <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2">
+              <div className={cn('bg-muted text-muted-foreground rounded-2xl transition-all', isActiveVibe ? 'p-3.5' : 'p-2')}>
+                <MessageCircle size={isActiveVibe ? 24 : 18} />
               </div>
-              <span className="text-xs font-black text-foreground">{post.commentCount}</span>
+              <span className={cn("font-black text-foreground", isActiveVibe ? "text-base" : "text-xs")}>{post.commentCount}</span>
             </button>
           </div>
 
-          <button className="p-2 bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90">
-            <Share2 size={18} />
-          </button>
+          <div className="flex items-center gap-3">
+             {canDelete && isActiveVibe && (
+                <button
+                    type="button" onClick={handleDeletePost}
+                    className="p-3.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-2xl hover:scale-110 active:scale-95"
+                >
+                    <Trash2 size={24} />
+                </button>
+            )}
+            <button className={cn('bg-foreground text-background rounded-2xl hover:bg-primary transition-all shadow-lg active:scale-90', isActiveVibe ? 'p-3.5' : 'p-2')}>
+                <Share2 size={isActiveVibe ? 24 : 18} />
+            </button>
+          </div>
         </div>
 
-        {showComments && <CommentSection postId={post.id} />}
+        {showComments && (
+            <div className={cn("animate-in slide-in-from-top-4 duration-500", isActiveVibe && "max-w-3xl mx-auto w-full")}>
+                <CommentSection postId={post.id} />
+            </div>
+        )}
       </div>
     </div>
   );
