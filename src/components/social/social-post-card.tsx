@@ -49,14 +49,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
 
-  // Scroll into view when activated
+  // Register into matching pool
   React.useEffect(() => {
-    if (isActiveVibe && cardRef.current) {
-      setTimeout(() => {
-        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+    if (post.mediaType === 'youtube' || post.mediaType === 'video' || post.mediaType === 'tiktok') {
+      addToQueue([post]);
     }
-  }, [isActiveVibe]);
+  }, [post.id, addToQueue]);
 
   // Synchronized Playback
   React.useEffect(() => {
@@ -138,14 +136,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     <div
       ref={cardRef}
       className={cn(
-        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 h-full flex flex-col',
+        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 flex flex-col',
         !isActiveVibe && (
           post.likes >= 20 || post.isProtected
             ? 'border-orange-200 shadow-xl shadow-orange-50'
-            : 'border-border shadow-sm'
+            : 'border-border shadow-sm hover:shadow-xl'
         ),
-        isGlobalSeed && 'border-amber-200 shadow-amber-50',
-        isActiveVibe && 'ring-4 ring-blue-500 shadow-[0_0_60px_rgba(59,130,246,0.3)] col-span-full z-10'
+        isGlobalSeed && !isActiveVibe && 'border-amber-200 shadow-amber-50',
+        isActiveVibe && 'border-blue-500 ring-4 ring-blue-500/20 shadow-[0_30px_100px_rgba(59,130,246,0.15)]'
       )}
     >
       {isGlobalSeed && (
@@ -156,19 +154,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {isActiveVibe && (
-        <button
-          onClick={() => setActivePost(null)}
-          className="absolute top-4 right-4 z-30 p-2.5 bg-black/60 backdrop-blur-md text-white rounded-2xl hover:bg-black transition-all active:scale-90"
-        >
-          <Minimize2 size={18} />
-        </button>
-      )}
-
+      {/* Media zone */}
       {post.mediaType !== 'text' && (
         <div className={cn(
           "relative bg-slate-900 overflow-hidden group/media flex-shrink-0 transition-all duration-500",
-          isActiveVibe ? "aspect-[21/9]" : "aspect-video"
+          isActiveVibe ? "aspect-video md:aspect-[21/9]" : "aspect-video"
         )}>
           {post.mediaType === 'image' && post.imageUrl && (
             <Image
@@ -258,9 +248,17 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {isActiveVibe && isContinuous && (
-              <div className="flex items-center gap-1 bg-blue-500 text-white px-3 py-1.5 rounded-xl text-[8px] font-black uppercase animate-pulse shadow-lg">
-                <FastForward size={10} fill="white" /> ACTIVE VIBE
+            {isActiveVibe && (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 bg-blue-500 text-white px-3 py-1.5 rounded-xl text-[8px] font-black uppercase animate-pulse shadow-lg">
+                    <FastForward size={10} fill="white" /> ACTIVE VIBE
+                </div>
+                <button 
+                    onClick={() => setActivePost(null)}
+                    className="p-2 bg-muted hover:bg-muted/80 rounded-xl transition-all active:scale-90"
+                >
+                    <Minimize2 size={16} className="text-muted-foreground" />
+                </button>
               </div>
             )}
             {canDelete && !isActiveVibe && (
@@ -277,7 +275,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
         <h3 className={cn("font-bold leading-snug mb-6 text-foreground flex-1", isActiveVibe ? "text-2xl" : "text-lg")}>{post.content}</h3>
 
-        <div className="flex items-center justify-between pt-6 border-t border-border mt-auto">
+        <div className={cn(
+            "flex items-center justify-between border-t border-border mt-auto",
+            isActiveVibe ? "pt-8" : "pt-6"
+        )}>
           <div className="flex items-center gap-6">
             <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex items-center gap-2">
               <div className={cn('rounded-2xl transition-all', isActiveVibe ? 'p-3.5' : 'p-2', isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
@@ -310,7 +311,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
 
         {showComments && (
-            <div className={cn("animate-in slide-in-from-top-4 duration-500", isActiveVibe && "max-w-3xl mx-auto w-full")}>
+            <div className={cn("animate-in slide-in-from-top-4 duration-500 mt-6", isActiveVibe && "max-w-3xl mx-auto w-full")}>
                 <CommentSection postId={post.id} />
             </div>
         )}

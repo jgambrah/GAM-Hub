@@ -145,7 +145,7 @@ export default function CampusPulseFeed({
                 </div>
             </div>
 
-            <VibeFeed posts={filteredPosts} />
+            <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
         </div>
     );
 }

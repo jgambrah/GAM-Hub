@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { SocialPost } from '@/lib/types';
 import SocialPostCard from './social-post-card';
 import UpNextPanel from './UpNextPanel';
@@ -9,22 +9,23 @@ import { cn } from '@/lib/utils';
 
 interface VibeFeedProps {
   posts: SocialPost[];
+  searchQuery?: string;
   className?: string;
 }
 
 /**
  * VibeFeed
  * --------
- * Wraps the post grid and handles the active-card expansion layout.
- *
- * Layout rules:
- *  - When nothing is active: standard 1–3 col grid
- *  - When something is active: single column so col-span-full works
+ * Implements the Theater-Grid layout.
+ * - Active video is "Projected Big" at the top.
+ * - Remaining videos are aligned in two rows (2-column grid) below.
+ * - Persistent "Up Next" playlist stays on the side.
+ * - Reverts to standard grid if a search is active.
  */
-export default function VibeFeed({ posts, className }: VibeFeedProps) {
+export default function VibeFeed({ posts, searchQuery, className }: VibeFeedProps) {
   const { activePostId, addToQueue } = useVibePlayer();
 
-  // Seed the full pool once on mount / when posts change
+  // Register all media posts into the matching engine
   React.useEffect(() => {
     const mediaPosts = posts.filter(
       p => p.mediaType === 'youtube' || p.mediaType === 'video' || p.mediaType === 'tiktok'
@@ -32,32 +33,54 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
     if (mediaPosts.length > 0) addToQueue(mediaPosts);
   }, [posts.length, addToQueue]);
 
-  const hasActive = !!activePostId;
+  const isSearchActive = !!searchQuery && searchQuery.trim().length > 0;
+  
+  // Identify the projected post and the remaining grid items
+  const { projectedPost, gridPosts } = useMemo(() => {
+    if (isSearchActive || !activePostId) {
+      return { projectedPost: null, gridPosts: posts };
+    }
+    
+    const active = posts.find(p => p.id === activePostId);
+    const others = posts.filter(p => p.id !== activePostId);
+    
+    return { projectedPost: active, gridPosts: others };
+  }, [posts, activePostId, isSearchActive]);
 
   return (
     <div className={cn('flex flex-col lg:flex-row gap-8 items-start w-full', className)}>
-      {/* ── Post grid ─────────────────────────────────────────────────────── */}
-      <div
-        className={cn(
-          'grid gap-6 transition-all duration-500 min-w-0 w-full',
-          !hasActive && 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
-          hasActive && 'grid-cols-1 flex-1'
+      {/* ── MAIN CONTENT AREA ─────────────────────────────────────────────── */}
+      <div className="flex-1 w-full space-y-10 min-w-0">
+        
+        {/* 1. PROJECTED VIDEO (THEATER MODE) */}
+        {projectedPost && (
+          <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+            <SocialPostCard post={projectedPost} />
+            <div className="mt-8 mb-4 px-2 flex items-center justify-between">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">More Vibrations in the Yard</h4>
+                <div className="h-[1px] flex-1 bg-slate-100 mx-4" />
+            </div>
+          </div>
         )}
-      >
-        {posts.map(post => (
-          <SocialPostCard key={post.id} post={post} />
-        ))}
+
+        {/* 2. TWO-COLUMN GRID (REMAINDER) */}
+        <div className={cn(
+          "grid gap-6 transition-all duration-500",
+          isSearchActive 
+            ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" // Standard discovery grid for search
+            : "grid-cols-1 sm:grid-cols-2" // 2-column grid as requested
+        )}>
+          {gridPosts.map(post => (
+            <SocialPostCard key={post.id} post={post} />
+          ))}
+        </div>
       </div>
 
-      {/* ── Up Next sidebar ────────────────────────────────────────────────── */}
-      <aside
-        className={cn(
-          'hidden lg:block flex-shrink-0 transition-all duration-500 overflow-hidden sticky top-24',
-          hasActive
-            ? 'w-full max-w-[350px] opacity-100 translate-x-0'
-            : 'w-0 opacity-0 translate-x-4 pointer-events-none'
-        )}
-      >
+      {/* ── SIDBAR PLAYLIST (UP NEXT) ─────────────────────────────────────── */}
+      <aside className={cn(
+        "hidden lg:block flex-shrink-0 sticky top-24 transition-all duration-500",
+        (projectedPost || isSearchActive) ? "w-[350px] opacity-100 translate-x-0" : "w-0 opacity-0 translate-x-4 pointer-events-none"
+      )}>
         <UpNextPanel />
       </aside>
     </div>
