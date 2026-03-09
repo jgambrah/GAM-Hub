@@ -29,6 +29,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
+    // Set as active instantly for UI feedback
     setActivePostId(post.id);
 
     // If continuous mode is ON, intelligently rebuild the queue starting from this post
@@ -43,7 +44,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         const recommendation = await getRecommendedVibes({
           currentPostContent: post.content,
           userInterests: user?.interests || [],
-          availablePosts: availablePosts.slice(0, 20) // Only analyze top 20 for speed
+          availablePosts: availablePosts.slice(0, 20)
         });
 
         const newQueueIds = recommendation.recommendedPostIds;
@@ -51,16 +52,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
           .map(id => queue.find(p => p.id === id))
           .filter(p => !!p) as SocialPost[];
         
-        // Final queue: [Selected Post, ...Matched AI Recommendations, ...Rest of randoms]
         const remaining = queue.filter(p => p.id !== post.id && !newQueueIds.includes(p.id));
         setQueue([post, ...matchedPosts, ...remaining]);
       } catch (err) {
-        console.error("Liaison Matcher Error:", err);
-        // Fallback: move selected post to front of existing queue
-        setQueue(prev => {
-            const rest = prev.filter(p => p.id !== post.id);
-            return [post, ...rest];
-        });
+        console.warn("Liaison Vibe Matcher failed, falling back to sequential:", err);
       }
     }
   }, [isContinuous, queue, user?.interests]);
@@ -68,18 +63,18 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const playNext = useCallback(() => {
     if (queue.length <= 1) return;
     
-    // Find current index
+    // Find where we are in the current queue
     const currentIndex = queue.findIndex(p => p.id === activePostId);
     const nextIndex = (currentIndex + 1) % queue.length;
     
     const nextPost = queue[nextIndex];
     if (nextPost) {
+      console.log("📡 Vibe-Stream: Advancing to next vibration:", nextPost.id);
       setActivePostId(nextPost.id);
     }
   }, [activePostId, queue]);
 
   const addToQueue = useCallback((posts: SocialPost[]) => {
-    // Only add unique posts
     setQueue(prev => {
       const existingIds = new Set(prev.map(p => p.id));
       const newPosts = posts.filter(p => 
@@ -87,7 +82,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         (p.mediaType === 'youtube' || p.mediaType === 'tiktok' || p.mediaType === 'video')
       );
       
-      if (newPosts.length === 0) return prev; // Prevent unnecessary state updates
+      if (newPosts.length === 0) return prev;
       return [...prev, ...newPosts];
     });
   }, []);

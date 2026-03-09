@@ -12,7 +12,7 @@ import { doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp }
 import { cn } from '@/lib/utils';
 import CommentSection from './CommentSection';
 import ReactPlayer from 'react-player';
-import YouTube, { type YouTubeProps } from 'react-youtube';
+import YouTube from 'react-youtube';
 import { useToast } from '@/hooks/use-toast';
 import { useVibePlayer } from './VibePlayerContext';
 
@@ -35,11 +35,33 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
   
-  const isTrending = likeCount >= 20 || post.isProtected;
+  // Player references for programmatic control
+  const ytPlayerRef = React.useRef<any>(null);
+  
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
+
+  // LIAISON SYNC: Handle automatic playback when this card becomes active
+  React.useEffect(() => {
+    if (isActiveVibe) {
+      if (post.mediaType === 'youtube' && ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.playVideo();
+        } catch (e) {
+          console.warn("YouTube play blocked:", e);
+        }
+      }
+    } else {
+      // Pause if another vibe becomes active
+      if (post.mediaType === 'youtube' && ytPlayerRef.current) {
+        try {
+          ytPlayerRef.current.pauseVideo();
+        } catch (e) {}
+      }
+    }
+  }, [isActiveVibe, post.mediaType]);
 
   React.useEffect(() => {
     if (user && firestore) {
@@ -96,8 +118,20 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   const handleEnd = () => {
     if (isContinuous) {
-      toast({ title: "Matching Next Vibe...", description: "Liaison AI is keeping the Yard alive." });
-      playNext();
+      toast({ 
+        title: "Matching Next Vibe...", 
+        description: "Liaison AI is keeping the Yard alive." 
+      });
+      // Small delay to let the toast appear before the jump
+      setTimeout(() => playNext(), 500);
+    }
+  };
+
+  const onYoutubeReady = (event: any) => {
+    ytPlayerRef.current = event.target;
+    // If it becomes ready and is already the active vibe, play it
+    if (isActiveVibe) {
+      event.target.playVideo();
     }
   };
 
@@ -105,10 +139,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   return (
     <div className={cn(
-        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl h-full',
-        isTrending ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm',
+        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl h-full flex flex-col',
+        post.likes >= 20 || post.isProtected ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm',
         isGlobalSeed && 'border-amber-200 shadow-amber-50',
-        isActiveVibe && 'ring-4 ring-blue-500 shadow-2xl'
+        isActiveVibe && 'ring-4 ring-blue-500 shadow-[0_0_40px_rgba(59,130,246,0.3)]'
     )}>
       {isGlobalSeed && (
         <div className="absolute top-4 left-4 z-20 animate-in zoom-in duration-500">
@@ -119,7 +153,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       )}
 
       {post.mediaType !== 'text' && (
-        <div className="relative aspect-video bg-slate-900 overflow-hidden group/media">
+        <div className="relative aspect-video bg-slate-900 overflow-hidden group/media flex-shrink-0">
             {post.mediaType === 'image' && post.imageUrl && (
                 <Image src={post.imageUrl} alt="post" fill className="object-cover group-hover/media:scale-105 transition-transform duration-700" />
             )}
@@ -145,6 +179,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                         videoId={youtubeId}
                         opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: isActiveVibe ? 1 : 0 } }}
                         className="w-full h-full"
+                        onReady={onYoutubeReady}
                         onPlay={() => setActivePost(post)}
                         onEnd={handleEnd}
                         onError={(e) => { if (e.data === 101 || e.data === 150) setIsRestricted(true); }}
@@ -177,7 +212,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      <div className="p-6">
+      <div className="p-6 flex-1 flex flex-col">
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
             <Avatar className="w-10 h-10 border-2 border-card shadow-sm">
@@ -201,7 +236,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           <div className="flex items-center gap-2">
             {isActiveVibe && isContinuous && (
                 <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-lg text-[8px] font-black uppercase animate-pulse">
-                    <FastForward size={10} fill="white" /> NEXT UP
+                    <FastForward size={10} fill="white" /> ACTIVE VIBE
                 </div>
             )}
             {canDelete && (
@@ -217,9 +252,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           </div>
         </div>
 
-        <h3 className="text-lg font-bold leading-snug mb-4 text-foreground">{post.content}</h3>
+        <h3 className="text-lg font-bold leading-snug mb-4 text-foreground flex-1">{post.content}</h3>
 
-        <div className="flex items-center justify-between pt-4 border-t border-border">
+        <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
           <div className="flex items-center gap-4">
              <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex items-center gap-1.5 group/like">
                 <div className={cn("p-2 rounded-xl transition-all", isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
