@@ -163,7 +163,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     rel: 0,
     modestbranding: 1,
     autoplay: isActiveVibe ? 1 : 0,
-    mute: 0, // Start unmuted; browser fallback will handle if needed
+    mute: isActiveVibe ? 1 : 0, // Start muted only if browser blocks it, but autoplay=1 requires it often
     playsinline: 1,
   }), [isActiveVibe]);
 
@@ -240,7 +240,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 <YouTube
                   key={ytKey}
                   videoId={youtubeId}
-                  opts={{ width: '100%', height: '100%', playerVars: ytPlayerVars }}
+                  opts={{ width: '100%', height: '100%', playerVars: { ...ytPlayerVars, autoplay: isActiveVibe ? 1 : 0, mute: isActiveVibe ? 1 : 0 } }}
                   className="w-full h-full"
                   onReady={onYoutubeReady}
                   onPlay={onYoutubePlay}
@@ -388,7 +388,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
       {showComments && (
         <div className={cn('border-t border-border', isActiveVibe ? 'px-8 pb-8' : 'px-6 pb-6')}>
-          <CommentSection postId={post.id} />
+          CommentSection postId={post.id} />
         </div>
       )}
     </div>
