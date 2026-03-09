@@ -20,6 +20,7 @@ import BottomNav from '@/components/navigation/BottomNav';
 import { doc } from 'firebase/firestore';
 import type { LiveBroadcast } from '@/lib/types';
 import { CampusLiveTV } from '@/components/social/CampusLiveTV';
+import { VibePlayerProvider } from '@/components/social/VibePlayerContext';
 
 function AuthGatedLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -41,20 +42,11 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
     const isLive = broadcast?.status === 'live';
     // -------------------------
 
-    /**
-     * THE LIAISON DEEP-SYNC: 
-     * Physically handshakes with the server to pull the latest verification status and claims.
-     */
     const handleRefreshStatus = async () => {
         try {
             if (auth?.currentUser) {
-                // 1. Physically ask Firebase to check the server for verification status
                 await auth.currentUser.reload();
-                
-                // 2. FORCE a fresh token from the server (Vital for fresh claims/status)
                 await auth.currentUser.getIdToken(true);
-                
-                // 3. Refresh UI to reflect changes
                 window.location.reload();
             } else {
                 window.location.reload();
@@ -65,13 +57,7 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
         }
     };
 
-    /**
-     * THE EMERGENCY BYPASS:
-     * Only for Liaison testing phases.
-     */
     const handleAdminBypass = async () => {
-        // This physically updates the Auth and reloads the page
-        // Only use this during the 'Vibration' test phase
         window.location.reload();
     };
 
@@ -83,13 +69,8 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // THE LIAISON'S MASTER KEY FIX
-    
-    // 1. First, check if the user is the Master Admin (The Liaison)
-    // We check both the email directly and the 'isAdmin' flag from custom claims
     const isLiaison = firebaseUser?.email === 'admin@gamhub.com' || isAdmin;
 
-    // 2. If it is the Liaison, bypass ALL gates immediately
     if (isLiaison) {
         return (
             <>
@@ -110,8 +91,6 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // 3. For everyone else, check the AUTH verification first
-    // We trust the Auth Token's verified status as the single source of truth
     if (firebaseUser && !firebaseUser.emailVerified) {
         const isVendor = user?.role === 'vendor';
         return (
@@ -138,8 +117,6 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
                         <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-6">
                             Handshake Protocol Active
                         </p>
-
-                        {/* Hidden Emergency Bypass for Liaison */}
                         <button 
                           onDoubleClick={handleAdminBypass} 
                           className="mt-10 text-[8px] text-muted-foreground/10 hover:text-muted-foreground/40 transition-colors"
@@ -152,7 +129,6 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
         );
     }
 
-    // 4. Final safety: If user exists and is verified, let them in
     if (firebaseUser) {
         return (
             <>
@@ -172,7 +148,6 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
         )
     }
 
-    // Final safety fallback (should be handled by useAuth redirect)
     return (
         <div className="flex h-screen items-center justify-center">
             <Loader2 className="h-16 w-16 animate-spin text-primary" />
@@ -186,11 +161,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <FirebaseClientProvider>
         <ViewProvider>
             <SidebarProvider>
-                <CampusViewProvider>
-                    <DynamicThemeProvider>
-                        <AuthGatedLayout>{children}</AuthGatedLayout>
-                    </DynamicThemeProvider>
-                </CampusViewProvider>
+                <VibePlayerProvider>
+                    <CampusViewProvider>
+                        <DynamicThemeProvider>
+                            <AuthGatedLayout>{children}</AuthGatedLayout>
+                        </DynamicThemeProvider>
+                    </CampusViewProvider>
+                </VibePlayerProvider>
             </SidebarProvider>
         </ViewProvider>
     </FirebaseClientProvider>

@@ -1,20 +1,16 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit, QueryConstraint } from 'firebase/firestore';
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import SocialPostCard from './social-post-card';
-import { Sparkles, RefreshCcw, SearchX, Globe } from 'lucide-react';
+import { Sparkles, RefreshCcw, SearchX, Globe, FastForward, Zap } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import { useVibePlayer } from './VibePlayerContext';
+import { Switch } from '../ui/switch';
 
-/**
- * CampusPulseFeed Component
- * 
- * THE HARDENED PULSE: Targets the flat 'campus_pulse' collection.
- * Includes search query support and LIAISON GLOBAL BROADCAST awareness.
- */
 export default function CampusPulseFeed({
     activeCampusId,
     filterTag,
@@ -28,6 +24,7 @@ export default function CampusPulseFeed({
 }) {
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
+    const { isContinuous, setIsContinuous, addToQueue, queue, activePostId } = useVibePlayer();
     
     const socialQuery = useMemoFirebase(() => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return null;
@@ -35,7 +32,6 @@ export default function CampusPulseFeed({
         const pulseRef = collection(firestore, 'campus_pulse');
         const constraints: QueryConstraint[] = [];
         
-        // SEEDING LOGIC: If a specific campus is selected, also fetch 'all' (Liaison global vibes)
         if (activeCampusId !== 'all') {
             constraints.push(where('campusId', 'in', [activeCampusId, 'all']));
         }
@@ -92,7 +88,6 @@ export default function CampusPulseFeed({
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
 
-        // --- INTELLIGENT SEARCH FILTER ---
         if (searchQuery.trim()) {
             const term = searchQuery.toLowerCase().trim();
             combined = combined.filter(post => {
@@ -100,13 +95,19 @@ export default function CampusPulseFeed({
                 const titleMatch = post.title?.toLowerCase().includes(term);
                 const authorMatch = post.authorName?.toLowerCase().includes(term);
                 const tagMatch = post.tags?.some(tag => tag.toLowerCase().includes(term));
-                
                 return contentMatch || titleMatch || authorMatch || tagMatch;
             });
         }
 
         return combined;
     }, [posts, srcPosts, searchQuery]);
+
+    // Sync feed posts with Vibe Player Queue
+    useEffect(() => {
+        if (filteredPosts.length > 0) {
+            addToQueue(filteredPosts);
+        }
+    }, [filteredPosts, addToQueue]);
 
     if (error) {
         return (
@@ -129,37 +130,65 @@ export default function CampusPulseFeed({
     }
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {filteredPosts.length === 0 ? (
-                <div className="text-center py-24 bg-card rounded-[3rem] border-2 border-dashed border-border/50 col-span-full">
-                    {searchQuery ? (
-                        <>
-                            <SearchX className="mx-auto h-16 w-16 text-muted-foreground/20 mb-6" />
-                            <p className="text-xl font-black text-foreground">No matches found</p>
-                            <p className="text-sm text-muted-foreground mt-2 italic">Try different keywords or tags.</p>
-                        </>
-                    ) : (
-                        <>
-                            <Sparkles className="mx-auto h-16 w-16 text-muted-foreground/20 mb-6" />
-                            <p className="text-xl font-black text-foreground">The Pulse is Silent</p>
-                            <p className="text-sm text-muted-foreground mt-2">No vibrations detected on this campus yet.</p>
-                        </>
-                    )}
-                </div>
-            ) : (
-                filteredPosts.map((post) => (
-                    <div key={post.id} className="relative group">
-                        {post.campusId === 'all' && (
-                            <div className="absolute -top-2 -right-2 z-20 animate-in zoom-in duration-500">
-                                <div className="bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1 border-2 border-card">
-                                    <Globe size={10} /> Global Vibe
-                                </div>
-                            </div>
-                        )}
-                        <SocialPostCard post={post} />
+        <div className="space-y-8">
+            {/* CONTINUOUS PLAYBAR CONTROLS */}
+            <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-blue-500 animate-in slide-in-from-top-4">
+                <div className="flex items-center gap-4">
+                    <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
+                        <Zap size={20} className={isContinuous ? "animate-pulse" : ""} fill={isContinuous ? "currentColor" : "none"} />
                     </div>
-                ))
-            )}
+                    <div>
+                        <h4 className="font-black text-sm tracking-tight">Continuous Vibe Mode</h4>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Matching: {isContinuous ? 'ACTIVE' : 'OFF'}</p>
+                    </div>
+                </div>
+                
+                <div className="flex items-center gap-6">
+                    {isContinuous && queue.length > 0 && (
+                        <div className="hidden lg:flex flex-col items-end">
+                            <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Smart Queue</span>
+                            <span className="text-xs font-bold truncate max-w-[150px]">{queue.length} Vibes Ready</span>
+                        </div>
+                    )}
+                    <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/10">
+                        <span className="text-[10px] font-black uppercase text-slate-400">Autoplay</span>
+                        <Switch checked={isContinuous} onCheckedChange={setIsContinuous} className="data-[state=checked]:bg-blue-500" />
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {filteredPosts.length === 0 ? (
+                    <div className="text-center py-24 bg-card rounded-[3rem] border-2 border-dashed border-border/50 col-span-full">
+                        {searchQuery ? (
+                            <>
+                                <SearchX className="mx-auto h-16 w-16 text-muted-foreground/20 mb-6" />
+                                <p className="text-xl font-black text-foreground">No matches found</p>
+                                <p className="text-sm text-muted-foreground mt-2 italic">Try different keywords or tags.</p>
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="mx-auto h-16 w-16 text-muted-foreground/20 mb-6" />
+                                <p className="text-xl font-black text-foreground">The Pulse is Silent</p>
+                                <p className="text-sm text-muted-foreground mt-2">No vibrations detected on this campus yet.</p>
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    filteredPosts.map((post) => (
+                        <div key={post.id} className="relative group">
+                            {post.campusId === 'all' && (
+                                <div className="absolute -top-2 -right-2 z-20 animate-in zoom-in duration-500">
+                                    <div className="bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1 border-2 border-card">
+                                        <Globe size={10} /> Global Vibe
+                                    </div>
+                                </div>
+                            )}
+                            <SocialPostCard post={post} />
+                        </div>
+                    ))
+                )}
+            </div>
         </div>
     );
 }

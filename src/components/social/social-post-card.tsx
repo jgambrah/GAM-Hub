@@ -4,7 +4,7 @@ import Image from 'next/image';
 import * as React from 'react';
 import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2, Globe, AlertTriangle } from 'lucide-react';
+import { ThumbsUp, MessageCircle, Share2, Youtube, Play, Video, Trash2, Globe, AlertTriangle, FastForward } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
@@ -14,6 +14,7 @@ import CommentSection from './CommentSection';
 import ReactPlayer from 'react-player';
 import YouTube, { type YouTubeProps } from 'react-youtube';
 import { useToast } from '@/hooks/use-toast';
+import { useVibePlayer } from './VibePlayerContext';
 
 const getYouTubeId = (url: string) => {
   if (!url) return null;
@@ -26,6 +27,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const { user, isAdmin } = useAuth();
   const { firestore } = useFirebase();
   const { toast } = useToast();
+  const { activePostId, isContinuous, playNext, setActivePost } = useVibePlayer();
+  
   const [isLiked, setIsLiked] = React.useState(false);
   const [likeCount, setLikeCount] = React.useState(post.likes);
   const [isProcessingLike, setIsProcessingLike] = React.useState(false);
@@ -36,6 +39,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
   const isGlobalSeed = post.campusId === 'all';
+  const isActiveVibe = activePostId === post.id;
 
   React.useEffect(() => {
     if (user && firestore) {
@@ -90,10 +94,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  const onYoutubeError = (event: any) => {
-    // 101 and 150 mean the video owner restricted embedding
-    if (event.data === 101 || event.data === 150) {
-      setIsRestricted(true);
+  const handleEnd = () => {
+    if (isContinuous) {
+      toast({ title: "Matching Next Vibe...", description: "Liaison AI is keeping the Yard alive." });
+      playNext();
     }
   };
 
@@ -103,7 +107,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     <div className={cn(
         'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500 hover:shadow-2xl h-full',
         isTrending ? 'border-orange-200 shadow-xl shadow-orange-50' : 'border-border shadow-sm',
-        isGlobalSeed && 'border-amber-200 shadow-amber-50'
+        isGlobalSeed && 'border-amber-200 shadow-amber-50',
+        isActiveVibe && 'ring-4 ring-blue-500 shadow-2xl'
     )}>
       {isGlobalSeed && (
         <div className="absolute top-4 left-4 z-20 animate-in zoom-in duration-500">
@@ -125,7 +130,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                     <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
                         <AlertTriangle className="text-amber-500 mb-4" size={48} />
                         <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
-                        <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">This creator has blocked playback inside other apps. Visit YouTube to see the full vibe.</p>
+                        <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">Playback restricted inside other apps. Visit YouTube to see the full vibe.</p>
                         <a 
                             href={post.mediaUrl || '#'} 
                             target="_blank" 
@@ -138,9 +143,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   ) : (
                     <YouTube 
                         videoId={youtubeId}
-                        opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }}
+                        opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: isActiveVibe ? 1 : 0 } }}
                         className="w-full h-full"
-                        onError={onYoutubeError}
+                        onPlay={() => setActivePost(post)}
+                        onEnd={handleEnd}
+                        onError={(e) => { if (e.data === 101 || e.data === 150) setIsRestricted(true); }}
                     />
                   )}
                 </div>
@@ -159,6 +166,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                         controls 
                         width="100%" 
                         height="100%" 
+                        playing={isActiveVibe}
+                        onStart={() => setActivePost(post)}
+                        onEnded={handleEnd}
                         light={post.imageUrl || false}
                         playIcon={<div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl hover:scale-110 transition-transform"><Play size={32} fill="white" /></div>}
                     />
@@ -188,16 +198,23 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </div>
           </div>
 
-          {canDelete && (
-            <button 
-              type="button"
-              onClick={handleDeletePost}
-              className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
-              title="Retract Vibe"
-            >
-              <Trash2 size={16} />
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {isActiveVibe && isContinuous && (
+                <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-lg text-[8px] font-black uppercase animate-pulse">
+                    <FastForward size={10} fill="white" /> NEXT UP
+                </div>
+            )}
+            {canDelete && (
+                <button 
+                type="button"
+                onClick={handleDeletePost}
+                className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
+                title="Retract Vibe"
+                >
+                <Trash2 size={16} />
+                </button>
+            )}
+          </div>
         </div>
 
         <h3 className="text-lg font-bold leading-snug mb-4 text-foreground">{post.content}</h3>

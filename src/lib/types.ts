@@ -150,6 +150,8 @@ export type SocialPost = {
   campusAcronym?: string;
   content: string;
   title?: string;
+  artist?: string; // Extracted for recommendation
+  genre?: string;  // Extracted for recommendation
   mediaType?: 'youtube' | 'tiktok' | 'image' | 'text' | 'video';
   mediaUrl?: string | null;
   imageUrl?: string | null;
@@ -481,4 +483,27 @@ export type StudyRoom = {
   isPrivate?: boolean;
   isOfficial?: boolean;
   creatorRole?: string;
+};
+
+export type PayoutRequestInput = {
+  vendorId: string;
+  vendorName: string;
+  amount: number;
+  momoNumber: string;
+  momoBankCode: string;
+};
+
+export type VibeMatchInput = {
+  currentPostContent: string;
+  userInterests: string[];
+  availablePosts: {
+    id: string;
+    content: string;
+    tags: string[];
+  }[];
+};
+
+export type VibeMatchOutput = {
+  recommendedPostIds: string[];
+  reasoning: string;
 };
