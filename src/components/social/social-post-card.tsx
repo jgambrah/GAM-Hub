@@ -32,7 +32,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const { user, isAdmin } = useAuth();
   const { firestore } = useFirebase();
   const { toast } = useToast();
-  const { activePostId, isContinuous, playNext, setActivePost } = useVibePlayer();
+  const { activePostId, isContinuous, playNext, setActivePost, addToQueue } = useVibePlayer();
 
   const [isLiked, setIsLiked] = React.useState(false);
   const [likeCount, setLikeCount] = React.useState(post.likes);
@@ -40,7 +40,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
 
-  // Tracks whether the YouTube IFrame API player is ready to receive commands
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
 
@@ -49,33 +48,34 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
 
-  // ─── SYNCHRONIZED PLAYBACK HOOK ──────────────────────────────────────────────
-  // When this card becomes the active vibe, command its player to play.
-  // Uses ytReadyRef to guard against the race where isActiveVibe becomes true
-  // before the YouTube IFrame has finished initialising.
+  // Register this post into the global matching pool on mount
+  React.useEffect(() => {
+    if (post.mediaType === 'youtube' || post.mediaType === 'video' || post.mediaType === 'tiktok') {
+      addToQueue([post]);
+    }
+  }, [post.id, addToQueue]);
+
+  // ─── SYNCHRONIZED PLAYBACK ────────────────────────────────────────────────
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
-
     if (isActiveVibe) {
       if (ytReadyRef.current && ytPlayerRef.current) {
         try { ytPlayerRef.current.playVideo(); } catch (e) { console.warn('YT play blocked:', e); }
       }
-      // If not ready yet, onYoutubeReady will call playVideo() once it fires
     } else {
       if (ytReadyRef.current && ytPlayerRef.current) {
-        try { ytPlayerRef.current.pauseVideo(); } catch (e) { /* ignore */ }
+        try { ytPlayerRef.current.pauseVideo(); } catch (_) { /* ignore */ }
       }
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // ─── FIREBASE: CHECK EXISTING LIKE ───────────────────────────────────────────
+  // ─── FIREBASE LIKE STATE ─────────────────────────────────────────────────
   React.useEffect(() => {
     if (!user || !firestore) return;
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
     getDoc(likeRef).then(snap => { if (snap.exists()) setIsLiked(true); });
   }, [firestore, user, post.id]);
 
-  // ─── HANDLERS ────────────────────────────────────────────────────────────────
   const handleLike = async () => {
     if (!user || !firestore || isProcessingLike) return;
     setIsProcessingLike(true);
@@ -117,30 +117,22 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   const handleEnd = () => {
     if (isContinuous) {
-      toast({
-        title: 'Matching Next Vibe…',
-        description: 'Liaison AI is keeping the Yard alive.',
-      });
-      // Small delay lets the toast appear before the jump
+      toast({ title: 'Matching Next Vibe…', description: 'Liaison AI is keeping the Yard alive.' });
       setTimeout(() => playNext(), 500);
     }
   };
 
-  // ─── YOUTUBE READY HANDSHAKE ─────────────────────────────────────────────────
-  // Store a ref to the IFrame player and mark it as ready.
-  // If this card is already the active vibe when the player finishes loading
-  // (e.g. auto-advance arrived before iframe init completed), start playback now.
+  // ─── YOUTUBE READY HANDSHAKE ──────────────────────────────────────────────
   const onYoutubeReady = (event: any) => {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
     if (isActiveVibe) {
-      try { event.target.playVideo(); } catch (e) { console.warn('YT play blocked on ready:', e); }
+      try { event.target.playVideo(); } catch (e) { console.warn('YT play on ready blocked:', e); }
     }
   };
 
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
 
-  // ─── RENDER ───────────────────────────────────────────────────────────────────
   return (
     <div
       className={cn(
@@ -164,9 +156,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         <div className="relative aspect-video bg-slate-900 overflow-hidden group/media flex-shrink-0">
           {post.mediaType === 'image' && post.imageUrl && (
             <Image
-              src={post.imageUrl}
-              alt="post"
-              fill
+              src={post.imageUrl} alt="post" fill
               className="object-cover group-hover/media:scale-105 transition-transform duration-700"
             />
           )}
@@ -181,9 +171,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                     Playback restricted inside other apps. Visit YouTube to see the full vibe.
                   </p>
                   <a
-                    href={post.mediaUrl || '#'}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer"
                     className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
                   >
                     <Youtube size={14} fill="white" /> Open on YouTube
@@ -192,24 +180,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               ) : (
                 <YouTube
                   videoId={youtubeId}
-                  opts={{
-                    width: '100%',
-                    height: '100%',
-                    playerVars: {
-                      rel: 0,
-                      modestbranding: 1,
-                      // Never rely on autoplay prop alone — programmatic play handles it
-                      autoplay: 0,
-                    },
-                  }}
+                  opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: 0 } }}
                   className="w-full h-full"
                   onReady={onYoutubeReady}
-                  // onPlay fires when the user OR the programmatic command starts playback
                   onPlay={() => setActivePost(post)}
                   onEnd={handleEnd}
-                  onError={e => {
-                    if (e.data === 101 || e.data === 150) setIsRestricted(true);
-                  }}
+                  onError={e => { if (e.data === 101 || e.data === 150) setIsRestricted(true); }}
                 />
               )}
             </div>
@@ -224,10 +200,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           {post.mediaType === 'video' && post.mediaUrl && (
             <div className="w-full h-full bg-black flex items-center justify-center">
               <ReactPlayer
-                url={post.mediaUrl}
-                controls
-                width="100%"
-                height="100%"
+                url={post.mediaUrl} controls width="100%" height="100%"
                 playing={isActiveVibe}
                 onStart={() => setActivePost(post)}
                 onEnded={handleEnd}
@@ -247,7 +220,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
             <Avatar className="w-10 h-10 border-2 border-card shadow-sm">
-              <AvatarImage src={post.authorAvatarUrl} />
+              <AvatarImage src={post.authorAvatarUrl || ''} />
               <AvatarFallback className="font-black">{post.authorName?.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
@@ -269,7 +242,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Badge only shows when actively playing in continuous mode */}
             {isActiveVibe && isContinuous && (
               <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-1 rounded-lg text-[8px] font-black uppercase animate-pulse">
                 <FastForward size={10} fill="white" /> ACTIVE VIBE
@@ -277,8 +249,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             )}
             {canDelete && (
               <button
-                type="button"
-                onClick={handleDeletePost}
+                type="button" onClick={handleDeletePost}
                 className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
                 title="Retract Vibe"
               >
@@ -292,21 +263,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
         <div className="flex items-center justify-between pt-4 border-t border-border mt-auto">
           <div className="flex items-center gap-4">
-            <button
-              onClick={handleLike}
-              disabled={!user || isProcessingLike}
-              className="flex items-center gap-1.5 group/like"
-            >
+            <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex items-center gap-1.5">
               <div className={cn('p-2 rounded-xl transition-all', isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
                 <ThumbsUp size={18} className={cn(isLiked && 'fill-orange-600')} />
               </div>
               <span className="text-xs font-black text-foreground">{likeCount}</span>
             </button>
 
-            <button
-              onClick={() => setShowComments(!showComments)}
-              className="flex items-center gap-1.5 group/comment"
-            >
+            <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-1.5">
               <div className="p-2 bg-muted text-muted-foreground rounded-xl">
                 <MessageCircle size={18} />
               </div>

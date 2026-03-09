@@ -1,17 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, Hash, TrendingUp, Sparkles, ShoppingBag, Users, Video, Globe, X } from 'lucide-react';
+import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import TrendingTags from '@/components/social/TrendingTags';
 import TrendingSearchTicker from '@/components/social/TrendingSearchTicker';
+import UpNextPanel from '@/components/social/UpNextPanel';
 
-/**
- * ExplorePage Component
- * 
- * The main search and discovery hub for the Yard.
- * Integrates the hardened search engine into the Pulse feed.
- */
 export default function ExplorePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'people' | 'market' | 'vlogs'>('all');
@@ -41,7 +36,6 @@ export default function ExplorePage() {
             )}
           </div>
 
-          {/* TAB SELECTOR */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar">
             {[
                 { id: 'all', label: 'All Vibes', icon: Globe }, 
@@ -61,27 +55,35 @@ export default function ExplorePage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto mt-12 space-y-12">
-        <TrendingSearchTicker onSelect={setSearchQuery} />
-        
-        <section className="px-6 space-y-8">
-          <TrendingTags onTagSelect={(tag) => setSearchQuery(tag === 'All' ? '' : `#${tag.toLowerCase()}`)} />
-          
-          <div className="space-y-6">
-            <div className="flex items-center justify-between px-2">
-                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                    <Sparkles className="text-blue-600" size={20} /> Latest Discoveries
-                </h2>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Real-time Feed</span>
-            </div>
+      <div className="max-w-7xl mx-auto mt-12 px-4">
+        <div className="flex flex-col lg:flex-row gap-8 items-start">
+          <div className="flex-1 w-full space-y-12">
+            <TrendingSearchTicker onSelect={setSearchQuery} />
             
-            <CampusPulseFeed 
-                activeCampusId="all" 
-                searchQuery={searchQuery} 
-                tab={activeTab as any} 
-            />
+            <section className="space-y-8">
+              <TrendingTags onTagSelect={(tag) => setSearchQuery(tag === 'All' ? '' : `#${tag.toLowerCase()}`)} />
+              
+              <div className="space-y-6">
+                <div className="flex items-center justify-between px-2">
+                    <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                        <Sparkles className="text-blue-600" size={20} /> Latest Discoveries
+                    </h2>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Real-time Feed</span>
+                </div>
+                
+                <CampusPulseFeed 
+                    activeCampusId="all" 
+                    searchQuery={searchQuery} 
+                    tab={activeTab as any} 
+                />
+              </div>
+            </section>
           </div>
-        </section>
+
+          <aside className="hidden lg:block w-full max-w-[350px] sticky top-24">
+            <UpNextPanel />
+          </aside>
+        </div>
       </div>
     </div>
   );
