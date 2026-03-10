@@ -20,17 +20,14 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
   const { activePostId, addToQueue, sortFeedByProfile, isProfileLoaded, activeMood } = useVibePlayer();
   const { getAdForSlot, recordImpression, recordClick } = useVibeAds(activeMood);
 
-  // Register ALL posts into the global queue pool
   React.useEffect(() => {
     if (posts.length > 0) addToQueue(posts);
   }, [posts, addToQueue]);
 
-  // Sort the rendered feed by personal profile
   const sortedPosts = useMemo(() => {
     return sortFeedByProfile(posts);
   }, [posts, isProfileLoaded, sortFeedByProfile]);
 
-  // Interleave ads every AD_INTERVAL posts
   const feedItems = useMemo(() => {
     const items = [];
     let adSlotIndex = 0;
@@ -38,7 +35,6 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
     for (let i = 0; i < sortedPosts.length; i++) {
       items.push({ type: 'post' as const, data: sortedPosts[i] });
       
-      // Inject ad after every AD_INTERVAL posts
       if ((i + 1) % AD_INTERVAL === 0) {
         const ad = getAdForSlot(adSlotIndex++);
         if (ad) {
@@ -54,8 +50,6 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
 
   return (
     <div className={cn('flex flex-col gap-5 w-full', className)}>
-
-      {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex-1 min-w-0">
           <VibeMoodBar />
@@ -71,17 +65,13 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
         </div>
       </div>
 
-      {/* ── Feed Layout ────────────────────────────────────────────────────── */}
       <div className="space-y-8">
-        
-        {/* 1. THE STAGE: Active Vibe hero slot */}
         {activePost && (
           <div className="animate-in fade-in slide-in-from-top-4 duration-500">
             <SocialPostCard post={activePost} />
           </div>
         )}
 
-        {/* 2. THE DISCOVERY GRID: Two-column grid layout with Sponsored slots */}
         <div className={cn(
           'grid gap-6 transition-all duration-500 min-w-0',
           activePostId ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
@@ -91,8 +81,8 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
               <VibeAdCard 
                 key={`ad-${item.data.id}-${idx}`} 
                 ad={item.data} 
-                recordImpression={recordImpression}
-                recordClick={recordClick}
+                onImpression={recordImpression}
+                onClickCta={recordClick}
               />
             ) : (
               <SocialPostCard key={item.data.id} post={item.data} />

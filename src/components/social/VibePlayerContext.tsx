@@ -6,7 +6,6 @@ import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
 
-// ─── MEDIA TYPE HELPERS ───────────────────────────────────────────────────────
 export type MediaCategory = 'video' | 'image' | 'text';
 
 export function getMediaCategory(mediaType: SocialPost['mediaType']): MediaCategory {
@@ -26,7 +25,6 @@ export const DISPLAY_DURATIONS: Record<MediaCategory, number> = {
   video: 0, image: 8000, text: 6000,
 };
 
-// ─── MOOD SYSTEM ──────────────────────────────────────────────────────────────
 export type VibeMood = 'all' | 'hype' | 'chill' | 'study' | 'flex';
 
 export const VIBE_MOODS: { id: VibeMood; label: string; emoji: string; tags: string[] }[] = [
@@ -37,7 +35,6 @@ export const VIBE_MOODS: { id: VibeMood; label: string; emoji: string; tags: str
   { id: 'flex',  label: 'Flex',      emoji: '💎', tags: ['flex', 'drip', 'swag', 'bars', 'rap', 'afrotrap', 'drill'] },
 ];
 
-// ─── REACTION SYSTEM ──────────────────────────────────────────────────────────
 export type VibeReaction = '🔥' | '🌊' | '💎' | '👑' | '⚡';
 export const REACTIONS: VibeReaction[] = ['🔥', '🌊', '💎', '👑', '⚡'];
 
@@ -45,7 +42,6 @@ export interface ReactionBurst {
   id: string; emoji: VibeReaction; x: number; y: number;
 }
 
-// ─── SIMILARITY ENGINE ────────────────────────────────────────────────────────
 function computeBaseScore(current: SocialPost, candidate: SocialPost): number {
   let score = 0;
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
@@ -109,9 +105,9 @@ function buildReason(
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const shared = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
   if (shared.length > 0) parts.push(`#${shared[0]}`);
-  if (getPersonalScore(candidate) > 10 && parts.length < 2) parts.push('Matches Your Taste');
-  if (candidate.campusId === current.campusId && parts.length < 2) parts.push('Same Campus');
-  if (candidate.authorId === current.authorId && parts.length < 2) parts.push('Same Creator');
+  if (getPersonalScore(candidate) > 10 && parts.length < 2) parts.push('Based on your taste');
+  if (candidate.campusId === current.campusId && parts.length < 2) parts.push('Same campus');
+  if (candidate.authorId === current.authorId && parts.length < 2) parts.push('Same creator');
   if (
     getMediaCategory(candidate.mediaType) === getMediaCategory(current.mediaType) &&
     parts.length < 2
@@ -120,7 +116,6 @@ function buildReason(
   return parts.slice(0, 2).join(' · ');
 }
 
-// ─── TYPES ────────────────────────────────────────────────────────────────────
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
 export const HISTORY_MAX = 20;
 
@@ -154,7 +149,6 @@ interface VibePlayerContextType {
 
 const VibePlayerContext = createContext<VibePlayerContextType | undefined>(undefined);
 
-// ─── PROVIDER ─────────────────────────────────────────────────────────────────
 export function VibePlayerProvider({ children }: { children: React.ReactNode }) {
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const [activePost, setActivePostState] = useState<SocialPost | null>(null);
@@ -167,7 +161,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [history, setHistory] = useState<SocialPost[]>([]);
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
-  
   const { recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);

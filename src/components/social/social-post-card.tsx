@@ -58,18 +58,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
 
-  // ── YouTube state ───────────────────────────────────────────────────────────
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
   const [ytMuted, setYtMuted] = React.useState(false);
-
-  // ── ReactPlayer state ───────────────────────────────────────────────────────
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
-
-  // ── Image/text countdown ────────────────────────────────────────────────────
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-
   const cardRef = React.useRef<HTMLDivElement>(null);
   const hasRecordedPlay = React.useRef(false);
 
@@ -79,24 +73,20 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
-  // ── Register into global pool on mount ─────────────────────────────────────
   React.useEffect(() => {
     addToQueue([post]);
-  }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [post.id, addToQueue]);
 
-  // ── Mount real ReactPlayer when first activated ─────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && post.mediaType === 'video') setReactPlayerMounted(true);
   }, [isActiveVibe, post.mediaType]);
 
-  // ── Scroll into view when activated ─────────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
 
-  // ── Record "play" signal once per activation ─────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && !hasRecordedPlay.current) {
       hasRecordedPlay.current = true;
@@ -107,7 +97,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post, recordPlay]);
 
-  // ── Image/text countdown display ─────────────────────────────────────────────
   React.useEffect(() => {
     if (countdownRef.current) clearInterval(countdownRef.current);
     if (isActiveVibe && isContinuous && mediaCategory !== 'video') {
@@ -129,7 +118,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
-  // ── YouTube pause when deactivated ──────────────────────────────────────────
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (!isActiveVibe && ytReadyRef.current && ytPlayerRef.current) {
@@ -137,7 +125,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // ── Firebase like state on mount ────────────────────────────────────────────
   React.useEffect(() => {
     if (!user || !firestore) return;
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
@@ -269,15 +256,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
-
-          {/* IMAGE */}
           {post.mediaType === 'image' && post.imageUrl && (
             <Image src={post.imageUrl} alt="post" fill
               className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')}
             />
           )}
-
-          {/* YOUTUBE */}
           {post.mediaType === 'youtube' && youtubeId && (
             <div className="relative w-full h-full">
               {isRestricted ? (
@@ -307,15 +290,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               )}
             </div>
           )}
-
-          {/* TIKTOK */}
           {post.mediaType === 'tiktok' && post.mediaUrl && (
             <div className="bg-black flex items-center justify-center h-full">
               <TikTokEmbed url={post.mediaUrl} />
             </div>
           )}
-
-          {/* NATIVE VIDEO */}
           {post.mediaType === 'video' && post.mediaUrl && (
             <div className="w-full h-full bg-black flex items-center justify-center">
               {!reactPlayerMounted && !isActiveVibe && (
@@ -343,7 +322,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* ── Info zone ────────────────────────────────────────────────────────── */}
       <div className={cn(
         'flex flex-col transition-all duration-500',
         isActiveVibe ? 'p-8 md:flex-row md:items-start md:gap-8' : 'p-6'

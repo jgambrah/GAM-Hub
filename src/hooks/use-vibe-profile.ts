@@ -1,16 +1,5 @@
 'use client';
 
-/**
- * useVibeProfile
- * --------------
- * Persists a per-user "taste profile" to Firestore at:
- *   vibe_profiles/{userId}
- *
- * The profile is a simple weighted map that accumulates signals every time
- * the user interacts with a post. On the next app open, the feed and queue
- * engine read this profile to float preferred content to the top.
- */
-
 import { useCallback, useEffect, useState } from 'react';
 import {
   doc, getDoc, setDoc, serverTimestamp,

@@ -1,4 +1,3 @@
-// TypeScript type for use in the app
 export interface AdCampaign {
   id:               string;
   advertiserName:   string;
