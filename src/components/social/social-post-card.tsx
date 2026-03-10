@@ -44,7 +44,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const { toast } = useToast();
   const { 
     activePostId, isContinuous, playNext, setActivePost, addToQueue,
-    recordSignal 
+    recordPlay, recordWatchedToEnd, recordLike, recordUnlike
   } = useVibePlayer();
 
   const [isLiked, setIsLiked] = React.useState(false);
@@ -76,14 +76,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   React.useEffect(() => {
     if (isActiveVibe) {
-      // Record PERSISTENCE Signal: Play Start
-      recordSignal(post, 'play');
-      
+      recordPlay(post);
       if (post.mediaType === 'video') {
         setReactPlayerMounted(true);
       }
     }
-  }, [isActiveVibe, post, recordSignal]);
+  }, [isActiveVibe, post, recordPlay]);
 
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
@@ -102,8 +100,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           if (prev === null || prev <= 1) {
             if (countdownRef.current) {
               clearInterval(countdownRef.current);
-              // Record PERSISTENCE Signal: Watched to end (Timer complete)
-              recordSignal(post, 'watched_to_end');
+              recordWatchedToEnd(post);
             }
             return null;
           }
@@ -115,7 +112,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
 
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-  }, [isActiveVibe, isContinuous, mediaCategory, post, recordSignal]);
+  }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
@@ -141,15 +138,13 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         await updateDoc(postRef, { likes: increment(-1) });
         setLikeCount(prev => prev - 1);
         setIsLiked(false);
-        // Record PERSISTENCE Signal: Unlike (decay)
-        recordSignal(post, 'unlike');
+        recordUnlike(post);
       } else {
         await setDoc(likeRef, { createdAt: serverTimestamp() });
         await updateDoc(postRef, { likes: increment(1) });
         setLikeCount(prev => prev + 1);
         setIsLiked(true);
-        // Record PERSISTENCE Signal: Like
-        recordSignal(post, 'like');
+        recordLike(post);
       }
     } catch (error) { console.error(error); }
     finally { setIsProcessingLike(false); }
@@ -169,9 +164,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   };
 
   const handleEnd = () => {
-    // Record PERSISTENCE Signal: Watched to End (Video complete)
-    recordSignal(post, 'watched_to_end');
-    
+    recordWatchedToEnd(post);
     if (isContinuous) {
       toast({ title: 'Matching Next Vibe…', description: 'Liaison AI is keeping the Yard alive.' });
       setTimeout(() => playNext(), 500);

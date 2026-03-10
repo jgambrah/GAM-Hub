@@ -67,11 +67,11 @@ export function useVibeProfile() {
   const { user } = useAuth();
 
   const [profile, setProfile] = useState<VibeProfile>(EMPTY_PROFILE);
-  const [isProfileLoaded, setIsProfileLoaded] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     if (!firestore || !user?.id) {
-      setIsProfileLoaded(true);
+      setIsLoaded(true);
       return;
     }
     const profileRef = doc(firestore, 'vibe_profiles', user.id);
@@ -85,8 +85,8 @@ export function useVibeProfile() {
           campusWeights: data.campusWeights ?? {},
         });
       }
-      setIsProfileLoaded(true);
-    }).catch(() => setIsProfileLoaded(true));
+      setIsLoaded(true);
+    }).catch(() => setIsLoaded(true));
   }, [firestore, user?.id]);
 
   const recordSignal = useCallback((post: SocialPost, signal: SignalType) => {
@@ -115,7 +115,7 @@ export function useVibeProfile() {
   }, [firestore, user?.id]);
 
   const getPersonalScore = useCallback((post: SocialPost): number => {
-    if (!isProfileLoaded) return 0;
+    if (!isLoaded) return 0;
     let score = 0;
 
     for (const tag of (post.tags || []).map(t => t.toLowerCase())) {
@@ -132,7 +132,7 @@ export function useVibeProfile() {
     }
 
     return score;
-  }, [profile, isProfileLoaded]);
+  }, [profile, isLoaded]);
 
   const getTopInterests = useCallback((n = 8): string[] => {
     return Object.entries(profile.tagWeights)
@@ -141,5 +141,5 @@ export function useVibeProfile() {
       .map(([tag]) => tag);
   }, [profile]);
 
-  return { profile, isProfileLoaded, recordSignal, getPersonalScore, getTopInterests };
+  return { profile, isLoaded, recordSignal, getPersonalScore, getTopInterests };
 }

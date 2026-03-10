@@ -15,24 +15,18 @@ interface VibeFeedProps {
 }
 
 export default function VibeFeed({ posts, className }: VibeFeedProps) {
-  const { activePostId, addToQueue, getPersonalScore, isProfileLoaded } = useVibePlayer();
+  const { activePostId, addToQueue, sortFeedByProfile, isProfileLoaded } = useVibePlayer();
 
-  // Register ALL posts into the global pool on mount
+  // 1. Register ALL posts into the global pool on mount
   React.useEffect(() => {
     if (posts.length > 0) addToQueue(posts);
   }, [posts, addToQueue]);
 
-  // ── INITIAL PERSISTENT SORTING ──────────────────────────────────────────────
+  // 2. PERSISTENT SORTING LAYER
   // On app open, we sort the feed by the user's historical taste profile.
   const sortedPosts = useMemo(() => {
-    if (!isProfileLoaded) return posts;
-    
-    return [...posts].sort((a, b) => {
-      const scoreA = getPersonalScore(a);
-      const scoreB = getPersonalScore(b);
-      return scoreB - scoreA;
-    });
-  }, [posts, getPersonalScore, isProfileLoaded]);
+    return sortFeedByProfile(posts);
+  }, [posts, sortFeedByProfile]);
 
   const activePost = sortedPosts.find(p => p.id === activePostId);
   const otherPosts = sortedPosts.filter(p => p.id !== activePostId);
@@ -49,7 +43,7 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
         {isProfileLoaded && (
           <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-4 py-2 rounded-2xl flex items-center gap-2 border border-amber-100 dark:border-amber-800 animate-in fade-in">
             <Sparkles size={14} className="animate-pulse" />
-            <span className="text-[10px] font-black uppercase tracking-widest">For You</span>
+            <span className="text-[10px] font-black uppercase tracking-widest">✦ For You</span>
           </div>
         )}
         
