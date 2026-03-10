@@ -107,12 +107,12 @@ export function buildSmartQueue(
 ) {
   const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
-  const moodTagSet = moodDef && mood !== 'all' ? new Set(moodDef.tags) : null;
+  const moodTagSet = moodDef && mood !== 'all' ? new Set(moodDef.tags) : new Set<string>();
 
   for (const p of pool) {
     if (p.id === current.id) continue;
 
-    if (moodTagSet) {
+    if (moodTagSet.size > 0) {
       const match =
         (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ||
         p.mediaType === 'video' || p.mediaType === 'youtube' || p.mediaType === 'tiktok';
@@ -267,11 +267,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       const postMap = new Map<string, SocialPost>();
       for (const p of pool) postMap.set(p.id, p);
 
-      const aiPosts = aiIds
-        .map(id => postMap.get(id))
-        .filter((p): p is SocialPost => !!p && p.id !== current.id);
+      // AI Safety Guard: Filter out any hallucinated IDs
+      const safeIds = aiIds.filter(id => postMap.has(id));
+
+      const aiPosts = safeIds
+        .map(id => postMap.get(id)!)
+        .filter((p) => p.id !== current.id);
       
-      const aiIdSet = new Set(aiIds);
+      const aiIdSet = new Set(safeIds);
       const remainingLocal = localRanked.filter(p => !aiIdSet.has(p.id));
       
       const finalRanked = [...aiPosts, ...remainingLocal];
