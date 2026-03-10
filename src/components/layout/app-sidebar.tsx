@@ -1,4 +1,3 @@
-
 'use client';
 
 import { usePathname } from 'next/navigation';
@@ -37,13 +36,15 @@ const navItems: NavItem[] = [
   { href: '/groups', label: 'Groups', icon: Users, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/study', label: 'Study Rooms', icon: BookOpen, roles: ['student', 'staff', 'src'] },
   { href: '/politics', label: 'Politics', icon: Gavel, roles: ['student', 'staff', 'admin', 'src'] },
+  { href: '/advertise', label: 'Advertise', icon: Megaphone, roles: ['student', 'staff', 'admin', 'src'] },
   
   // Admin Section
   { href: '/admin/analytics', label: 'Analytics', icon: Globe, roles: ['admin'] },
   { href: '/admin/exit-poll', label: 'Exit Poll', icon: TrendingUp, roles: ['admin'] },
   { href: '/admin/handover', label: 'Handover', icon: Key, roles: ['admin'] },
   { href: '/admin/campuses', label: 'Campuses', icon: Building, roles: ['admin'] },
-  { href: '/admin/campaigns', label: 'Ad Campaigns', icon: Megaphone, roles: ['admin'] },
+  { href: '/admin/ads', label: 'Ad Review', icon: Megaphone, roles: ['admin'] },
+  { href: '/admin/campaigns', label: 'Manual Ads', icon: Zap, roles: ['admin'] },
   { href: '/admin/candidates', label: 'Candidates', icon: Gavel, roles: ['admin'] },
   { href: '/admin/id-verification', label: 'ID Verification', icon: FileCheck, roles: ['admin'] },
   { href: '/admin/disputes', label: 'Disputes', icon: ShieldAlert, roles: ['admin'] },

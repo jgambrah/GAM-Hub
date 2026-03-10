@@ -98,47 +98,41 @@ export type Product = {
   has_fuel?: boolean; // Hides service if vendor is out of leads
 };
 
-export type SrcPost = {
+export type AdCampaign = {
   id: string;
-  campusId: string;
-  authorId: string;
-  title: string;
-  content: string;
-  mediaUrls?: string[];
-  createdAt: any;
-  updatedAt?: any;
-};
-
-export type RegistryPost = {
-  id: string;
-  campusId: string;
-  authorId: string;
-  title: string;
-  content: string;
-  isUrgent: boolean;
-  targetAudience: 'all' | 'staff' | 'student';
-  attachments: string[];
-  expirationDate?: string;
-  createdAt: any;
-  updatedAt?: any;
-};
-
-export type AdAnalytics = {
-  id: string;
-  productId: string;
-  vendorId: string;
-  date: string;
+  advertiserName: string;
+  advertiserLogo?: string;
+  submittedByUserId?: string;
+  submittedByEmail?: string;
+  headline: string;
+  body?: string;
+  ctaLabel: string;
+  ctaUrl: string;
+  mediaType: 'image' | 'video';
+  mediaUrl: string;
+  thumbnailUrl: string;
+  campusIds: string[];
+  targetTags: string[];
+  targetMoods: string[];
+  status: 'active' | 'paused' | 'ended' | 'pending_review' | 'rejected';
+  startDate: any;
+  endDate: any;
+  dailyImpressionCap: number;
+  perUserDailyCap: number;
+  priority: number;
+  billingModel: 'cpm' | 'cpc';
+  rateGHS: number;
+  totalBudgetGHS?: number;
+  totalSpendGHS?: number;
+  impressionTarget?: number;
+  clickTarget?: number;
+  impressions: number;
   clicks: number;
-  spend: number;
-  conversions: number;
-  campusId: string;
-};
-
-export type LeadPrice = {
-  id: string;
-  category: string;
-  price: number;
-  updatedAt: any;
+  adType: 'feed_image' | 'feed_video' | 'vibe_slot';
+  paystackReference?: string;
+  paidAt?: any;
+  createdAt: any;
+  rejectionReason?: string;
 };
 
 export type SocialPost = {
@@ -150,8 +144,8 @@ export type SocialPost = {
   campusAcronym?: string;
   content: string;
   title?: string;
-  artist?: string; // Extracted for recommendation
-  genre?: string;  // Extracted for recommendation
+  artist?: string; 
+  genre?: string;  
   mediaType?: 'youtube' | 'tiktok' | 'image' | 'text' | 'video';
   mediaUrl?: string | null;
   imageUrl?: string | null;
@@ -171,33 +165,6 @@ export type SocialPost = {
   winnerPhoto?: string;
   position?: string;
   isOfficial?: boolean;
-};
-
-export type AdCampaign = {
-  id: string;
-  advertiserName: string;
-  advertiserLogo: string;
-  headline: string;
-  body?: string;
-  ctaLabel: string;
-  ctaUrl: string;
-  mediaType: 'image' | 'video';
-  mediaUrl: string;
-  thumbnailUrl: string;
-  campusIds: string[];
-  targetTags: string[];
-  targetMoods: string[];
-  status: 'active' | 'paused' | 'ended';
-  startDate: any;
-  endDate: any;
-  dailyImpressionCap: number;
-  perUserDailyCap: number;
-  priority: number;
-  billingModel: 'cpm' | 'cpc';
-  rateGHS: number;
-  impressions: number;
-  clicks: number;
-  adType: 'feed_image' | 'feed_video' | 'vibe_slot';
 };
 
 export type ArenaPost = {
@@ -265,7 +232,7 @@ export type Order = {
   vendorId: string;
   campusId: string;
   amount: number;
-  category: string; // Required for CPL lookups
+  category: string; 
   status: 'inquiry_sent' | 'awaiting_confirmation' | 'confirmed' | 'paid' | 'picked-up' | 'completed' | 'disputed' | 'refunded' | 'archived';
   deliveryMode: 'pickup_point' | 'office_delivery' | 'service_inquiry';
   deliveryLocation: {
@@ -510,27 +477,4 @@ export type StudyRoom = {
   isPrivate?: boolean;
   isOfficial?: boolean;
   creatorRole?: string;
-};
-
-export type PayoutRequestInput = {
-  vendorId: string;
-  vendorName: string;
-  amount: number;
-  momoNumber: string;
-  momoBankCode: string;
-};
-
-export type VibeMatchInput = {
-  currentPostContent: string;
-  userInterests: string[];
-  availablePosts: {
-    id: string;
-    content: string;
-    tags: string[];
-  }[];
-};
-
-export type VibeMatchOutput = {
-  recommendedPostIds: string[];
-  reasoning: string;
 };
