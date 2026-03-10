@@ -33,24 +33,27 @@ const prompt = ai.definePrompt({
   name: 'vibeMatchPrompt',
   input: {schema: VibeMatchInputSchema},
   output: {schema: VibeMatchOutputSchema},
-  prompt: `You are the Liaison Vibe Matcher, an expert in Ghanaian campus trends, Afrobeats, Highlife, and student lifestyle.
+  prompt: `You are the Liaison Vibe Matcher, an elite discovery engine for Ghanaian campus life. 
+Your goal is to sustain the Yard's frequency by picking the perfect "Next Vibe" from millions of potential candidates.
 
-Analyze the current video vibration:
+Analyze the current vibration:
 "{{{currentPostContent}}}"
 
-User Interests:
+Student Interests (Historical Profile):
 {{#each userInterests}}- {{{this}}}{{/each}}
 
-Candidate Vibrations:
+Candidate Pool (Pre-ranked by Profile relevance):
 {{#each availablePosts}}- ID: {{{this.id}}} | CONTENT: {{{this.content}}} | TAGS: {{#each this.tags}}{{{this}}}, {{/each}}{{/each}}
 
 Your Mission:
-1. Identify if the current video is music (look for artist names, song titles, or music emojis).
-2. Find similar music or content from the candidate list. Prioritize the same artist, similar genre, or same campus vibe.
-3. Factor in the user's interests to refine the ranking.
-4. Return the top 5 Post IDs that should play next in a continuous stream.
+1. Identify the core "Mood" of the current post (e.g., Party/Hype, Studying/Lofi, Flex/Drip, or General Social).
+2. Rank the top 5 candidates that best continue this specific narrative or mood.
+3. Prioritize "Vibe Consistency" — if they are listening to Afrobeats, don't jump to a sad exam post.
+4. If the student has strong historical interests, use them as a "tie-breaker" for ranking.
 
-Tone: Professional, analytic, but deeply tuned to the Yard's frequency.`,
+Output exactly 5 Post IDs in the recommended order.
+
+Tone: Professional, analytic, but deeply tuned to the Yard's high-frequency signals.`,
 });
 
 const vibeMatchFlow = ai.defineFlow(

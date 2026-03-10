@@ -42,26 +42,40 @@ export interface ReactionBurst {
   id: string; emoji: VibeReaction; x: number; y: number;
 }
 
+/**
+ * 🛰️ LIAISON SCORING ALGORITHM (Stage 1: Ranking)
+ * Computes a relevance score between the current vibe and a potential next vibe.
+ */
 function computeBaseScore(current: SocialPost, candidate: SocialPost): number {
   let score = 0;
+  
+  // 1. Tag Synergy (+10 per shared interest)
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
-  score += sharedTags.length * 10;
+  score += sharedTags.length * 12;
+
+  // 2. Format Consistency (+8 for same media class)
   const currentCat = getMediaCategory(current.mediaType);
   const candidateCat = getMediaCategory(candidate.mediaType);
   if (candidateCat === currentCat) {
     score += 8;
     if (candidate.mediaType === current.mediaType) score += 7;
   }
+
+  // 3. Geographic Proximity (+10 for same Yard)
   if (candidate.campusId === current.campusId) score += 10;
   else if (candidate.campusId === 'all' || current.campusId === 'all') score += 5;
-  if (candidate.authorId === current.authorId) score += 8;
-  score += Math.min((candidate.likes || 0) / 5, 12);
+
+  // 4. Social Velocity (Weights likes into the mix)
+  score += Math.min((candidate.likes || 0) / 5, 15);
+
+  // 5. Freshness Decay (Prioritize recent vibes among millions)
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : candidate.createdAt.toDate();
     const ageDays = (Date.now() - date.getTime()) / 86_400_000;
-    if (ageDays < 7) score += Math.max(0, 5 - ageDays);
+    if (ageDays < 7) score += Math.max(0, 10 - ageDays);
   }
+
   return score;
 }
 
@@ -72,9 +86,14 @@ function computeVibeScore(
 ): number {
   const base     = computeBaseScore(current, candidate);
   const personal = getPersonalScore(candidate);
-  return base + personal * 0.5;
+  // Mix context (base) with historical taste (personal)
+  return base + personal * 0.7;
 }
 
+/**
+ * 🏛️ SCALABLE QUEUE BUILDER
+ * Filters millions down to hundreds, then ranks them for the AI Re-ranker.
+ */
 function buildSmartQueue(
   current: SocialPost,
   pool: SocialPost[],
@@ -82,16 +101,22 @@ function buildSmartQueue(
   getPersonalScore: (p: SocialPost) => number
 ): SocialPost[] {
   const candidates = pool.filter(p => p.id !== current.id);
-  let sorted = candidates;
+  
+  // 1. Filter by Mood if requested
+  let filtered = candidates;
   if (mood !== 'all') {
-    const moodTagSet = new Set(VIBE_MOODS.find(m => m.id === mood)!.tags);
-    sorted = [...candidates].sort((a, b) => {
-      const aMatch = (a.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ? 1 : 0;
-      const bMatch = (b.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ? 1 : 0;
-      return bMatch - aMatch;
-    });
+    const moodDef = VIBE_MOODS.find(m => m.id === mood);
+    if (moodDef) {
+        const moodTagSet = new Set(moodDef.tags);
+        filtered = candidates.filter(p => 
+            (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) || 
+            p.mediaType === 'video' // Videos are always candidates for hype/flex
+        );
+    }
   }
-  return sorted
+
+  // 2. Rank candidates locally
+  return filtered
     .map(p => ({ post: p, score: computeVibeScore(current, p, getPersonalScore) }))
     .sort((a, b) => b.score - a.score)
     .map(s => s.post);
@@ -105,20 +130,18 @@ function buildReason(
   const parts: string[] = [];
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const shared = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
+  
   if (shared.length > 0) parts.push(`#${shared[0]}`);
-  if (getPersonalScore(candidate) > 10 && parts.length < 2) parts.push('Based on your taste');
-  if (candidate.campusId === current.campusId && parts.length < 2) parts.push('Same campus');
-  if (candidate.authorId === current.authorId && parts.length < 2) parts.push('Same creator');
-  if (
-    getMediaCategory(candidate.mediaType) === getMediaCategory(current.mediaType) &&
-    parts.length < 2
-  ) parts.push(getMediaLabel(candidate.mediaType));
-  if (parts.length === 0) parts.push('Trending on the Yard');
+  if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Matched to your profile');
+  if (candidate.campusId === current.campusId && parts.length < 2) parts.push('Same Yard');
+  if (candidate.authorId === current.authorId && parts.length < 2) parts.push('Creator match');
+  
+  if (parts.length === 0) parts.push('Trending on GAM Hub');
   return parts.slice(0, 2).join(' · ');
 }
 
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
-export const HISTORY_MAX = 20;
+export const HISTORY_MAX = 30;
 
 interface VibePlayerContextType {
   activePostId: string | null;
@@ -162,6 +185,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [history, setHistory] = useState<SocialPost[]>([]);
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
+  
   const { recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -197,41 +221,58 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
 
+  /**
+   * 🛸 REBUILD QUEUE (Stage 2: Re-ranking with AI)
+   * This is where the magic happens for "Millions" of videos.
+   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
+    
+    // Stage 1: Narrow down to the best candidates locally
     const localRanked = buildSmartQueue(current, pool, mood, scorer);
+    
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
-      ranked.slice(0, 10).map(p => ({
+      ranked.slice(0, 15).map(p => ({
         post: p,
         score: computeVibeScore(current, p, scorer),
         reason: buildReason(current, p, scorer),
       }));
 
+    // Optimistic UI: Update with local ranking immediately
     setQueue([current, ...localRanked]);
     setUpNext(makeUpNext(localRanked));
     setIsLoadingQueue(false);
 
+    // Stage 2: Let AI Re-rank the "Elite Candidates"
     try {
-      const availablePosts = localRanked.slice(0, 20).map(p => ({
-        id: p.id, content: p.content, tags: p.tags || [],
+      // Send the top 25 candidates to the AI for qualitative matching
+      const eliteCandidates = localRanked.slice(0, 25).map(p => ({
+        id: p.id, 
+        content: p.content, 
+        tags: p.tags || [],
       }));
+
       const recommendation = await getRecommendedVibes({
         currentPostContent: current.content,
-        userInterests: getTopInterests(8),
-        availablePosts,
+        userInterests: getTopInterests(10),
+        availablePosts: eliteCandidates,
       });
+
       const aiIds = recommendation.recommendedPostIds;
       const aiPosts = aiIds
         .map(id => pool.find(p => p.id === id))
         .filter((p): p is SocialPost => !!p && p.id !== current.id);
+      
       const aiIdSet = new Set(aiIds);
       const remainingLocal = localRanked.filter(p => !aiIdSet.has(p.id));
+      
       const finalRanked = [...aiPosts, ...remainingLocal];
+      
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
     } catch (err) {
-      console.warn('AI vibe matcher unavailable, using local scores:', err);
+      console.warn('Liaison Re-ranking AI bypassed, using profile-only logic:', err);
     }
   }, [getTopInterests]);
 
@@ -254,7 +295,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         const idx = currentQueue.findIndex(p => p.id === currentId);
         const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
         if (nextPost) {
-          // Defer the activation to avoid "update while rendering"
           setTimeout(() => {
             setActivePostId(nextPost.id);
             setActivePostState(nextPost);
@@ -266,7 +306,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [clearDisplayTimer, pushToHistory]);
 
   const setActivePost = useCallback((post: SocialPost | null) => {
-    // Escape the current execution context to prevent render-cycle conflicts
     setTimeout(() => {
       if (!post) { 
         if (activePostIdRef.current !== null) {
@@ -277,7 +316,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         return; 
       }
       
-      // IDENTITY GUARD: Skip update if post is already active
       if (activePostIdRef.current === post.id) return;
       
       clearDisplayTimer();
