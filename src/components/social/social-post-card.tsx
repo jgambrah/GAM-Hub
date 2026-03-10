@@ -135,8 +135,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
   // ── YouTube auto-skip Effect ────────────────────────────────────────────────
+  // Trigger skip only when countdown hits zero
   React.useEffect(() => {
-    if (isSkippingRestricted && skipCountdown === 0) {
+    if (isActiveVibe && isSkippingRestricted && skipCountdown === 0) {
       setIsSkippingRestricted(false);
       setSkipCountdown(null);
       if (skipTimerRef.current) {
@@ -145,7 +146,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       }
       playNext();
     }
-  }, [skipCountdown, isSkippingRestricted, playNext]);
+  }, [skipCountdown, isSkippingRestricted, playNext, isActiveVibe]);
 
   // ── YouTube pause when deactivated ──────────────────────────────────────────
   React.useEffect(() => {
@@ -236,7 +237,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }, 1000);
   }, [isContinuous]);
 
-  // Clear skip timer when card is deactivated or unmounted
+  // Clear timers on component change
   React.useEffect(() => {
     if (!isActiveVibe && skipTimerRef.current) {
       clearInterval(skipTimerRef.current);
@@ -278,7 +279,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   }, [isActiveVibe, post.mediaType]);
 
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
-  // USE STABLE KEY TO PREVENT playVideo NULL CRASH ON RE-MOUNT
+  // USE STABLE ID TO PREVENT IFrame destruction race condition
   const ytKey = post.id; 
   const ytPlayerVars = React.useMemo(() => ({
     rel: 0, modestbranding: 1,

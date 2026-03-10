@@ -266,18 +266,21 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [clearDisplayTimer, pushToHistory]);
 
   const setActivePost = useCallback((post: SocialPost | null) => {
-    // Wrap in setTimeout to escape the current execution context (safe navigation)
+    // Escape the current execution context to prevent render-cycle conflicts
     setTimeout(() => {
-      clearDisplayTimer();
       if (!post) { 
         if (activePostIdRef.current !== null) {
+          clearDisplayTimer();
           setActivePostId(null); 
           setActivePostState(null); 
         }
         return; 
       }
+      
+      // IDENTITY GUARD: Skip update if post is already active
       if (activePostIdRef.current === post.id) return;
       
+      clearDisplayTimer();
       setActivePostId(post.id);
       setActivePostState(post);
       pushToHistory(post);
@@ -293,7 +296,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [rebuildQueue]);
 
   const playNext = useCallback(() => {
-    // Wrap in setTimeout to escape the current execution context (safe navigation)
     setTimeout(() => {
       const currentQueue = queueRef.current;
       const currentId = activePostIdRef.current;
@@ -311,7 +313,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const playPrev = useCallback(() => {
-    // Wrap in setTimeout to escape the current execution context (safe navigation)
     setTimeout(() => {
       setHistory(prev => {
         if (prev.length < 2) return prev;
