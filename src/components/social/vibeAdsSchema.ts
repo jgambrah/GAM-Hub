@@ -12,7 +12,7 @@ export interface AdCampaign {
   campusIds:        string[];
   targetTags:       string[];
   targetMoods:      string[];
-  status:           'active' | 'paused' | 'ended';
+  status:           'active' | 'paused' | 'ended' | 'pending_review' | 'rejected';
   startDate:        any;
   endDate:          any;
   dailyImpressionCap: number;
@@ -20,7 +20,15 @@ export interface AdCampaign {
   priority:         number;
   billingModel:     'cpm' | 'cpc';
   rateGHS:          number;
+  totalBudgetGHS?:  number;
+  totalSpendGHS?:   number;
+  impressionTarget?: number;
+  clickTarget?:      number;
   impressions:      number;
   clicks:           number;
   adType:           'feed_image' | 'feed_video' | 'vibe_slot';
+  paystackReference?: string;
+  paidAt?:          any;
+  createdAt:        any;
+  rejectionReason?: string;
 }
