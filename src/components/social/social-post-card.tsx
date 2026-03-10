@@ -135,8 +135,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
   // ── YouTube auto-skip Effect ────────────────────────────────────────────────
-  // This effect safely handles the transition when a countdown finishes.
-  // We do it here to avoid "Update component while rendering" errors.
   React.useEffect(() => {
     if (isSkippingRestricted && skipCountdown === 0) {
       setIsSkippingRestricted(false);
@@ -153,7 +151,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (!isActiveVibe && ytReadyRef.current && ytPlayerRef.current) {
-      try { ytPlayerRef.current.pauseVideo(); } catch (_) { }
+      try { 
+        if (typeof ytPlayerRef.current.pauseVideo === 'function') {
+          ytPlayerRef.current.pauseVideo(); 
+        }
+      } catch (_) { }
     }
   }, [isActiveVibe, post.mediaType]);
 
@@ -227,7 +229,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       setSkipCountdown(prev => {
         if (prev === null) return null;
         if (prev <= 1) {
-          // The effect above will trigger playNext() when this hits 0
           return 0;
         }
         return prev - 1;
@@ -248,6 +249,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   React.useEffect(() => {
     return () => {
       if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+      ytPlayerRef.current = null;
+      ytReadyRef.current = false;
     };
   }, []);
 
@@ -261,8 +264,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     setActivePost(post);
     if (ytMuted && ytPlayerRef.current) {
       try {
-        ytPlayerRef.current.unMute();
-        ytPlayerRef.current.setVolume(100);
+        if (typeof ytPlayerRef.current.unMute === 'function') {
+          ytPlayerRef.current.unMute();
+          ytPlayerRef.current.setVolume(100);
+        }
         setYtMuted(false);
       } catch (_) { }
     }
@@ -273,7 +278,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   }, [isActiveVibe, post.mediaType]);
 
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
-  const ytKey = `${post.id}-${isActiveVibe ? 'active' : 'idle'}`;
+  // USE STABLE KEY TO PREVENT playVideo NULL CRASH ON RE-MOUNT
+  const ytKey = post.id; 
   const ytPlayerVars = React.useMemo(() => ({
     rel: 0, modestbranding: 1,
     autoplay: isActiveVibe ? 1 : 0,

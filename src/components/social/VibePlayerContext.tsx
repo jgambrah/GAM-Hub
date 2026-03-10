@@ -269,7 +269,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     // Wrap in setTimeout to escape the current execution context (safe navigation)
     setTimeout(() => {
       clearDisplayTimer();
-      if (!post) { setActivePostId(null); setActivePostState(null); return; }
+      if (!post) { 
+        if (activePostIdRef.current !== null) {
+          setActivePostId(null); 
+          setActivePostState(null); 
+        }
+        return; 
+      }
+      if (activePostIdRef.current === post.id) return;
+      
       setActivePostId(post.id);
       setActivePostState(post);
       pushToHistory(post);
