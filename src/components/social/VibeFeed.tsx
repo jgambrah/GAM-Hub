@@ -59,7 +59,7 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
     return items;
   }, [sortedPosts]);
 
-  // ── LIAISON VISUAL PRIORITY: Extract the active post to stay at the top ──
+  // ── THEATER PRIORITY: Extract the active post to stay at the top ──
   const activePostItem = useMemo(() => {
     if (!activePostId) return null;
     return sortedPosts.find(p => p.id === activePostId);
@@ -93,17 +93,15 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
         </div>
       </div>
 
-      {/* Main Layout: Top Active Stage + Grid */}
       <div className="flex flex-col gap-8 w-full">
-        
-        {/* THE HERO STAGE: Active vibration stays at the very top */}
+        {/* ACTIVE HERO STAGE */}
         {activePostItem && (
           <div className="animate-in fade-in slide-in-from-top-4 duration-500">
             <SocialPostCard post={activePostItem} />
           </div>
         )}
 
-        {/* THE DISCOVERY GRID: Two-column protocol for visual impact */}
+        {/* DISCOVERY GRID: Two columns for professional visual impact */}
         <div className={cn(
           'grid gap-6 transition-all duration-500',
           hasActive ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
@@ -113,7 +111,6 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
               return <SocialPostCard key={item.key} post={item.post} />;
             }
 
-            // Ad slot
             const ad = getAdForSlot(item.slotIndex);
             if (!ad) return null;
 

@@ -1,16 +1,5 @@
-'use client';
 
-/**
- * AdvertiseOnYard
- * ---------------
- * Self-serve advertiser portal. Any business can:
- *   1. Fill in their campaign details + upload creative
- *   2. Choose a tier and budget
- *   3. Pay via Paystack (uses the existing payment architecture)
- *   4. Campaign is created in Firestore with status: 'pending_review'
- *   5. Liaison reviews and approves via the AdReviewDashboard
- *   6. On approval, status flips to 'active' and the ad goes live
- */
+'use client';
 
 import React, { useState, useRef } from 'react';
 import { useFirebase } from '@/firebase';
@@ -29,7 +18,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
-// ─── Pricing tiers ────────────────────────────────────────────────────────────
 const TIERS = [
   {
     id:          'standard',
@@ -97,7 +85,6 @@ export default function AdvertiseOnYard() {
   const [step, setStep] = useState<'details' | 'targeting' | 'budget' | 'review' | 'done'>('details');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form state
   const [advertiserName, setAdvertiserName] = useState('');
   const [headline, setHeadline]             = useState('');
   const [body, setBody]                     = useState('');

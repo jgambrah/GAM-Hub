@@ -314,7 +314,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   playing={isActiveVibe}
                   playsinline
                   onStart={() => setActivePost(post)}
-                  onEnd={handleEnd}
+                  onEnded={handleEnd}
                   config={{ file: { attributes: { playsInline: true, preload: 'auto' } } }}
                 />
               )}
