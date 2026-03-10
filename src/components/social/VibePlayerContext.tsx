@@ -150,6 +150,7 @@ function buildReason(
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
 export const HISTORY_MAX = 30;
 export const MAX_POOL_SIZE = 800; // 🛡️ Memory Protection Limit
+export const PREFETCH_SIZE = 5;   // 🚀 TikTok Prefetch Size
 
 interface VibePlayerContextType {
   activePostId: string | null;
@@ -281,6 +282,22 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
+
+      // 🚀 Stage 3: TikTok-Style Prefetch Engine
+      if (typeof window !== 'undefined') {
+        const prefetchList = finalRanked.slice(0, PREFETCH_SIZE);
+        prefetchList.forEach(p => {
+          if (p.mediaType === 'video' && p.mediaUrl) {
+            const v = document.createElement('video');
+            v.src = p.mediaUrl;
+            v.preload = 'auto';
+          } else if (p.mediaType === 'image' && p.imageUrl) {
+            const img = new Image();
+            img.src = p.imageUrl;
+          }
+        });
+      }
+
     } catch (err) {
       console.warn('Liaison Re-ranking AI bypassed:', err);
     }

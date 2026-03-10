@@ -50,6 +50,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     activePostId, isContinuous, playNext,
     setActivePost, addToQueue,
     recordPlay, recordWatchedToEnd, recordLike, recordUnlike,
+    recordSkip,
   } = useVibePlayer();
 
   const [isLiked, setIsLiked] = React.useState(false);
@@ -62,6 +63,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [isSkippingRestricted, setIsSkippingRestricted] = React.useState(false);
   const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
   const skipTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Dwell detection for skips
+  const dwellStartTimeRef = React.useRef<number | null>(null);
 
   // ── YouTube state ───────────────────────────────────────────────────────────
   const ytPlayerRef = React.useRef<any>(null);
@@ -101,6 +105,32 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe]);
 
+  // ── ⏭️ Skip Signal Intelligence (TikTok Dwell Detection) ───────────────────
+  React.useEffect(() => {
+    if (!cardRef.current) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          dwellStartTimeRef.current = Date.now();
+        } else {
+          if (dwellStartTimeRef.current) {
+            const timeVisible = Date.now() - dwellStartTimeRef.current;
+            // 🚨 IF SCROLLED AWAY IN < 1.5s, IT'S A SKIP
+            if (timeVisible < 1500 && !isActiveVibe) {
+              recordSkip(post);
+            }
+            dwellStartTimeRef.current = null;
+          }
+        }
+      },
+      { threshold: 0.6 }
+    );
+
+    observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [post, recordSkip, isActiveVibe]);
+
   // ── Record "play" signal once per activation ─────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && !hasRecordedPlay.current) {
@@ -135,7 +165,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
   // ── YouTube auto-skip Effect ────────────────────────────────────────────────
-  // Trigger skip only when countdown hits zero
   React.useEffect(() => {
     if (isActiveVibe && isSkippingRestricted && skipCountdown === 0) {
       setIsSkippingRestricted(false);
@@ -237,7 +266,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }, 1000);
   }, [isContinuous]);
 
-  // Clear timers on component change
   React.useEffect(() => {
     if (!isActiveVibe && skipTimerRef.current) {
       clearInterval(skipTimerRef.current);
@@ -279,7 +307,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   }, [isActiveVibe, post.mediaType]);
 
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
-  // USE STABLE ID TO PREVENT IFrame destruction race condition
   const ytKey = post.id; 
   const ytPlayerVars = React.useMemo(() => ({
     rel: 0, modestbranding: 1,
