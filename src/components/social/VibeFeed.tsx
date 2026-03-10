@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import type { SocialPost } from '@/lib/types';
 import SocialPostCard from './social-post-card';
+import UpNextPanel from './UpNextPanel';
 import VibeMoodBar from './VibeMoodBar';
 import VibeHistoryPanel from './VibeHistoryPanel';
 import { useVibePlayer } from './VibePlayerContext';
@@ -17,16 +18,17 @@ interface VibeFeedProps {
 export default function VibeFeed({ posts, className }: VibeFeedProps) {
   const { activePostId, addToQueue, sortFeedByProfile, isProfileLoaded } = useVibePlayer();
 
-  // 1. Register ALL posts into the global pool on mount
+  // Register ALL posts into the global queue pool
   React.useEffect(() => {
     if (posts.length > 0) addToQueue(posts);
-  }, [posts, addToQueue]);
+  }, [posts.length, addToQueue]);
 
-  // 2. PERSISTENT SORTING LAYER
-  // On every app open, we pre-sort the feed based on the user's historical profile
+  // Sort the rendered feed by personal profile as soon as the profile loads.
+  // This is what makes the feed feel personalised on every app open —
+  // posts matching the user's taste history float to the top automatically.
   const sortedPosts = useMemo(() => {
     return sortFeedByProfile(posts);
-  }, [posts, sortFeedByProfile]);
+  }, [posts, isProfileLoaded, sortFeedByProfile]);
 
   const activePost = sortedPosts.find(p => p.id === activePostId);
   const otherPosts = sortedPosts.filter(p => p.id !== activePostId);
@@ -34,20 +36,21 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
   return (
     <div className={cn('flex flex-col gap-5 w-full', className)}>
 
-      {/* ── Toolbar ────────────────────────────────────────────────────────── */}
+      {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex-1 min-w-0">
           <VibeMoodBar />
         </div>
-        
-        {isProfileLoaded && (
-          <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-4 py-2 rounded-2xl flex items-center gap-2 border border-amber-100 dark:border-amber-800 animate-in fade-in">
-            <Sparkles size={14} className="animate-pulse" />
-            <span className="text-[10px] font-black uppercase tracking-widest">✦ For You</span>
-          </div>
-        )}
-        
-        <VibeHistoryPanel />
+        <div className="flex items-center gap-2">
+          {/* Subtle badge when the feed is personalised */}
+          {isProfileLoaded && (
+            <div className="flex items-center gap-1 text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1.5 rounded-xl animate-in fade-in">
+              <Sparkles size={9} />
+              For You
+            </div>
+          )}
+          <VibeHistoryPanel />
+        </div>
       </div>
 
       {/* ── Feed Layout ────────────────────────────────────────────────────── */}

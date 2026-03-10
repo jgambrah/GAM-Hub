@@ -71,7 +71,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cardRef = React.useRef<HTMLDivElement>(null);
-  const hasRecordedPlay = React.useRef(false); // fire recordPlay only once per activation
+  const hasRecordedPlay = React.useRef(false);
 
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
@@ -79,24 +79,24 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
-  // ── Register into global pool on mount ─────────────────────────────────────
+  // ── Register ALL post types into global pool on mount ─────────────────────
   React.useEffect(() => {
     addToQueue([post]);
   }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Mount real ReactPlayer when first activated ─────────────────────────────
+  // ── Mount real ReactPlayer when first activated ───────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && post.mediaType === 'video') setReactPlayerMounted(true);
   }, [isActiveVibe, post.mediaType]);
 
-  // ── Scroll into view when activated ─────────────────────────────────────────
+  // ── Scroll into view when activated ──────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
 
-  // ── Record "play" signal once per activation ─────────────────────────────────
+  // ── Record "play" signal once per activation ───────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && !hasRecordedPlay.current) {
       hasRecordedPlay.current = true;
@@ -105,7 +105,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     if (!isActiveVibe) {
       hasRecordedPlay.current = false;
     }
-  }, [isActiveVibe]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActiveVibe, post, recordPlay]);
 
   // ── Image/text countdown display ─────────────────────────────────────────────
   React.useEffect(() => {
@@ -127,7 +127,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       setCountdown(null);
     }
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-  }, [isActiveVibe, isContinuous, mediaCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
   // ── YouTube pause when deactivated ──────────────────────────────────────────
   React.useEffect(() => {
@@ -382,7 +382,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
           {isActiveVibe && (
             <div className="mt-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <VibeReactionBar postId={post.id} />
+              <VibeReactionBar postId={post.id} post={post} />
             </div>
           )}
         </div>

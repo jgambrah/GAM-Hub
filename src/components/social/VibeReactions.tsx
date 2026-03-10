@@ -5,12 +5,9 @@ import { useVibePlayer, REACTIONS, type VibeReaction } from './VibePlayerContext
 import { cn } from '@/lib/utils';
 import type { SocialPost } from '@/lib/types';
 
-export function VibeReactionBar({ postId }: { postId: string }) {
-  const { sendReaction, reactionCounts, queue } = useVibePlayer();
+export function VibeReactionBar({ postId, post }: { postId: string, post: SocialPost }) {
+  const { sendReaction, reactionCounts } = useVibePlayer();
   const counts = reactionCounts[postId] || {};
-  
-  // Find the post object in the current queue to send signals
-  const post = queue.find(p => p.id === postId);
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -19,7 +16,7 @@ export function VibeReactionBar({ postId }: { postId: string }) {
         return (
           <button
             key={emoji}
-            onClick={() => post && sendReaction(emoji, post)}
+            onClick={() => sendReaction(emoji, post)}
             className={cn(
               'group flex items-center gap-1.5 px-3 py-2 rounded-2xl border-2 transition-all duration-200 active:scale-90 select-none',
               count > 0
