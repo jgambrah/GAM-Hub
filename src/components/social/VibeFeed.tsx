@@ -3,12 +3,13 @@
 import React, { useMemo } from 'react';
 import type { SocialPost } from '@/lib/types';
 import SocialPostCard from './social-post-card';
-import UpNextPanel from './UpNextPanel';
 import VibeMoodBar from './VibeMoodBar';
 import VibeHistoryPanel from './VibeHistoryPanel';
 import { useVibePlayer } from './VibePlayerContext';
 import { cn } from '@/lib/utils';
 import { Sparkles } from 'lucide-react';
+import { useVibeAds } from '@/hooks/use-vibe-ads';
+import VibeAdCard from './VibeAdCard';
 
 interface VibeFeedProps {
   posts: SocialPost[];
@@ -17,6 +18,7 @@ interface VibeFeedProps {
 
 export default function VibeFeed({ posts, className }: VibeFeedProps) {
   const { activePostId, addToQueue, sortFeedByProfile, isProfileLoaded } = useVibePlayer();
+  const { interleaveAds, isLoading: isLoadingAds } = useVibeAds();
 
   // Register ALL posts into the global queue pool
   React.useEffect(() => {
@@ -24,14 +26,17 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
   }, [posts, addToQueue]);
 
   // Sort the rendered feed by personal profile as soon as the profile loads.
-  // This is what makes the feed feel personalised on every app open —
-  // posts matching the user's taste history float to the top automatically.
   const sortedPosts = useMemo(() => {
     return sortFeedByProfile(posts);
   }, [posts, isProfileLoaded, sortFeedByProfile]);
 
+  // ── Liaison Monetization: Interleave Sponsored Vibe Cards ──
+  const feedWithAds = useMemo(() => {
+    return interleaveAds(sortedPosts);
+  }, [sortedPosts, interleaveAds]);
+
   const activePost = sortedPosts.find(p => p.id === activePostId);
-  const otherPosts = sortedPosts.filter(p => p.id !== activePostId);
+  const otherItems = feedWithAds.filter(item => item.id !== activePostId);
 
   return (
     <div className={cn('flex flex-col gap-5 w-full', className)}>
@@ -63,13 +68,17 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
           </div>
         )}
 
-        {/* 2. THE DISCOVERY GRID: Two-column grid layout */}
+        {/* 2. THE DISCOVERY GRID: Two-column grid layout with Sponsored slots */}
         <div className={cn(
           'grid gap-6 transition-all duration-500 min-w-0',
           activePostId ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
         )}>
-          {otherPosts.map(post => (
-            <SocialPostCard key={post.id} post={post} />
+          {otherItems.map((item: any) => (
+            item.isAd ? (
+              <VibeAdCard key={`ad-${item.id}`} ad={item} />
+            ) : (
+              <SocialPostCard key={item.id} post={item} />
+            )
           ))}
         </div>
       </div>
