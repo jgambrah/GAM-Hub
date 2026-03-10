@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  Image as ImageIcon, FileText, Loader2, ArrowRight
+  Image as ImageIcon, FileText, ArrowRight,
 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
@@ -58,9 +58,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
   
-  // ── Skip restricted logic ──────────────────────────────────────────────────
+  // When continuous mode is on and a restricted video is hit, we auto-skip
+  // rather than stopping dead. These track the brief "Skipping in Xs…" overlay.
   const [isSkippingRestricted, setIsSkippingRestricted] = React.useState(false);
-  const [skipCountdown, setSkipCountdown] = React.useState(3);
+  const [skipCountdown, setSkipCountdown] = React.useState(0);
   const skipTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── YouTube state ───────────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cardRef = React.useRef<HTMLDivElement>(null);
-  const hasRecordedPlay = React.useRef(false); 
+  const hasRecordedPlay = React.useRef(false); // fire recordPlay only once per activation
 
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
@@ -100,26 +101,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
-
-  // ── Lifecycle: Clean up any skipping timers ─────────────────────────────────
-  const clearSkipTimer = React.useCallback(() => {
-    if (skipTimerRef.current) {
-      clearInterval(skipTimerRef.current);
-      skipTimerRef.current = null;
-    }
-  }, []);
-
-  React.useEffect(() => {
-    if (!isActiveVibe) {
-      clearSkipTimer();
-      setIsSkippingRestricted(false);
-      setSkipCountdown(3);
-    }
-  }, [isActiveVibe, clearSkipTimer]);
-
-  React.useEffect(() => {
-    return () => clearSkipTimer();
-  }, [clearSkipTimer]);
 
   // ── Record "play" signal once per activation ─────────────────────────────────
   React.useEffect(() => {
@@ -214,33 +195,48 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  // ── Error Handler: Detect and skip restricted YouTube videos ────────────────
-  const handleYoutubeError = (event: any) => {
-    const errorCode = event.data;
-    // 101 and 150 mean embedding is disabled by the owner.
-    if (errorCode === 101 || errorCode === 150) {
-      setIsRestricted(true);
-      
-      // If we are in continuous mode, don't stop the queue! 
-      // Auto-skip after a brief countdown.
-      if (isContinuous) {
-        setIsSkippingRestricted(true);
-        setSkipCountdown(3);
-        
-        clearSkipTimer();
-        skipTimerRef.current = setInterval(() => {
-          setSkipCountdown((prev) => {
-            if (prev <= 1) {
-              clearSkipTimer();
-              playNext();
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      }
+  // ── YouTube restriction auto-skip ────────────────────────────────────────────
+  const handleYoutubeError = React.useCallback((e: { data: number }) => {
+    const isEmbedRestricted = e.data === 101 || e.data === 150;
+    if (!isEmbedRestricted) return;
+
+    setIsRestricted(true);
+
+    if (!isContinuous) return;
+
+    setIsSkippingRestricted(true);
+    setSkipCountdown(3);
+
+    if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+
+    skipTimerRef.current = setInterval(() => {
+      setSkipCountdown(prev => {
+        if (prev <= 1) {
+          if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+          skipTimerRef.current = null;
+          setIsSkippingRestricted(false);
+          playNext();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [isContinuous, playNext]);
+
+  // Clear the skip timer when the card is deactivated or unmounted
+  React.useEffect(() => {
+    if (!isActiveVibe && skipTimerRef.current) {
+      clearInterval(skipTimerRef.current);
+      skipTimerRef.current = null;
+      setIsSkippingRestricted(false);
     }
-  };
+  }, [isActiveVibe]);
+
+  React.useEffect(() => {
+    return () => {
+      if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+    };
+  }, []);
 
   // ── YouTube IFrame handshake ─────────────────────────────────────────────────
   const onYoutubeReady = (event: any) => {
@@ -319,60 +315,58 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {/* ── Media zone ──────────────────────────────────────────────────────── */}
       {post.mediaType !== 'text' && (
         <div className={cn(
           'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
+
+          {/* IMAGE */}
           {post.mediaType === 'image' && post.imageUrl && (
             <Image src={post.imageUrl} alt="post" fill
               className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')}
             />
           )}
+
+          {/* YOUTUBE */}
           {post.mediaType === 'youtube' && youtubeId && (
             <div className="relative w-full h-full">
               {isRestricted ? (
                 <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
-                  
                   {isSkippingRestricted ? (
-                    <div className="space-y-6 flex flex-col items-center animate-in zoom-in duration-300">
-                      <div className="relative flex items-center justify-center">
-                        <svg className="w-20 h-20 transform -rotate-90">
+                    <>
+                      <div className="relative mb-5">
+                        <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                          <circle cx="32" cy="32" r="28" fill="none" stroke="#334155" strokeWidth="4" />
                           <circle
-                            cx="40"
-                            cy="40"
-                            r="36"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                            fill="transparent"
-                            className="text-white/10"
-                          />
-                          <circle
-                            cx="40"
-                            cy="40"
-                            r="36"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                            fill="transparent"
-                            strokeDasharray={226}
-                            strokeDashoffset={226 - (226 * (skipCountdown / 3))}
-                            className="text-blue-500 transition-all duration-1000 ease-linear"
+                            cx="32" cy="32" r="28"
+                            fill="none" stroke="#3b82f6" strokeWidth="4"
+                            strokeDasharray={`${(2 * Math.PI * 28 * skipCountdown) / 3} 999`}
+                            className="transition-all duration-1000 ease-linear"
                           />
                         </svg>
-                        <span className="absolute text-2xl font-black text-white">{skipCountdown}</span>
+                        <span className="absolute inset-0 flex items-center justify-center text-white font-black text-xl">
+                          {skipCountdown}
+                        </span>
                       </div>
-                      <div>
-                        <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Entry</h4>
-                        <p className="text-slate-400 text-[10px] mt-1">Liaison is matching next frequency...</p>
-                      </div>
-                      <Button 
-                        onClick={() => { clearSkipTimer(); playNext(); }}
-                        size="sm"
-                        className="bg-white/10 hover:bg-white/20 text-white border-white/10 rounded-xl font-black text-[10px] uppercase tracking-widest h-10 px-6"
+                      <h4 className="text-white font-black text-sm uppercase tracking-widest">
+                        Skipping Restricted Vibe
+                      </h4>
+                      <p className="text-slate-400 text-[10px] mt-2 max-w-[220px]">
+                        This video can't play outside YouTube. Moving to the next vibe automatically.
+                      </p>
+                      <button
+                        onClick={() => {
+                          if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+                          setIsSkippingRestricted(false);
+                          playNext();
+                        }}
+                        className="mt-4 text-blue-400 text-[10px] font-black uppercase tracking-widest hover:text-blue-300 transition-colors flex items-center gap-1 mx-auto"
                       >
-                        Skip Now <ArrowRight size={12} className="ml-2" />
-                      </Button>
-                    </div>
+                        Skip Now <ArrowRight size={12} />
+                      </button>
+                    </>
                   ) : (
                     <>
                       <AlertTriangle className="text-amber-500 mb-4" size={48} />
@@ -402,11 +396,15 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               )}
             </div>
           )}
+
+          {/* TIKTOK */}
           {post.mediaType === 'tiktok' && post.mediaUrl && (
             <div className="bg-black flex items-center justify-center h-full">
               <TikTokEmbed url={post.mediaUrl} />
             </div>
           )}
+
+          {/* NATIVE VIDEO */}
           {post.mediaType === 'video' && post.mediaUrl && (
             <div className="w-full h-full bg-black flex items-center justify-center">
               {!reactPlayerMounted && !isActiveVibe && (
@@ -434,6 +432,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {/* ── Info zone ────────────────────────────────────────────────────────── */}
       <div className={cn(
         'flex flex-col transition-all duration-500',
         isActiveVibe ? 'p-8 md:flex-row md:items-start md:gap-8' : 'p-6'
