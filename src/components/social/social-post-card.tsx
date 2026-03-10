@@ -71,6 +71,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
   const [ytMuted, setYtMuted] = React.useState(false);
+  const [ytMounted, setYtMounted] = React.useState(false);
 
   // ── ReactPlayer state ───────────────────────────────────────────────────────
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
@@ -93,9 +94,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     addToQueue([post]);
   }, [post.id, addToQueue]);
 
-  // ── Mount real ReactPlayer when first activated ─────────────────────────────
+  // ── Mounting Logic: Only mount players when active or once they've been active ────
   React.useEffect(() => {
-    if (isActiveVibe && post.mediaType === 'video') setReactPlayerMounted(true);
+    if (isActiveVibe) {
+      if (post.mediaType === 'video') setReactPlayerMounted(true);
+      if (post.mediaType === 'youtube') setYtMounted(true);
+    }
   }, [isActiveVibe, post.mediaType]);
 
   // ── Scroll into view when activated ─────────────────────────────────────────
@@ -259,6 +263,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       setSkipCountdown(prev => {
         if (prev === null) return null;
         if (prev <= 1) {
+          // playNext() moved out of here to an Effect to prevent "Update while rendering"
           return 0;
         }
         return prev - 1;
@@ -376,70 +381,84 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             />
           )}
 
-          {/* YOUTUBE */}
+          {/* YOUTUBE: Poster-First conditional mounting */}
           {post.mediaType === 'youtube' && youtubeId && (
             <div className="relative w-full h-full">
-              {isRestricted ? (
-                <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
-                  {isSkippingRestricted ? (
-                    <>
-                      <div className="relative mb-5">
-                        <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-                          <circle cx="32" cy="32" r="28" fill="none" stroke="#334155" strokeWidth="4" />
-                          <circle
-                            cx="32" cy="32" r="28"
-                            fill="none" stroke="#3b82f6" strokeWidth="4"
-                            strokeDasharray={`${(2 * Math.PI * 28 * (skipCountdown || 0)) / 3} 999`}
-                            className="transition-all duration-1000 ease-linear"
-                          />
-                        </svg>
-                        <span className="absolute inset-0 flex items-center justify-center text-white font-black text-xl">
-                          {skipCountdown}
-                        </span>
-                      </div>
-                      <h4 className="text-white font-black text-sm uppercase tracking-widest">
-                        Skipping Restricted Vibe
-                      </h4>
-                      <p className="text-slate-400 text-[10px] mt-2 max-w-[220px]">
-                        This video can't play outside YouTube. Moving to the next vibe automatically.
-                      </p>
-                      <button
-                        onClick={() => {
-                          if (skipTimerRef.current) clearInterval(skipTimerRef.current);
-                          setIsSkippingRestricted(false);
-                          playNext();
-                        }}
-                        className="mt-4 text-blue-400 text-[10px] font-black uppercase tracking-widest hover:text-blue-300 transition-colors flex items-center gap-1 mx-auto"
-                      >
-                        Skip Now <ArrowRight size={12} />
-                      </button>
-                    </>
+              {!ytMounted && !isActiveVibe && (
+                <div className="absolute inset-0 cursor-pointer group/poster" onClick={() => setActivePost(post)}>
+                  {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover opacity-60" />}
+                  <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                    <div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
+                      <PlayCircle size={32} fill="white" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {(ytMounted || isActiveVibe) && (
+                <div className="relative w-full h-full">
+                  {isRestricted ? (
+                    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
+                      {isSkippingRestricted ? (
+                        <>
+                          <div className="relative mb-5">
+                            <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                              <circle cx="32" cy="32" r="28" fill="none" stroke="#334155" strokeWidth="4" />
+                              <circle
+                                cx="32" cy="32" r="28"
+                                fill="none" stroke="#3b82f6" strokeWidth="4"
+                                strokeDasharray={`${(2 * Math.PI * 28 * (skipCountdown || 0)) / 3} 999`}
+                                className="transition-all duration-1000 ease-linear"
+                              />
+                            </svg>
+                            <span className="absolute inset-0 flex items-center justify-center text-white font-black text-xl">
+                              {skipCountdown}
+                            </span>
+                          </div>
+                          <h4 className="text-white font-black text-sm uppercase tracking-widest">
+                            Skipping Restricted Vibe
+                          </h4>
+                          <p className="text-slate-400 text-[10px] mt-2 max-w-[220px]">
+                            This video can't play outside YouTube. Moving to the next vibe automatically.
+                          </p>
+                          <button
+                            onClick={() => {
+                              if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+                              setIsSkippingRestricted(false);
+                              playNext();
+                            }}
+                            className="mt-4 text-blue-400 text-[10px] font-black uppercase tracking-widest hover:text-blue-300 transition-colors flex items-center gap-1 mx-auto"
+                          >
+                            Skip Now <ArrowRight size={12} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                          <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
+                          <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">
+                            Playback restricted inside other apps. Visit YouTube to see the full vibe.
+                          </p>
+                          <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer"
+                            className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
+                          >
+                            <Youtube size={14} fill="white" /> Open on YouTube
+                          </a>
+                        </>
+                      )}
+                    </div>
                   ) : (
-                    <>
-                      <AlertTriangle className="text-amber-500 mb-4" size={48} />
-                      <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
-                      <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">
-                        Playback restricted inside other apps. Visit YouTube to see the full vibe.
-                      </p>
-                      <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer"
-                        className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
-                      >
-                        <Youtube size={14} fill="white" /> Open on YouTube
-                      </a>
-                    </>
+                    <YouTube
+                      key={ytKey}
+                      videoId={youtubeId}
+                      opts={{ width: '100%', height: '100%', playerVars: ytPlayerVars }}
+                      className="w-full h-full"
+                      onReady={onYoutubeReady}
+                      onPlay={onYoutubePlay}
+                      onEnd={handleEnd}
+                      onError={handleYoutubeError}
+                    />
                   )}
                 </div>
-              ) : (
-                <YouTube
-                  key={ytKey}
-                  videoId={youtubeId}
-                  opts={{ width: '100%', height: '100%', playerVars: ytPlayerVars }}
-                  className="w-full h-full"
-                  onReady={onYoutubeReady}
-                  onPlay={onYoutubePlay}
-                  onEnd={handleEnd}
-                  onError={handleYoutubeError}
-                />
               )}
             </div>
           )}
@@ -451,12 +470,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </div>
           )}
 
-          {/* NATIVE VIDEO */}
+          {/* NATIVE VIDEO: Poster-First conditional mounting */}
           {post.mediaType === 'video' && post.mediaUrl && (
             <div className="w-full h-full bg-black flex items-center justify-center">
               {!reactPlayerMounted && !isActiveVibe && (
                 <div className="absolute inset-0 cursor-pointer group/poster" onClick={() => setActivePost(post)}>
-                  {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover" />}
+                  {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover opacity-60" />}
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                     <div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
                       <Play size={32} fill="white" />
