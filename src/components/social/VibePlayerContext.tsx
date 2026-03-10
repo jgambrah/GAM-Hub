@@ -44,14 +44,13 @@ export interface ReactionBurst {
 
 /**
  * 📉 EXPONENTIAL FRESHNESS DECAY
- * Ensuring fresh vibes dominate the Yard pulse.
  */
 function exponentialFreshness(date: Date) {
   const ageDays = (Date.now() - date.getTime()) / 86400000;
   return 10 * Math.exp(-ageDays / 3);
 }
 
-function computeBaseScore(current: SocialPost, candidate: SocialPost): number {
+export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
   let score = 0;
 
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
@@ -86,45 +85,48 @@ function computeBaseScore(current: SocialPost, candidate: SocialPost): number {
   return score;
 }
 
-function computeVibeScore(
+export function computeVibeScore(
   current: SocialPost,
   candidate: SocialPost,
   getPersonalScore: (p: SocialPost) => number
-): number {
+) {
   const base = computeBaseScore(current, candidate);
   const personal = getPersonalScore(candidate);
 
-  // Balanced weighting: 60% Yard Base, 40% Personal Profile
   return base * 0.6 + personal * 0.4;
 }
 
 /**
- * 🏛️ SCALABLE RETRIEVAL
+ * 🏎️ MASSIVELY OPTIMIZED SMART QUEUE BUILDER
  */
-function buildSmartQueue(
+export function buildSmartQueue(
   current: SocialPost,
   pool: SocialPost[],
   mood: VibeMood,
   getPersonalScore: (p: SocialPost) => number
-): SocialPost[] {
-  const candidates = pool.filter(p => p.id !== current.id);
-  
-  let filtered = candidates;
-  if (mood !== 'all') {
-    const moodDef = VIBE_MOODS.find(m => m.id === mood);
-    if (moodDef) {
-        const moodTagSet = new Set(moodDef.tags);
-        filtered = candidates.filter(p => 
-            (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) || 
-            p.mediaType === 'video' || p.mediaType === 'youtube'
-        );
+) {
+  const ranked = [];
+  const moodDef = VIBE_MOODS.find(m => m.id === mood);
+  const moodTagSet = moodDef && mood !== 'all' ? new Set(moodDef.tags) : null;
+
+  for (const p of pool) {
+    if (p.id === current.id) continue;
+
+    if (moodTagSet) {
+      const match =
+        (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ||
+        p.mediaType === 'video' || p.mediaType === 'youtube' || p.mediaType === 'tiktok';
+
+      if (!match) continue;
     }
+
+    const score = computeVibeScore(current, p, getPersonalScore);
+    ranked.push({ post: p, score });
   }
 
-  return filtered
-    .map(p => ({ post: p, score: computeVibeScore(current, p, getPersonalScore) }))
-    .sort((a, b) => b.score - a.score)
-    .map(s => s.post);
+  ranked.sort((a, b) => b.score - a.score);
+
+  return ranked.map(r => r.post);
 }
 
 function buildReason(
@@ -147,6 +149,7 @@ function buildReason(
 
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
 export const HISTORY_MAX = 30;
+export const MAX_POOL_SIZE = 800; // 🛡️ Memory Protection Limit
 
 interface VibePlayerContextType {
   activePostId: string | null;
@@ -174,6 +177,7 @@ interface VibePlayerContextType {
   recordWatchedToEnd: (post: SocialPost) => void;
   recordLike: (post: SocialPost) => void;
   recordUnlike: (post: SocialPost) => void;
+  recordSkip: (post: SocialPost) => void;
 }
 
 const VibePlayerContext = createContext<VibePlayerContextType | undefined>(undefined);
@@ -216,6 +220,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const recordWatchedToEnd = useCallback((p: SocialPost) => recordSignal(p, 'watched_to_end'), [recordSignal]);
   const recordLike         = useCallback((p: SocialPost) => recordSignal(p, 'like'),           [recordSignal]);
   const recordUnlike       = useCallback((p: SocialPost) => recordSignal(p, 'unlike'),         [recordSignal]);
+  const recordSkip         = useCallback((p: SocialPost) => recordSignal(p, 'skip'),           [recordSignal]);
 
   const sortFeedByProfile = useCallback((posts: SocialPost[]): SocialPost[] => {
     if (!isProfileLoaded) return posts;
@@ -226,15 +231,11 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
 
-  /**
-   * 🛸 ULTRA-FAST REBUILD QUEUE (Stage 2: Re-ranking with AI)
-   * Using Map for O(1) candidate lookup.
-   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     
-    // Stage 1: Local Retrieval
+    // Stage 1: Local Optimized Retrieval
     const localRanked = buildSmartQueue(current, pool, mood, scorer);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
@@ -263,7 +264,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
       const aiIds = recommendation.recommendedPostIds;
       
-      // OPTIMIZATION: Build index for O(1) lookup
       const postMap = new Map<string, SocialPost>();
       for (const p of pool) postMap.set(p.id, p);
 
@@ -279,7 +279,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
     } catch (err) {
-      console.warn('Liaison Re-ranking AI bypassed, using profile-only logic:', err);
+      console.warn('Liaison Re-ranking AI bypassed:', err);
     }
   }, [getTopInterests]);
 
@@ -377,7 +377,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       const existingIds = new Set(prev.map(p => p.id));
       const incoming = posts.filter(p => !existingIds.has(p.id));
       if (incoming.length === 0) return prev;
-      const merged = [...prev, ...incoming];
+      
+      let merged = [...prev, ...incoming];
+      
+      // 🛡️ MEMORY PROTECTION: Eject oldest items if we exceed 800
+      if (merged.length > MAX_POOL_SIZE) {
+        merged = merged.slice(-MAX_POOL_SIZE);
+      }
+
       const currentPost = activePostRef.current;
       if (currentPost && isContinuousRef.current) {
         setTimeout(() => rebuildQueue(currentPost, merged, activeMoodRef.current), 0);
@@ -419,6 +426,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       isMiniPlayerVisible,
       sortFeedByProfile, isProfileLoaded,
       recordPlay, recordWatchedToEnd, recordLike, recordUnlike,
+      recordSkip,
     }}>
       {children}
     </VibePlayerContext.Provider>

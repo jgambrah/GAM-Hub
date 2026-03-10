@@ -22,7 +22,7 @@ export const EMPTY_PROFILE: VibeProfile = {
   campusWeights: {},
 };
 
-export type SignalType = 'like' | 'unlike' | 'reaction' | 'play' | 'watched_to_end';
+export type SignalType = 'like' | 'unlike' | 'reaction' | 'play' | 'watched_to_end' | 'skip';
 
 const SIGNAL_WEIGHTS: Record<SignalType, {
   tag: number; author: number; type: number; campus: number;
@@ -32,6 +32,7 @@ const SIGNAL_WEIGHTS: Record<SignalType, {
   reaction:       { tag: 2.0,  author: 1.0,  type: 1.0, campus: 0.5 },
   play:           { tag: 1.0,  author: 0.5,  type: 0.5, campus: 0.3 },
   watched_to_end: { tag: 4.0,  author: 3.0,  type: 2.0, campus: 1.5 },
+  skip:           { tag: -1.5, author: -1.0, type: -0.5, campus: -0.2 }, // ⏭️ Skip Punishments
 };
 
 const CAP   = 100;
