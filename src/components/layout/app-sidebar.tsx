@@ -171,24 +171,34 @@ export function AppSidebar() {
           </SidebarMenu>
         ) : viewMode === 'admin' ? (
           <>
-            {/* LIAISON APP VIEW GROUP */}
-            <SidebarGroup>
-              <SidebarGroupLabel>App Experience</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {navItems.filter(item => item.roles.includes('admin')).map(item => (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton asChild isActive={pathname === item.href} tooltip={item.label}>
-                        <a href={item.href}>
-                          <item.icon />
-                          <span>{item.label}</span>
-                        </a>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            {/* LIAISON APP VIEW GROUP (Collapsible) */}
+            <Collapsible className="group/collapsible" defaultOpen={true}>
+              <SidebarGroup>
+                <SidebarGroupLabel asChild>
+                  <CollapsibleTrigger className="flex w-full items-center gap-2 hover:text-foreground">
+                    <LayoutDashboard className="h-4 w-4" />
+                    <span className="flex-1 text-left">App Experience</span>
+                    <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                  </CollapsibleTrigger>
+                </SidebarGroupLabel>
+                <CollapsibleContent>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {navItems.filter(item => item.roles.includes('admin')).map(item => (
+                        <SidebarMenuItem key={item.href}>
+                          <SidebarMenuButton asChild isActive={pathname === item.href} tooltip={item.label}>
+                            <a href={item.href}>
+                              <item.icon />
+                              <span>{item.label}</span>
+                            </a>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </SidebarGroup>
+            </Collapsible>
 
             {/* LIAISON COMMAND GROUPS (Collapsible) */}
             {adminNavGroups.map((group) => (
