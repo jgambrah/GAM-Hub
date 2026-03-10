@@ -15,15 +15,16 @@ import { useFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import type { AdCampaign } from '@/components/social/vibeAdsSchema';
+import type { AdCampaign } from '@/lib/types';
 import {
   Clock, CheckCircle2, XCircle, PauseCircle, PlayCircle,
   BarChart2, Eye, MousePointerClick, Megaphone, Calendar,
-  ChevronDown, ChevronUp, Tag, Zap,
+  ChevronDown, ChevronUp, Tag, Zap, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 
 type CampaignWithId = AdCampaign & { id: string };
 type StatusFilter = 'all' | 'pending_review' | 'active' | 'paused' | 'ended' | 'rejected';
@@ -69,17 +70,17 @@ export default function AdReviewDashboard() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center bg-card p-6 rounded-[2.5rem] border shadow-sm">
+      <div className="flex justify-between items-center bg-card p-6 rounded-[2.5rem] border shadow-sm flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-amber-500 rounded-2xl shadow-lg">
             <Megaphone size={24} className="text-white" fill="white" />
           </div>
           <div>
-            <h1 className="text-2xl font-black">Ad Campaign Manager</h1>
+            <h1 className="text-2xl font-black">Ad Review Queue</h1>
             <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] font-bold">Liaison National Hub</p>
           </div>
         </div>
-        <div className="flex gap-2 bg-muted p-1 rounded-2xl overflow-x-auto scrollbar-none max-w-md">
+        <div className="flex gap-2 bg-muted p-1 rounded-2xl overflow-x-auto scrollbar-none max-w-full">
           {(['pending_review','active','paused','all'] as StatusFilter[]).map(s => (
             <button
               key={s}
@@ -254,6 +255,15 @@ function CampaignCard({ campaign, isExpanded, onToggleExpand, firestore, toast }
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function StatTile({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="bg-muted/60 rounded-2xl p-3">
+      <div className="flex items-center gap-1.5 text-muted-foreground mb-1">{icon}<span className="text-[10px] font-bold uppercase tracking-widest">{label}</span></div>
+      <p className="font-black text-lg text-foreground">{value}</p>
     </div>
   );
 }

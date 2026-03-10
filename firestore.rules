@@ -178,5 +178,29 @@ service cloud.firestore {
 
     match /pickup_points/{id} { allow read, list: if isSignedIn(); }
     match /campuses/{id} { allow read, list: if true; }
+
+    // -------------------------------------------------------------------------
+    // 7. ADVERTISING INFRASTRUCTURE
+    // -------------------------------------------------------------------------
+    
+    match /ad_campaigns/{adId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null; // Self-serve
+      allow update, delete: if isAdmin();
+      
+      match /impressions/{impId} {
+        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+        allow read, update, delete: if false;
+      }
+      match /clicks/{clickId} {
+        allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+        allow read, update, delete: if false;
+      }
+    }
+
+    match /ad_impressions_daily/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Cloud Function only
+    }
   }
 }
