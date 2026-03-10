@@ -5,7 +5,7 @@ import {
   FlameKindling, Flame, LayoutDashboard, ShoppingBag, Users, Building, Settings, UserCheck, 
   Link, CreditCard, MessagesSquare, ShieldAlert, Landmark, Banknote, Sparkles, MapPin, 
   Globe, BookOpen, PackageCheck, Wallet, History, Zap, Star, Gavel, Key, FileCheck, TrendingUp, Rss,
-  Megaphone
+  Megaphone, ChevronRight
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import type { NavItem } from '@/lib/types';
@@ -23,6 +23,11 @@ import {
 } from '@/components/ui/sidebar';
 import { useCampusView } from '@/hooks/use-campus-view';
 import { useView } from '@/context/ViewContext';
+import { 
+  Collapsible, 
+  CollapsibleContent, 
+  CollapsibleTrigger 
+} from "@/components/ui/collapsible";
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['student', 'staff', 'admin', 'src'] },
@@ -37,26 +42,50 @@ const navItems: NavItem[] = [
   { href: '/study', label: 'Study Rooms', icon: BookOpen, roles: ['student', 'staff', 'src'] },
   { href: '/politics', label: 'Politics', icon: Gavel, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/advertise', label: 'Advertise', icon: Megaphone, roles: ['student', 'staff', 'admin', 'src'] },
-  
-  // Admin Section
-  { href: '/admin/analytics', label: 'Analytics', icon: Globe, roles: ['admin'] },
-  { href: '/admin/exit-poll', label: 'Exit Poll', icon: TrendingUp, roles: ['admin'] },
-  { href: '/admin/handover', label: 'Handover', icon: Key, roles: ['admin'] },
-  { href: '/admin/campuses', label: 'Campuses', icon: Building, roles: ['admin'] },
-  { href: '/admin/ads', label: 'Ad Review', icon: Megaphone, roles: ['admin'] },
-  { href: '/admin/campaigns', label: 'Manual Ads', icon: Zap, roles: ['admin'] },
-  { href: '/admin/candidates', label: 'Candidates', icon: Gavel, roles: ['admin'] },
-  { href: '/admin/id-verification', label: 'ID Verification', icon: FileCheck, roles: ['admin'] },
-  { href: '/admin/disputes', label: 'Disputes', icon: ShieldAlert, roles: ['admin'] },
-  { href: '/admin/finance', label: 'Finance', icon: Banknote, roles: ['admin'] },
-  { href: '/admin/orders', label: 'Orders', icon: CreditCard, roles: ['admin'] },
-  { href: '/admin/payouts', label: 'Payouts', icon: Landmark, roles: ['admin'] },
-  { href: '/admin/pickup-points', label: 'Pickup Points', icon: MapPin, roles: ['admin'] },
-  { href: '/admin/spotlight', label: 'Spotlight', icon: Sparkles, roles: ['admin'] },
-  { href: '/admin/users', label: 'Users', icon: Users, roles: ['admin'] },
-  { href: '/admin/vendors', label: 'Vendors', icon: UserCheck, roles: ['admin'] },
-
   { href: '/settings', label: 'Settings', icon: Settings, roles: ['student', 'staff', 'admin', 'src'] },
+];
+
+const adminNavGroups = [
+  {
+    title: "National Command",
+    icon: ShieldAlert,
+    items: [
+      { href: '/admin/analytics', label: 'Analytics Hub', icon: Globe },
+      { href: '/admin/exit-poll', label: 'Exit Polls', icon: TrendingUp },
+      { href: '/admin/handover', label: 'Handover Command', icon: Key },
+      { href: '/admin/spotlight', label: 'Spotlight Manager', icon: Sparkles },
+      { href: '/admin/users', label: 'User Directory', icon: Users },
+    ]
+  },
+  {
+    title: "Financial Fortress",
+    icon: Banknote,
+    items: [
+      { href: '/admin/finance', label: 'Finance Center', icon: Banknote },
+      { href: '/admin/orders', label: 'Global Orders', icon: CreditCard },
+      { href: '/admin/payouts', label: 'Payout Manager', icon: Landmark },
+      { href: '/admin/ads', label: 'Ad Review Queue', icon: Megaphone },
+      { href: '/admin/campaigns', label: 'Manual Campaigns', icon: Zap },
+    ]
+  },
+  {
+    title: "Trust & Vetting",
+    icon: UserCheck,
+    items: [
+      { href: '/admin/id-verification', label: 'ID Vetting', icon: FileCheck },
+      { href: '/admin/vendors', label: 'Vendor Approval', icon: UserCheck },
+      { href: '/admin/candidates', label: 'Candidate Vetting', icon: Gavel },
+      { href: '/admin/disputes', label: 'Dispute Resolution', icon: ShieldAlert },
+    ]
+  },
+  {
+    title: "Infrastructure",
+    icon: Building,
+    items: [
+      { href: '/admin/campuses', label: 'Campus Registry', icon: Building },
+      { href: '/admin/pickup-points', label: 'Safe Zone Map', icon: MapPin },
+    ]
+  }
 ];
 
 const vendorNavItems = [
@@ -97,14 +126,6 @@ export function AppSidebar() {
   const { viewMode } = useView();
   const { viewAsCampus } = useCampusView();
   const pathname = usePathname();
-
-  const filteredNavItems = navItems.filter(item => {
-    if (!user) return false;
-    if (viewMode !== 'vendor') {
-      return item.roles.includes(viewMode);
-    }
-    return false; 
-  });
 
   const displayCampus = isAdmin ? (viewAsCampus ?? { acronym: 'GAM', name: 'Global Admin View' }) : campus;
 
@@ -148,9 +169,61 @@ export function AppSidebar() {
               </SidebarGroup>
             ))}
           </SidebarMenu>
+        ) : viewMode === 'admin' ? (
+          <>
+            {/* LIAISON APP VIEW GROUP */}
+            <SidebarGroup>
+              <SidebarGroupLabel>App Experience</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {navItems.filter(item => item.roles.includes('admin')).map(item => (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton asChild isActive={pathname === item.href} tooltip={item.label}>
+                        <a href={item.href}>
+                          <item.icon />
+                          <span>{item.label}</span>
+                        </a>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            {/* LIAISON COMMAND GROUPS (Collapsible) */}
+            {adminNavGroups.map((group) => (
+              <Collapsible key={group.title} className="group/collapsible" defaultOpen={false}>
+                <SidebarGroup>
+                  <SidebarGroupLabel asChild>
+                    <CollapsibleTrigger className="flex w-full items-center gap-2 hover:text-foreground">
+                      <group.icon className="h-4 w-4" />
+                      <span className="flex-1 text-left">{group.title}</span>
+                      <ChevronRight className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                    </CollapsibleTrigger>
+                  </SidebarGroupLabel>
+                  <CollapsibleContent>
+                    <SidebarGroupContent>
+                      <SidebarMenu>
+                        {group.items.map((item) => (
+                          <SidebarMenuItem key={item.href}>
+                            <SidebarMenuButton asChild isActive={pathname.startsWith(item.href)} tooltip={item.label}>
+                              <a href={item.href}>
+                                <item.icon />
+                                <span>{item.label}</span>
+                              </a>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  </CollapsibleContent>
+                </SidebarGroup>
+              </Collapsible>
+            ))}
+          </>
         ) : (
           <SidebarMenu>
-            {filteredNavItems.map((item) => (
+            {navItems.filter(item => item.roles.includes(viewMode)).map((item) => (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
                   asChild
