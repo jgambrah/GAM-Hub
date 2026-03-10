@@ -23,7 +23,7 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
   }, [posts, addToQueue]);
 
   // 2. PERSISTENT SORTING LAYER
-  // On app open, we sort the feed by the user's historical taste profile.
+  // On every app open, we pre-sort the feed based on the user's historical profile
   const sortedPosts = useMemo(() => {
     return sortFeedByProfile(posts);
   }, [posts, sortFeedByProfile]);
@@ -60,7 +60,7 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
           </div>
         )}
 
-        {/* 2. THE DISCOVERY GRID: Two-column discover mode */}
+        {/* 2. THE DISCOVERY GRID: Two-column grid layout */}
         <div className={cn(
           'grid gap-6 transition-all duration-500 min-w-0',
           activePostId ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
