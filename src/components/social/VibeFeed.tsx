@@ -1,10 +1,10 @@
+
 'use client';
 
 import React, { useMemo } from 'react';
 import type { SocialPost } from '@/lib/types';
 import SocialPostCard from './social-post-card';
 import VibeAdCard from './VibeAdCard';
-import UpNextPanel from './UpNextPanel';
 import VibeMoodBar from './VibeMoodBar';
 import VibeHistoryPanel from './VibeHistoryPanel';
 import { useVibePlayer } from './VibePlayerContext';
@@ -59,7 +59,7 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
     return items;
   }, [sortedPosts]);
 
-  // ── LIAISON PRIORITY LOGIC: Extract the active post to show at the top ──
+  // ── LIAISON VISUAL PRIORITY: Extract the active post to stay at the top ──
   const activePostItem = useMemo(() => {
     if (!activePostId) return null;
     return sortedPosts.find(p => p.id === activePostId);
@@ -93,53 +93,39 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
         </div>
       </div>
 
-      {/* Main Layout: Top Active Stage + Grid with Sidebar */}
-      <div className="flex gap-6 items-start w-full">
-        <div className="flex-1 flex flex-col gap-8 min-w-0">
-          
-          {/* THE HERO STAGE: Active vibration stays at the very top */}
-          {activePostItem && (
-            <div className="animate-in fade-in slide-in-from-top-4 duration-500">
-              <SocialPostCard post={activePostItem} />
-            </div>
-          )}
-
-          {/* THE DISCOVERY GRID: Two-column protocol for visual breathing room */}
-          <div className={cn(
-            'grid gap-6 transition-all duration-500',
-            hasActive ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
-          )}>
-            {discoveryItems.map(item => {
-              if (item.type === 'post') {
-                return <SocialPostCard key={item.key} post={item.post} />;
-              }
-
-              // Ad slot
-              const ad = getAdForSlot(item.slotIndex);
-              if (!ad) return null;
-
-              return (
-                <VibeAdCard
-                  key={item.key}
-                  ad={ad}
-                  onImpression={recordImpression}
-                  onClickCta={recordClick}
-                />
-              );
-            })}
+      {/* Main Layout: Top Active Stage + Grid */}
+      <div className="flex flex-col gap-8 w-full">
+        
+        {/* THE HERO STAGE: Active vibration stays at the very top */}
+        {activePostItem && (
+          <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+            <SocialPostCard post={activePostItem} />
           </div>
-        </div>
+        )}
 
-        {/* Playback Sidebar */}
+        {/* THE DISCOVERY GRID: Two-column protocol for visual impact */}
         <div className={cn(
-          'flex-shrink-0 transition-all duration-500 overflow-hidden',
-          hasActive
-            ? 'w-80 opacity-100 translate-x-0'
-            : 'w-0 opacity-0 translate-x-4 pointer-events-none'
+          'grid gap-6 transition-all duration-500',
+          hasActive ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
         )}>
-          <div className="sticky top-6">
-            <UpNextPanel />
-          </div>
+          {discoveryItems.map(item => {
+            if (item.type === 'post') {
+              return <SocialPostCard key={item.key} post={item.post} />;
+            }
+
+            // Ad slot
+            const ad = getAdForSlot(item.slotIndex);
+            if (!ad) return null;
+
+            return (
+              <VibeAdCard
+                key={item.key}
+                ad={ad}
+                onImpression={recordImpression}
+                onClickCta={recordClick}
+              />
+            );
+          })}
         </div>
       </div>
     </div>

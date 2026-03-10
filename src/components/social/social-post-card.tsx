@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -313,7 +314,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   playing={isActiveVibe}
                   playsinline
                   onStart={() => setActivePost(post)}
-                  onEnded={handleEnd}
+                  onEnd={handleEnd}
                   config={{ file: { attributes: { playsInline: true, preload: 'auto' } } }}
                 />
               )}
