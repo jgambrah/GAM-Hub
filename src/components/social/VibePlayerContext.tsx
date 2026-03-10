@@ -43,8 +43,8 @@ export interface ReactionBurst {
 }
 
 /**
- * 🛰️ LIAISON SCORING ALGORITHM (Stage 1: Ranking)
- * Computes a relevance score between the current vibe and a potential next vibe.
+ * 📉 EXPONENTIAL FRESHNESS DECAY
+ * Ensuring fresh vibes dominate the Yard pulse.
  */
 function exponentialFreshness(date: Date) {
   const ageDays = (Date.now() - date.getTime()) / 86400000;
@@ -78,7 +78,7 @@ function computeBaseScore(current: SocialPost, candidate: SocialPost): number {
     const date =
       typeof candidate.createdAt === 'string'
         ? new Date(candidate.createdAt)
-        : candidate.createdAt.toDate();
+        : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
 
     score += exponentialFreshness(date);
   }
@@ -94,13 +94,12 @@ function computeVibeScore(
   const base = computeBaseScore(current, candidate);
   const personal = getPersonalScore(candidate);
 
-  // Re-balanced weighting: 60% Yard Base, 40% Personal Profile
+  // Balanced weighting: 60% Yard Base, 40% Personal Profile
   return base * 0.6 + personal * 0.4;
 }
 
 /**
- * 🏛️ SCALABLE QUEUE BUILDER
- * Filters millions down to hundreds, then ranks them for the AI Re-ranker.
+ * 🏛️ SCALABLE RETRIEVAL
  */
 function buildSmartQueue(
   current: SocialPost,
@@ -110,7 +109,6 @@ function buildSmartQueue(
 ): SocialPost[] {
   const candidates = pool.filter(p => p.id !== current.id);
   
-  // 1. Filter by Mood if requested
   let filtered = candidates;
   if (mood !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === mood);
@@ -118,12 +116,11 @@ function buildSmartQueue(
         const moodTagSet = new Set(moodDef.tags);
         filtered = candidates.filter(p => 
             (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) || 
-            p.mediaType === 'video' // Videos are always candidates for hype/flex
+            p.mediaType === 'video' || p.mediaType === 'youtube'
         );
     }
   }
 
-  // 2. Rank candidates locally
   return filtered
     .map(p => ({ post: p, score: computeVibeScore(current, p, getPersonalScore) }))
     .sort((a, b) => b.score - a.score)
@@ -230,14 +227,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   /**
-   * 🛸 REBUILD QUEUE (Stage 2: Re-ranking with AI)
-   * This is where the magic happens for "Millions" of videos.
+   * 🛸 ULTRA-FAST REBUILD QUEUE (Stage 2: Re-ranking with AI)
+   * Using Map for O(1) candidate lookup.
    */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     
-    // Stage 1: Narrow down to the best candidates locally
+    // Stage 1: Local Retrieval
     const localRanked = buildSmartQueue(current, pool, mood, scorer);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
@@ -247,14 +244,11 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         reason: buildReason(current, p, scorer),
       }));
 
-    // Optimistic UI: Update with local ranking immediately
     setQueue([current, ...localRanked]);
     setUpNext(makeUpNext(localRanked));
     setIsLoadingQueue(false);
 
-    // Stage 2: Let AI Re-rank the "Elite Candidates"
     try {
-      // Send the top 25 candidates to the AI for qualitative matching
       const eliteCandidates = localRanked.slice(0, 25).map(p => ({
         id: p.id, 
         content: p.content, 
@@ -268,8 +262,13 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       });
 
       const aiIds = recommendation.recommendedPostIds;
+      
+      // OPTIMIZATION: Build index for O(1) lookup
+      const postMap = new Map<string, SocialPost>();
+      for (const p of pool) postMap.set(p.id, p);
+
       const aiPosts = aiIds
-        .map(id => pool.find(p => p.id === id))
+        .map(id => postMap.get(id))
         .filter((p): p is SocialPost => !!p && p.id !== current.id);
       
       const aiIdSet = new Set(aiIds);
