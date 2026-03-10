@@ -79,24 +79,24 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
-  // ── Register ALL post types into global pool on mount ─────────────────────
+  // ── Register into global pool on mount ─────────────────────────────────────
   React.useEffect(() => {
     addToQueue([post]);
   }, [post.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Mount real ReactPlayer when first activated ───────────────────────────
+  // ── Mount real ReactPlayer when first activated ─────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && post.mediaType === 'video') setReactPlayerMounted(true);
   }, [isActiveVibe, post.mediaType]);
 
-  // ── Scroll into view when activated ──────────────────────────────────────
+  // ── Scroll into view when activated ─────────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
 
-  // ── Record "play" signal once per activation ───────────────────────────
+  // ── Record "play" signal once per activation ─────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && !hasRecordedPlay.current) {
       hasRecordedPlay.current = true;

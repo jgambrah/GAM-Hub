@@ -21,7 +21,7 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
   // Register ALL posts into the global queue pool
   React.useEffect(() => {
     if (posts.length > 0) addToQueue(posts);
-  }, [posts.length, addToQueue]);
+  }, [posts, addToQueue]);
 
   // Sort the rendered feed by personal profile as soon as the profile loads.
   // This is what makes the feed feel personalised on every app open —
