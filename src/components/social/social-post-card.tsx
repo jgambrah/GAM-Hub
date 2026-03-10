@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  Image as ImageIcon, FileText,
+  Image as ImageIcon, FileText, Loader2, ArrowRight
 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
@@ -57,15 +57,26 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [isProcessingLike, setIsProcessingLike] = React.useState(false);
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
+  
+  // ── Skip restricted logic ──────────────────────────────────────────────────
+  const [isSkippingRestricted, setIsSkippingRestricted] = React.useState(false);
+  const [skipCountdown, setSkipCountdown] = React.useState(3);
+  const skipTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ── YouTube state ───────────────────────────────────────────────────────────
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
   const [ytMuted, setYtMuted] = React.useState(false);
+
+  // ── ReactPlayer state ───────────────────────────────────────────────────────
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
+
+  // ── Image/text countdown ────────────────────────────────────────────────────
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   const cardRef = React.useRef<HTMLDivElement>(null);
-  const hasRecordedPlay = React.useRef(false);
+  const hasRecordedPlay = React.useRef(false); 
 
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
@@ -73,20 +84,44 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
+  // ── Register into global pool on mount ─────────────────────────────────────
   React.useEffect(() => {
     addToQueue([post]);
   }, [post.id, addToQueue]);
 
+  // ── Mount real ReactPlayer when first activated ─────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && post.mediaType === 'video') setReactPlayerMounted(true);
   }, [isActiveVibe, post.mediaType]);
 
+  // ── Scroll into view when activated ─────────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
 
+  // ── Lifecycle: Clean up any skipping timers ─────────────────────────────────
+  const clearSkipTimer = React.useCallback(() => {
+    if (skipTimerRef.current) {
+      clearInterval(skipTimerRef.current);
+      skipTimerRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!isActiveVibe) {
+      clearSkipTimer();
+      setIsSkippingRestricted(false);
+      setSkipCountdown(3);
+    }
+  }, [isActiveVibe, clearSkipTimer]);
+
+  React.useEffect(() => {
+    return () => clearSkipTimer();
+  }, [clearSkipTimer]);
+
+  // ── Record "play" signal once per activation ─────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && !hasRecordedPlay.current) {
       hasRecordedPlay.current = true;
@@ -97,6 +132,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post, recordPlay]);
 
+  // ── Image/text countdown display ─────────────────────────────────────────────
   React.useEffect(() => {
     if (countdownRef.current) clearInterval(countdownRef.current);
     if (isActiveVibe && isContinuous && mediaCategory !== 'video') {
@@ -118,6 +154,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
+  // ── YouTube pause when deactivated ──────────────────────────────────────────
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (!isActiveVibe && ytReadyRef.current && ytPlayerRef.current) {
@@ -125,12 +162,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post.mediaType]);
 
+  // ── Firebase like state on mount ────────────────────────────────────────────
   React.useEffect(() => {
     if (!user || !firestore) return;
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
     getDoc(likeRef).then(snap => { if (snap.exists()) setIsLiked(true); });
   }, [firestore, user, post.id]);
 
+  // ── Like handler — records profile signal ───────────────────────────────────
   const handleLike = async () => {
     if (!user || !firestore || isProcessingLike) return;
     setIsProcessingLike(true);
@@ -175,6 +214,35 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
+  // ── Error Handler: Detect and skip restricted YouTube videos ────────────────
+  const handleYoutubeError = (event: any) => {
+    const errorCode = event.data;
+    // 101 and 150 mean embedding is disabled by the owner.
+    if (errorCode === 101 || errorCode === 150) {
+      setIsRestricted(true);
+      
+      // If we are in continuous mode, don't stop the queue! 
+      // Auto-skip after a brief countdown.
+      if (isContinuous) {
+        setIsSkippingRestricted(true);
+        setSkipCountdown(3);
+        
+        clearSkipTimer();
+        skipTimerRef.current = setInterval(() => {
+          setSkipCountdown((prev) => {
+            if (prev <= 1) {
+              clearSkipTimer();
+              playNext();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
+    }
+  };
+
+  // ── YouTube IFrame handshake ─────────────────────────────────────────────────
   const onYoutubeReady = (event: any) => {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
@@ -265,16 +333,60 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             <div className="relative w-full h-full">
               {isRestricted ? (
                 <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
-                  <AlertTriangle className="text-amber-500 mb-4" size={48} />
-                  <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
-                  <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">
-                    Playback restricted inside other apps. Visit YouTube to see the full vibe.
-                  </p>
-                  <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer"
-                    className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
-                  >
-                    <Youtube size={14} fill="white" /> Open on YouTube
-                  </a>
+                  
+                  {isSkippingRestricted ? (
+                    <div className="space-y-6 flex flex-col items-center animate-in zoom-in duration-300">
+                      <div className="relative flex items-center justify-center">
+                        <svg className="w-20 h-20 transform -rotate-90">
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="36"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            fill="transparent"
+                            className="text-white/10"
+                          />
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="36"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                            fill="transparent"
+                            strokeDasharray={226}
+                            strokeDashoffset={226 - (226 * (skipCountdown / 3))}
+                            className="text-blue-500 transition-all duration-1000 ease-linear"
+                          />
+                        </svg>
+                        <span className="absolute text-2xl font-black text-white">{skipCountdown}</span>
+                      </div>
+                      <div>
+                        <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Entry</h4>
+                        <p className="text-slate-400 text-[10px] mt-1">Liaison is matching next frequency...</p>
+                      </div>
+                      <Button 
+                        onClick={() => { clearSkipTimer(); playNext(); }}
+                        size="sm"
+                        className="bg-white/10 hover:bg-white/20 text-white border-white/10 rounded-xl font-black text-[10px] uppercase tracking-widest h-10 px-6"
+                      >
+                        Skip Now <ArrowRight size={12} className="ml-2" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                      <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
+                      <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">
+                        Playback restricted inside other apps. Visit YouTube to see the full vibe.
+                      </p>
+                      <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer"
+                        className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
+                      >
+                        <Youtube size={14} fill="white" /> Open on YouTube
+                      </a>
+                    </>
+                  )}
                 </div>
               ) : (
                 <YouTube
@@ -285,7 +397,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   onReady={onYoutubeReady}
                   onPlay={onYoutubePlay}
                   onEnd={handleEnd}
-                  onError={e => { if (e.data === 101 || e.data === 150) setIsRestricted(true); }}
+                  onError={handleYoutubeError}
                 />
               )}
             </div>
