@@ -46,34 +46,41 @@ export interface ReactionBurst {
  * 🛰️ LIAISON SCORING ALGORITHM (Stage 1: Ranking)
  * Computes a relevance score between the current vibe and a potential next vibe.
  */
+function exponentialFreshness(date: Date) {
+  const ageDays = (Date.now() - date.getTime()) / 86400000;
+  return 10 * Math.exp(-ageDays / 3);
+}
+
 function computeBaseScore(current: SocialPost, candidate: SocialPost): number {
   let score = 0;
-  
-  // 1. Tag Synergy (+10 per shared interest)
+
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
-  const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
+  const sharedTags = (candidate.tags || []).filter(t =>
+    currentTags.has(t.toLowerCase())
+  );
+
   score += sharedTags.length * 12;
 
-  // 2. Format Consistency (+8 for same media class)
   const currentCat = getMediaCategory(current.mediaType);
   const candidateCat = getMediaCategory(candidate.mediaType);
-  if (candidateCat === currentCat) {
+
+  if (currentCat === candidateCat) {
     score += 8;
     if (candidate.mediaType === current.mediaType) score += 7;
   }
 
-  // 3. Geographic Proximity (+10 for same Yard)
   if (candidate.campusId === current.campusId) score += 10;
-  else if (candidate.campusId === 'all' || current.campusId === 'all') score += 5;
+  else if (candidate.campusId === 'all') score += 5;
 
-  // 4. Social Velocity (Weights likes into the mix)
   score += Math.min((candidate.likes || 0) / 5, 15);
 
-  // 5. Freshness Decay (Prioritize recent vibes among millions)
   if (candidate.createdAt) {
-    const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : candidate.createdAt.toDate();
-    const ageDays = (Date.now() - date.getTime()) / 86_400_000;
-    if (ageDays < 7) score += Math.max(0, 10 - ageDays);
+    const date =
+      typeof candidate.createdAt === 'string'
+        ? new Date(candidate.createdAt)
+        : candidate.createdAt.toDate();
+
+    score += exponentialFreshness(date);
   }
 
   return score;
@@ -84,10 +91,11 @@ function computeVibeScore(
   candidate: SocialPost,
   getPersonalScore: (p: SocialPost) => number
 ): number {
-  const base     = computeBaseScore(current, candidate);
+  const base = computeBaseScore(current, candidate);
   const personal = getPersonalScore(candidate);
-  // Mix context (base) with historical taste (personal)
-  return base + personal * 0.7;
+
+  // Re-balanced weighting: 60% Yard Base, 40% Personal Profile
+  return base * 0.6 + personal * 0.4;
 }
 
 /**
