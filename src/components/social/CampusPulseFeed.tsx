@@ -1,17 +1,27 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit, QueryConstraint } from 'firebase/firestore';
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer } from './VibePlayerContext';
 import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
+import { Button } from '../ui/button';
 
+const INITIAL_LIMIT = 100;
+const LOAD_MORE_BATCH = 50;
+
+/**
+ * CampusPulseFeed Component
+ * 
+ * The primary engine for the Yard's social stream.
+ * Liaison Update: Implemented dynamic scaling to support high-volume video sharing.
+ */
 export default function CampusPulseFeed({
     activeCampusId,
     filterTag,
@@ -25,7 +35,9 @@ export default function CampusPulseFeed({
 }) {
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
-    const { isContinuous, setIsContinuous, queue } = useVibePlayer();
+    const { isContinuous, setIsContinuous } = useVibePlayer();
+    const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     
     const socialQuery = useMemoFirebase(() => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return null;
@@ -46,10 +58,10 @@ export default function CampusPulseFeed({
         }
 
         constraints.push(orderBy('createdAt', 'desc'));
-        constraints.push(limit(50)); 
+        constraints.push(limit(limitCount)); 
 
         return query(pulseRef, ...constraints);
-    }, [firestore, activeCampusId, filterTag, tab, user?.id, isTokenReady]);
+    }, [firestore, activeCampusId, filterTag, tab, user?.id, isTokenReady, limitCount]);
 
     const srcQuery = useMemoFirebase(() => {
         if (!firestore || tab !== 'all' || !activeCampusId || activeCampusId === 'all' || !user || !isTokenReady) return null;
@@ -63,6 +75,17 @@ export default function CampusPulseFeed({
 
     const { data: posts, isLoading: isLoadingPosts, error } = useCollection<SocialPost>(socialQuery);
     const { data: srcPosts, isLoading: isLoadingSrc } = useCollection<SrcPost>(srcQuery);
+
+    const handleRefresh = () => {
+        setIsRefreshing(true);
+        setLimitCount(INITIAL_LIMIT);
+        // Force a brief state change to trigger useMemo re-evaluation if needed
+        setTimeout(() => setIsRefreshing(false), 500);
+    };
+
+    const handleLoadMore = () => {
+        setLimitCount(prev => prev + LOAD_MORE_BATCH);
+    };
 
     const filteredPosts = useMemo(() => {
         if (!posts) return [];
@@ -114,18 +137,10 @@ export default function CampusPulseFeed({
         );
     }
 
-    if (isLoadingPosts || isLoadingSrc || !isTokenReady) {
-        return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <Skeleton className="h-96 rounded-[2.5rem]" />
-                <Skeleton className="h-96 rounded-[2.5rem]" />
-                <Skeleton className="h-96 rounded-[2.5rem]" />
-            </div>
-        );
-    }
+    const hasMore = posts && posts.length >= limitCount;
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 pb-20">
             <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-blue-500 animate-in slide-in-from-top-4">
                 <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
@@ -137,7 +152,15 @@ export default function CampusPulseFeed({
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-6">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={handleRefresh}
+                        disabled={isRefreshing || isLoadingPosts}
+                        className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all active:scale-90 disabled:opacity-50"
+                        title="Re-sync Yard"
+                    >
+                        <RefreshCcw size={18} className={cn(isRefreshing && "animate-spin")} />
+                    </button>
                     <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/10">
                         <span className="text-[10px] font-black uppercase text-slate-400">Autoplay</span>
                         <Switch checked={isContinuous} onCheckedChange={setIsContinuous} className="data-[state=checked]:bg-blue-500" />
@@ -145,7 +168,40 @@ export default function CampusPulseFeed({
                 </div>
             </div>
 
-            <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
+            {isLoadingPosts && limitCount === INITIAL_LIMIT ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <Skeleton className="h-96 rounded-[2.5rem]" />
+                    <Skeleton className="h-96 rounded-[2.5rem]" />
+                    <Skeleton className="h-96 rounded-[2.5rem]" />
+                </div>
+            ) : (
+                <>
+                    <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
+                    
+                    {hasMore ? (
+                        <div className="flex flex-col items-center gap-4 pt-10">
+                            <Button 
+                                onClick={handleLoadMore} 
+                                disabled={isLoadingPosts}
+                                className="bg-slate-900 text-white rounded-[1.5rem] px-10 py-6 h-auto font-black text-sm shadow-xl active:scale-95 transition-all"
+                            >
+                                {isLoadingPosts ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" size={18} />}
+                                Load More Vibrations
+                            </Button>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Displaying {posts.length} vibes from the Yard</p>
+                        </div>
+                    ) : (
+                        <div className="pt-20 text-center space-y-4 opacity-40">
+                            <Globe className="mx-auto text-slate-300" size={48} />
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">Liaison Out • End of Signal</p>
+                        </div>
+                    )}
+                </>
+            )}
         </div>
     );
+}
+
+function Loader2({ className }: { className?: string }) {
+    return <RefreshCcw className={cn("animate-spin", className)} />;
 }

@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, limit, where } from 'firebase/firestore';
 import type { ArenaPost, Campus } from '@/lib/types';
-import { Swords, Trophy, Send, Loader2, Star, Flame, Smile, Youtube, ImagePlus, X } from 'lucide-react';
+import { Swords, Trophy, Send, Loader2, Star, Flame, Smile, Youtube, ImagePlus, X, PlusCircle } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -21,12 +21,16 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
+const INITIAL_LIMIT = 50;
+const LOAD_MORE_BATCH = 50;
+
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
     const { user, isUserLoading, isTokenReady } = useAuth();
     const { toast } = useToast();
     
     const [isLoading, setIsLoading] = useState(false);
+    const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
     const [content, setContent] = useState('');
     const [vibeType, setVibeType] = useState<'shade' | 'celebration'>('celebration');
     const [targetCampus, setTargetCampus] = useState<string | undefined>(undefined);
@@ -55,9 +59,9 @@ export default function ArenaPage() {
             collection(firestore, 'campus_pulse'),
             where('isArenaEntry', '==', true),
             orderBy('createdAt', 'desc'),
-            limit(50)
+            limit(limitCount)
         );
-    }, [firestore, user?.id, isTokenReady]);
+    }, [firestore, user?.id, isTokenReady, limitCount]);
 
     const { data: posts, isLoading: isLoadingPosts } = useCollection<ArenaPost>(postsQuery);
 
@@ -115,6 +119,8 @@ export default function ArenaPage() {
         }
     };
 
+    const hasMore = posts && posts.length >= limitCount;
+
     return (
         <div className="p-4 bg-muted/50 min-h-screen pb-24">
             <ArenaLeaderboard />
@@ -156,9 +162,26 @@ export default function ArenaPage() {
             )}
 
             <div className="space-y-6 max-w-2xl mx-auto">
-                {isLoadingPosts ? (
+                {isLoadingPosts && limitCount === INITIAL_LIMIT ? (
                     <Skeleton className="h-48 w-full rounded-3xl" />
                 ) : posts?.map(post => <ArenaPostCard key={post.id} post={post} />)}
+
+                {hasMore ? (
+                    <div className="flex flex-col items-center pt-8">
+                        <Button 
+                            onClick={() => setLimitCount(prev => prev + LOAD_MORE_BATCH)}
+                            disabled={isLoadingPosts}
+                            className="bg-slate-900 text-white rounded-2xl px-10 h-14 font-black"
+                        >
+                            {isLoadingPosts ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" />}
+                            Load Older Battles
+                        </Button>
+                    </div>
+                ) : posts && posts.length > 0 && (
+                    <div className="text-center py-10 opacity-30">
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em]">End of Arena Archive</p>
+                    </div>
+                )}
             </div>
 
             <Sheet open={showHallOfFame} onOpenChange={setShowHallOfFame}>
