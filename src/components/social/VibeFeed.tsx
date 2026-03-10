@@ -1,21 +1,13 @@
 'use client';
 
-/**
- * VibeFeed
- * --------
- * The main campus feed shell. Composes:
- *   - VibeMoodBar    — mood filter strip
- *   - VibeHistoryPanel — recently played dropdown
- *   - Theater-Top Feed — Ensures active vibe is always solo at the top.
- */
-
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { SocialPost } from '@/lib/types';
 import SocialPostCard from './social-post-card';
 import VibeMoodBar from './VibeMoodBar';
 import VibeHistoryPanel from './VibeHistoryPanel';
 import { useVibePlayer } from './VibePlayerContext';
 import { cn } from '@/lib/utils';
+import { Sparkles } from 'lucide-react';
 
 interface VibeFeedProps {
   posts: SocialPost[];
@@ -23,39 +15,58 @@ interface VibeFeedProps {
 }
 
 export default function VibeFeed({ posts, className }: VibeFeedProps) {
-  const { activePostId, addToQueue } = useVibePlayer();
+  const { activePostId, addToQueue, getPersonalScore, isProfileLoaded } = useVibePlayer();
 
   // Register ALL posts into the global pool on mount
   React.useEffect(() => {
     if (posts.length > 0) addToQueue(posts);
   }, [posts, addToQueue]);
 
-  // LIAISON THEATER LOGIC: Identify the active post to float it to the top
-  const activePost = posts.find(p => p.id === activePostId);
-  const otherPosts = posts.filter(p => p.id !== activePostId);
+  // ── INITIAL PERSISTENT SORTING ──────────────────────────────────────────────
+  // On app open, we sort the feed by the user's historical taste profile.
+  const sortedPosts = useMemo(() => {
+    if (!isProfileLoaded) return posts;
+    
+    return [...posts].sort((a, b) => {
+      const scoreA = getPersonalScore(a);
+      const scoreB = getPersonalScore(b);
+      return scoreB - scoreA;
+    });
+  }, [posts, getPersonalScore, isProfileLoaded]);
+
+  const activePost = sortedPosts.find(p => p.id === activePostId);
+  const otherPosts = sortedPosts.filter(p => p.id !== activePostId);
 
   return (
     <div className={cn('flex flex-col gap-5 w-full', className)}>
 
-      {/* ── Toolbar: mood bar + history button ─────────────────────────────── */}
+      {/* ── Toolbar ────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex-1 min-w-0">
           <VibeMoodBar />
         </div>
+        
+        {isProfileLoaded && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-4 py-2 rounded-2xl flex items-center gap-2 border border-amber-100 dark:border-amber-800 animate-in fade-in">
+            <Sparkles size={14} className="animate-pulse" />
+            <span className="text-[10px] font-black uppercase tracking-widest">For You</span>
+          </div>
+        )}
+        
         <VibeHistoryPanel />
       </div>
 
       {/* ── Feed Layout ────────────────────────────────────────────────────── */}
       <div className="space-y-8">
         
-        {/* 1. THE STAGE: Active Vibe solo at the top */}
+        {/* 1. THE STAGE: Active Vibe hero slot */}
         {activePost && (
           <div className="animate-in fade-in slide-in-from-top-4 duration-500">
             <SocialPostCard post={activePost} />
           </div>
         )}
 
-        {/* 2. THE DISCOVERY GRID: Remaining vibes in a professional 2-column layout */}
+        {/* 2. THE DISCOVERY GRID: Two-column discover mode */}
         <div className={cn(
           'grid gap-6 transition-all duration-500 min-w-0',
           activePostId ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'

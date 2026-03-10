@@ -1,9 +1,10 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 import type { SocialPost } from '@/lib/types';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
+import { useVibeProfile, SignalType } from '@/hooks/use-vibe-profile';
 
 // ─── MEDIA TYPE HELPERS ───────────────────────────────────────────────────────
 export type MediaCategory = 'video' | 'image' | 'text';
@@ -14,7 +15,6 @@ export function getMediaCategory(mediaType: SocialPost['mediaType']): MediaCateg
   return 'text';
 }
 
-// Human-readable label for display in UI chips
 export function getMediaLabel(mediaType: SocialPost['mediaType']): string {
   const map: Record<string, string> = {
     youtube: 'YouTube',
@@ -26,11 +26,10 @@ export function getMediaLabel(mediaType: SocialPost['mediaType']): string {
   return map[mediaType || 'text'] ?? 'Vibe';
 }
 
-// Auto-advance duration (ms) for non-video posts in continuous mode
 export const DISPLAY_DURATIONS: Record<MediaCategory, number> = {
-  video: 0,      // driven by onEnd event — no timer needed
-  image: 8000,   // 8 seconds
-  text: 6000,    // 6 seconds
+  video: 0,
+  image: 8000,
+  text: 6000,
 };
 
 // ─── MOOD SYSTEM ──────────────────────────────────────────────────────────────
@@ -53,77 +52,6 @@ export interface ReactionBurst {
   emoji: VibeReaction;
   x: number;
   y: number;
-}
-
-// ─── SIMILARITY ENGINE ────────────────────────────────────────────────────────
-function computeVibeScore(current: SocialPost, candidate: SocialPost): number {
-  let score = 0;
-
-  // 1. Tag overlap — strongest signal (10 pts per shared tag)
-  const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
-  const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
-  score += sharedTags.length * 10;
-
-  // 2. Same media category (video/image/text) — 8 pts
-  //    Same exact type (youtube/tiktok/video) — bonus 7 pts on top
-  const currentCat = getMediaCategory(current.mediaType);
-  const candidateCat = getMediaCategory(candidate.mediaType);
-  if (candidateCat === currentCat) {
-    score += 8;
-    if (candidate.mediaType === current.mediaType) score += 7;
-  }
-
-  // 3. Campus relevance
-  if (candidate.campusId === current.campusId) score += 10;
-  else if (candidate.campusId === 'all' || current.campusId === 'all') score += 5;
-
-  // 4. Same creator
-  if (candidate.authorId === current.authorId) score += 8;
-
-  // 5. Engagement momentum
-  score += Math.min((candidate.likes || 0) / 5, 12);
-
-  // 6. Recency boost
-  if (candidate.createdAt) {
-    const ageDays = (Date.now() - new Date(candidate.createdAt).getTime()) / 86_400_000;
-    if (ageDays < 7) score += Math.max(0, 5 - ageDays);
-  }
-
-  return score;
-}
-
-function buildSmartQueue(current: SocialPost, pool: SocialPost[], mood: VibeMood): SocialPost[] {
-  const candidates = pool.filter(p => p.id !== current.id);
-
-  let sorted = candidates;
-  if (mood !== 'all') {
-    const moodTagSet = new Set(VIBE_MOODS.find(m => m.id === mood)!.tags);
-    sorted = [...candidates].sort((a, b) => {
-      const aMatch = (a.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ? 1 : 0;
-      const bMatch = (b.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ? 1 : 0;
-      return bMatch - aMatch;
-    });
-  }
-
-  return sorted
-    .map(p => ({ post: p, score: computeVibeScore(current, p) }))
-    .sort((a, b) => b.score - a.score)
-    .map(s => s.post);
-}
-
-function buildReason(current: SocialPost, candidate: SocialPost): string {
-  const parts: string[] = [];
-  const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
-  const shared = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
-
-  if (shared.length > 0) parts.push(`#${shared[0]}`);
-  if (candidate.campusId === current.campusId) parts.push('Same campus');
-  if (candidate.authorId === current.authorId) parts.push('Same creator');
-  if (getMediaCategory(candidate.mediaType) === getMediaCategory(current.mediaType) && parts.length < 2) {
-    parts.push(getMediaLabel(candidate.mediaType));
-  }
-  if (parts.length === 0) parts.push('Trending on the Yard');
-  return parts.slice(0, 2).join(' · ');
 }
 
 export interface QueueEntry {
@@ -151,9 +79,12 @@ interface VibePlayerContextType {
   history: SocialPost[];
   clearHistory: () => void;
   reactionBursts: ReactionBurst[];
-  sendReaction: (emoji: VibeReaction) => void;
+  sendReaction: (emoji: VibeReaction, post: SocialPost) => void;
   reactionCounts: Record<string, Record<VibeReaction, number>>;
   isMiniPlayerVisible: boolean;
+  recordSignal: (post: SocialPost, signal: SignalType) => void;
+  getPersonalScore: (post: SocialPost) => number;
+  isProfileLoaded: boolean;
 }
 
 const VibePlayerContext = createContext<VibePlayerContextType | undefined>(undefined);
@@ -170,7 +101,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [history, setHistory] = useState<SocialPost[]>([]);
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
+  
   const { user } = useAuth();
+  const { isProfileLoaded, recordSignal, getPersonalScore, getTopInterests } = useVibeProfile();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -197,9 +130,72 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
+  // ── SCORE ENGINE: Combined Similarity + Persistence ─────────────────────────
+  const computeVibeScore = useCallback((current: SocialPost, candidate: SocialPost): number => {
+    let score = 0;
+
+    // 1. Tags (10 pts per overlap)
+    const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
+    const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
+    score += sharedTags.length * 10;
+
+    // 2. Media Category (8 pts)
+    if (getMediaCategory(candidate.mediaType) === getMediaCategory(current.mediaType)) {
+      score += 8;
+      if (candidate.mediaType === current.mediaType) score += 7;
+    }
+
+    // 3. Persistence Layer (+50% personal multiplier)
+    const personalScore = getPersonalScore(candidate);
+    score += personalScore * 0.5;
+
+    // 4. Momentum & Recency
+    score += Math.min((candidate.likes || 0) / 5, 12);
+    if (candidate.createdAt) {
+      const ageDays = (Date.now() - new Date(candidate.createdAt).getTime()) / 86_400_000;
+      if (ageDays < 7) score += Math.max(0, 5 - ageDays);
+    }
+
+    return score;
+  }, [getPersonalScore]);
+
+  const buildReason = useCallback((current: SocialPost, candidate: SocialPost): string => {
+    const parts: string[] = [];
+    const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
+    const shared = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
+
+    if (shared.length > 0) parts.push(`#${shared[0]}`);
+    
+    // Check if persistence influenced this
+    if (getPersonalScore(candidate) > 30) {
+      parts.push('Matches Your Taste');
+    } else if (candidate.campusId === current.campusId) {
+      parts.push('Same Campus');
+    }
+    
+    if (parts.length === 0) parts.push(getMediaLabel(candidate.mediaType));
+    return parts.slice(0, 2).join(' · ');
+  }, [getPersonalScore]);
+
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
-    const localRanked = buildSmartQueue(current, pool, mood);
+    const candidates = pool.filter(p => p.id !== current.id);
+
+    let sorted = candidates;
+    if (mood !== 'all') {
+      const moodTagSet = new Set(VIBE_MOODS.find(m => m.id === mood)!.tags);
+      sorted = [...candidates].sort((a, b) => {
+        const aMatch = (a.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ? 1 : 0;
+        const bMatch = (b.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ? 1 : 0;
+        return bMatch - aMatch;
+      });
+    }
+
+    const localRanked = sorted
+      .map(p => ({ post: p, score: computeVibeScore(current, p) }))
+      .sort((a, b) => b.score - a.score);
+
+    const rankedPosts = localRanked.map(s => s.post);
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 10).map(p => ({
         post: p,
@@ -207,32 +203,33 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         reason: buildReason(current, p),
       }));
 
-    setQueue([current, ...localRanked]);
-    setUpNext(makeUpNext(localRanked));
+    setQueue([current, ...rankedPosts]);
+    setUpNext(makeUpNext(rankedPosts));
     setIsLoadingQueue(false);
 
     try {
-      const availablePosts = localRanked.slice(0, 20).map(p => ({
+      const availablePosts = rankedPosts.slice(0, 20).map(p => ({
         id: p.id, content: p.content, tags: p.tags || [],
       }));
       const recommendation = await getRecommendedVibes({
         currentPostContent: current.content,
-        userInterests: user?.interests || [],
+        userInterests: getTopInterests(8), // Use dynamic taste, not stale signup interests
         availablePosts,
       });
       const aiIds = recommendation.recommendedPostIds;
       const aiPosts = aiIds
         .map(id => pool.find(p => p.id === id))
         .filter((p): p is SocialPost => !!p && p.id !== current.id);
+      
       const aiIdSet = new Set(aiIds);
-      const remainingLocal = localRanked.filter(p => !aiIdSet.has(p.id));
+      const remainingLocal = rankedPosts.filter(p => !aiIdSet.has(p.id));
       const finalRanked = [...aiPosts, ...remainingLocal];
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
     } catch (err) {
       console.warn('AI matcher unavailable:', err);
     }
-  }, [user?.interests]);
+  }, [computeVibeScore, buildReason, getTopInterests]);
 
   const pushToHistory = useCallback((post: SocialPost) => {
     setHistory(prev => {
@@ -327,9 +324,13 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     });
   }, [rebuildQueue]);
 
-  const sendReaction = useCallback((emoji: VibeReaction) => {
+  const sendReaction = useCallback((emoji: VibeReaction, post: SocialPost) => {
     const postId = activePostIdRef.current;
     if (!postId) return;
+    
+    // Record persistence signal
+    recordSignal(post, 'reaction');
+
     setReactionCounts(prev => {
       const postCounts = prev[postId] || { '🔥': 0, '🌊': 0, '💎': 0, '👑': 0, '⚡': 0 };
       return { ...prev, [postId]: { ...postCounts, [emoji]: postCounts[emoji] + 1 } };
@@ -342,7 +343,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     };
     setReactionBursts(prev => [...prev, burst]);
     setTimeout(() => setReactionBursts(prev => prev.filter(b => b.id !== burst.id)), 1200);
-  }, []);
+  }, [recordSignal]);
 
   const clearHistory = useCallback(() => setHistory([]), []);
 
@@ -357,6 +358,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       history, clearHistory,
       reactionBursts, sendReaction, reactionCounts,
       isMiniPlayerVisible,
+      recordSignal, getPersonalScore, isProfileLoaded
     }}>
       {children}
     </VibePlayerContext.Provider>

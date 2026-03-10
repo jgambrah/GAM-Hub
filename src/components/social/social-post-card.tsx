@@ -30,7 +30,6 @@ const getYouTubeId = (url: string) => {
   return match && match[2].length === 11 ? match[2] : null;
 };
 
-// Media type icon — used in badges and mini fallback thumbnails
 function MediaIcon({ mediaType, size = 14 }: { mediaType: SocialPost['mediaType']; size?: number }) {
   if (mediaType === 'youtube') return <Youtube size={size} className="text-red-500" />;
   if (mediaType === 'tiktok')  return <Video size={size} className="text-pink-400" />;
@@ -43,7 +42,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const { user, isAdmin } = useAuth();
   const { firestore } = useFirebase();
   const { toast } = useToast();
-  const { activePostId, isContinuous, playNext, setActivePost, addToQueue } = useVibePlayer();
+  const { 
+    activePostId, isContinuous, playNext, setActivePost, addToQueue,
+    recordSignal 
+  } = useVibePlayer();
 
   const [isLiked, setIsLiked] = React.useState(false);
   const [likeCount, setLikeCount] = React.useState(post.likes);
@@ -51,15 +53,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
 
-  // YouTube refs
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
   const [ytMuted, setYtMuted] = React.useState(false);
 
-  // ReactPlayer — keep real player mounted once activated
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
 
-  // Image/text countdown display (shows remaining seconds)
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -71,27 +70,27 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
-  // ── Register ALL post types into global pool on mount ─────────────────────
   React.useEffect(() => {
     addToQueue([post]);
   }, [post.id, addToQueue]);
 
-  // ── Mount real ReactPlayer when first activated ───────────────────────────
   React.useEffect(() => {
-    if (isActiveVibe && post.mediaType === 'video') {
-      setReactPlayerMounted(true);
+    if (isActiveVibe) {
+      // Record PERSISTENCE Signal: Play Start
+      recordSignal(post, 'play');
+      
+      if (post.mediaType === 'video') {
+        setReactPlayerMounted(true);
+      }
     }
-  }, [isActiveVibe, post.mediaType]);
+  }, [isActiveVibe, post, recordSignal]);
 
-  // ── Scroll into view when activated ──────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
 
-  // ── Image/text countdown ticker ───────────────────────────────────────────
-  // Shows a visual countdown so the student knows when auto-advance fires.
   React.useEffect(() => {
     if (countdownRef.current) clearInterval(countdownRef.current);
 
@@ -101,7 +100,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       countdownRef.current = setInterval(() => {
         setCountdown(prev => {
           if (prev === null || prev <= 1) {
-            if (countdownRef.current) clearInterval(countdownRef.current);
+            if (countdownRef.current) {
+              clearInterval(countdownRef.current);
+              // Record PERSISTENCE Signal: Watched to end (Timer complete)
+              recordSignal(post, 'watched_to_end');
+            }
             return null;
           }
           return prev - 1;
@@ -112,9 +115,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
 
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-  }, [isActiveVibe, isContinuous, mediaCategory]);
+  }, [isActiveVibe, isContinuous, mediaCategory, post, recordSignal]);
 
-  // ── YouTube pause when another card becomes active ───────────────────────
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (!isActiveVibe && ytReadyRef.current && ytPlayerRef.current) {
@@ -122,7 +124,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // Firebase like state
   React.useEffect(() => {
     if (!user || !firestore) return;
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
@@ -140,11 +141,15 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         await updateDoc(postRef, { likes: increment(-1) });
         setLikeCount(prev => prev - 1);
         setIsLiked(false);
+        // Record PERSISTENCE Signal: Unlike (decay)
+        recordSignal(post, 'unlike');
       } else {
         await setDoc(likeRef, { createdAt: serverTimestamp() });
         await updateDoc(postRef, { likes: increment(1) });
         setLikeCount(prev => prev + 1);
         setIsLiked(true);
+        // Record PERSISTENCE Signal: Like
+        recordSignal(post, 'like');
       }
     } catch (error) { console.error(error); }
     finally { setIsProcessingLike(false); }
@@ -163,8 +168,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  // Called by video players when they reach the end
   const handleEnd = () => {
+    // Record PERSISTENCE Signal: Watched to End (Video complete)
+    recordSignal(post, 'watched_to_end');
+    
     if (isContinuous) {
       toast({ title: 'Matching Next Vibe…', description: 'Liaison AI is keeping the Yard alive.' });
       setTimeout(() => playNext(), 500);
@@ -200,8 +207,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     playsinline: 1,
   }), [isActiveVibe]);
 
-  // ── Aspect ratio per media type ───────────────────────────────────────────
-  // Videos go cinematic when active; images keep square-ish; text has no media zone.
   const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
 
   return (
@@ -227,7 +232,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* Active controls bar */}
       {isActiveVibe && (
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
           {isContinuous && (
@@ -235,7 +239,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <FastForward size={10} fill="white" /> ACTIVE VIBE
             </div>
           )}
-          {/* Countdown badge for image/text auto-advance */}
           {countdown !== null && (
             <div className="flex items-center gap-1 bg-black/60 backdrop-blur-sm text-white px-2.5 py-1.5 rounded-xl text-[10px] font-black tabular-nums">
               Next in {countdown}s
@@ -251,21 +254,17 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* ── Media zone — renders for image, youtube, tiktok, video ────────── */}
       {post.mediaType !== 'text' && (
         <div className={cn(
           'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
-
-          {/* IMAGE */}
           {post.mediaType === 'image' && post.imageUrl && (
             <Image src={post.imageUrl} alt="post" fill
               className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')}
             />
           )}
 
-          {/* YOUTUBE */}
           {post.mediaType === 'youtube' && youtubeId && (
             <div className="relative w-full h-full">
               {isRestricted ? (
@@ -296,17 +295,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </div>
           )}
 
-          {/* TIKTOK */}
           {post.mediaType === 'tiktok' && post.mediaUrl && (
             <div className="bg-black flex items-center justify-center h-full">
               <TikTokEmbed url={post.mediaUrl} />
             </div>
           )}
 
-          {/* NATIVE VIDEO */}
           {post.mediaType === 'video' && post.mediaUrl && (
             <div className="w-full h-full bg-black flex items-center justify-center">
-              {/* Poster until first activation */}
               {!reactPlayerMounted && !isActiveVibe && (
                 <div className="absolute inset-0 cursor-pointer group/poster" onClick={() => setActivePost(post)}>
                   {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover" />}
@@ -332,7 +328,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* ── Info zone ────────────────────────────────────────────────────────── */}
       <div className={cn(
         'flex flex-col transition-all duration-500',
         isActiveVibe ? 'p-8 md:flex-row md:items-start md:gap-8' : 'p-6'
@@ -349,7 +344,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               </p>
               <div className="flex items-center gap-2">
                 <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
-                {/* Media type badge — human readable label for ALL types */}
                 <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
                   <MediaIcon mediaType={post.mediaType} size={10} />
                   {getMediaLabel(post.mediaType)}
