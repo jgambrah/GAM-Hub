@@ -58,10 +58,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
   
-  // When continuous mode is on and a restricted video is hit, we auto-skip
-  // rather than stopping dead. These track the brief "Skipping in Xs…" overlay.
+  // Skip logic state
   const [isSkippingRestricted, setIsSkippingRestricted] = React.useState(false);
-  const [skipCountdown, setSkipCountdown] = React.useState(0);
+  const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
   const skipTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── YouTube state ───────────────────────────────────────────────────────────
@@ -77,7 +76,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cardRef = React.useRef<HTMLDivElement>(null);
-  const hasRecordedPlay = React.useRef(false); // fire recordPlay only once per activation
+  const hasRecordedPlay = React.useRef(false); 
 
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
@@ -134,6 +133,21 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
+
+  // ── YouTube auto-skip Effect ────────────────────────────────────────────────
+  // This effect safely handles the transition when a countdown finishes.
+  // We do it here to avoid "Update component while rendering" errors.
+  React.useEffect(() => {
+    if (isSkippingRestricted && skipCountdown === 0) {
+      setIsSkippingRestricted(false);
+      setSkipCountdown(null);
+      if (skipTimerRef.current) {
+        clearInterval(skipTimerRef.current);
+        skipTimerRef.current = null;
+      }
+      playNext();
+    }
+  }, [skipCountdown, isSkippingRestricted, playNext]);
 
   // ── YouTube pause when deactivated ──────────────────────────────────────────
   React.useEffect(() => {
@@ -211,24 +225,23 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
     skipTimerRef.current = setInterval(() => {
       setSkipCountdown(prev => {
+        if (prev === null) return null;
         if (prev <= 1) {
-          if (skipTimerRef.current) clearInterval(skipTimerRef.current);
-          skipTimerRef.current = null;
-          setIsSkippingRestricted(false);
-          playNext();
+          // The effect above will trigger playNext() when this hits 0
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-  }, [isContinuous, playNext]);
+  }, [isContinuous]);
 
-  // Clear the skip timer when the card is deactivated or unmounted
+  // Clear skip timer when card is deactivated or unmounted
   React.useEffect(() => {
     if (!isActiveVibe && skipTimerRef.current) {
       clearInterval(skipTimerRef.current);
       skipTimerRef.current = null;
       setIsSkippingRestricted(false);
+      setSkipCountdown(null);
     }
   }, [isActiveVibe]);
 
@@ -342,7 +355,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                           <circle
                             cx="32" cy="32" r="28"
                             fill="none" stroke="#3b82f6" strokeWidth="4"
-                            strokeDasharray={`${(2 * Math.PI * 28 * skipCountdown) / 3} 999`}
+                            strokeDasharray={`${(2 * Math.PI * 28 * (skipCountdown || 0)) / 3} 999`}
                             className="transition-all duration-1000 ease-linear"
                           />
                         </svg>

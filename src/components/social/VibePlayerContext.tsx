@@ -58,7 +58,8 @@ function computeBaseScore(current: SocialPost, candidate: SocialPost): number {
   if (candidate.authorId === current.authorId) score += 8;
   score += Math.min((candidate.likes || 0) / 5, 12);
   if (candidate.createdAt) {
-    const ageDays = (Date.now() - new Date(candidate.createdAt).getTime()) / 86_400_000;
+    const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : candidate.createdAt.toDate();
+    const ageDays = (Date.now() - date.getTime()) / 86_400_000;
     if (ageDays < 7) score += Math.max(0, 5 - ageDays);
   }
   return score;
@@ -253,22 +254,28 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         const idx = currentQueue.findIndex(p => p.id === currentId);
         const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
         if (nextPost) {
-          setActivePostId(nextPost.id);
-          setActivePostState(nextPost);
-          pushToHistory(nextPost);
+          // Defer the activation to avoid "update while rendering"
+          setTimeout(() => {
+            setActivePostId(nextPost.id);
+            setActivePostState(nextPost);
+            pushToHistory(nextPost);
+          }, 0);
         }
       }, duration);
     }
   }, [clearDisplayTimer, pushToHistory]);
 
   const setActivePost = useCallback((post: SocialPost | null) => {
-    clearDisplayTimer();
-    if (!post) { setActivePostId(null); setActivePostState(null); return; }
-    setActivePostId(post.id);
-    setActivePostState(post);
-    pushToHistory(post);
-    rebuildQueue(post, allPostsRef.current, activeMoodRef.current);
-    startDisplayTimer(post);
+    // Wrap in setTimeout to escape the current execution context (safe navigation)
+    setTimeout(() => {
+      clearDisplayTimer();
+      if (!post) { setActivePostId(null); setActivePostState(null); return; }
+      setActivePostId(post.id);
+      setActivePostState(post);
+      pushToHistory(post);
+      rebuildQueue(post, allPostsRef.current, activeMoodRef.current);
+      startDisplayTimer(post);
+    }, 0);
   }, [rebuildQueue, pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const setActiveMood = useCallback((mood: VibeMood) => {
@@ -278,31 +285,37 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [rebuildQueue]);
 
   const playNext = useCallback(() => {
-    const currentQueue = queueRef.current;
-    const currentId = activePostIdRef.current;
-    if (currentQueue.length <= 1) return;
-    const idx = currentQueue.findIndex(p => p.id === currentId);
-    const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
-    if (nextPost) {
-      clearDisplayTimer();
-      setActivePostId(nextPost.id);
-      setActivePostState(nextPost);
-      pushToHistory(nextPost);
-      startDisplayTimer(nextPost);
-    }
+    // Wrap in setTimeout to escape the current execution context (safe navigation)
+    setTimeout(() => {
+      const currentQueue = queueRef.current;
+      const currentId = activePostIdRef.current;
+      if (currentQueue.length <= 1) return;
+      const idx = currentQueue.findIndex(p => p.id === currentId);
+      const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
+      if (nextPost) {
+        clearDisplayTimer();
+        setActivePostId(nextPost.id);
+        setActivePostState(nextPost);
+        pushToHistory(nextPost);
+        startDisplayTimer(nextPost);
+      }
+    }, 0);
   }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const playPrev = useCallback(() => {
-    setHistory(prev => {
-      if (prev.length < 2) return prev;
-      const prevPost = prev[1];
-      clearDisplayTimer();
-      setActivePostId(prevPost.id);
-      setActivePostState(prevPost);
-      rebuildQueue(prevPost, allPostsRef.current, activeMoodRef.current);
-      startDisplayTimer(prevPost);
-      return prev.slice(1);
-    });
+    // Wrap in setTimeout to escape the current execution context (safe navigation)
+    setTimeout(() => {
+      setHistory(prev => {
+        if (prev.length < 2) return prev;
+        const prevPost = prev[1];
+        clearDisplayTimer();
+        setActivePostId(prevPost.id);
+        setActivePostState(prevPost);
+        rebuildQueue(prevPost, allPostsRef.current, activeMoodRef.current);
+        startDisplayTimer(prevPost);
+        return prev.slice(1);
+      });
+    }, 0);
   }, [rebuildQueue, clearDisplayTimer, startDisplayTimer]);
 
   const addToQueue = useCallback((posts: SocialPost[]) => {
@@ -360,6 +373,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
 export const useVibePlayer = () => {
   const context = useContext(VibePlayerContext);
-  if (!context) throw new Error('useVibePlayer must be used within VibePlayerProvider');
+  if (!context) throw new Error('useVibePlayer must be used within a VibePlayerProvider');
   return context;
 };
