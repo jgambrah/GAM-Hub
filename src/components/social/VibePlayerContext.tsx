@@ -46,20 +46,23 @@ export interface ReactionBurst {
  * 📐 SEMANTIC ENGINE: Cosine Similarity
  * Calculates the semantic "Vibe Distance" between two vectors.
  */
-function cosineSimilarity(vecA: number[], vecB: number[]) {
-  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
-  let dotProduct = 0;
-  let mA = 0;
-  let mB = 0;
-  for (let i = 0; i < vecA.length; i++) {
-    dotProduct += vecA[i] * vecB[i];
-    mA += vecA[i] * vecA[i];
-    mB += vecB[i] * vecB[i];
+export function cosineSimilarity(a: number[], b: number[]) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    magA += a[i] * a[i];
+    magB += b[i] * b[i];
   }
-  mA = Math.sqrt(mA);
-  mB = Math.sqrt(mB);
-  if (mA === 0 || mB === 0) return 0;
-  return dotProduct / (mA * mB);
+
+  magA = Math.sqrt(magA);
+  magB = Math.sqrt(magB);
+
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (magA * magB);
 }
 
 /**
@@ -73,7 +76,7 @@ function exponentialFreshness(date: Date) {
 export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
   let score = 0;
 
-  // 🧠 Stage 1: Vector Similarity (Semantic Layer)
+  // 🧠 Stage 1: Vector Similarity (Semantic Layer - Post to Post)
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
     // Semantic match carries high weight (max 60 points)
@@ -120,12 +123,22 @@ export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
 export function computeVibeScore(
   current: SocialPost,
   candidate: SocialPost,
-  getPersonalScore: (p: SocialPost) => number
+  getPersonalScore: (p: SocialPost) => number,
+  userEmbedding?: number[]
 ) {
   const base = computeBaseScore(current, candidate);
   const personal = getPersonalScore(candidate);
 
-  return base * 0.6 + personal * 0.4;
+  let finalScore = base * 0.6 + personal * 0.4;
+
+  // 🧠 Layer 3: Semantic Personal Taste Alignment (Taste Vector Match)
+  if (userEmbedding && candidate.embedding) {
+      const tasteSimilarity = cosineSimilarity(userEmbedding, candidate.embedding);
+      // Taste alignment adds a significant personal bias (max 25 points)
+      finalScore += tasteSimilarity * 25;
+  }
+
+  return finalScore;
 }
 
 /**
@@ -135,7 +148,8 @@ export function buildSmartQueue(
   current: SocialPost,
   pool: SocialPost[],
   mood: VibeMood,
-  getPersonalScore: (p: SocialPost) => number
+  getPersonalScore: (p: SocialPost) => number,
+  userEmbedding?: number[]
 ) {
   const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
@@ -152,7 +166,7 @@ export function buildSmartQueue(
       if (!match) continue;
     }
 
-    const score = computeVibeScore(current, p, getPersonalScore);
+    const score = computeVibeScore(current, p, getPersonalScore, userEmbedding);
     ranked.push({ post: p, score });
   }
 
@@ -164,19 +178,26 @@ export function buildSmartQueue(
 function buildReason(
   current: SocialPost,
   candidate: SocialPost,
-  getPersonalScore: (p: SocialPost) => number
+  getPersonalScore: (p: SocialPost) => number,
+  userEmbedding?: number[]
 ): string {
   const parts: string[] = [];
+  
+  if (userEmbedding && candidate.embedding) {
+      const tasteSimilarity = cosineSimilarity(userEmbedding, candidate.embedding);
+      if (tasteSimilarity > 0.88) parts.push('Vibe taste match');
+  }
+
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const shared = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
   
-  if (shared.length > 0) parts.push(`#${shared[0]}`);
-  if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Personal vibe match');
+  if (shared.length > 0 && parts.length < 2) parts.push(`#${shared[0]}`);
+  if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Based on your history');
+  
   if (current.embedding && candidate.embedding) {
       const similarity = cosineSimilarity(current.embedding, candidate.embedding);
       if (similarity > 0.85 && parts.length < 2) parts.push('Semantic discovery');
   }
-  if (candidate.campusId === current.campusId && parts.length < 2) parts.push('Same Yard');
   
   if (parts.length === 0) parts.push('Trending on GAM Hub');
   return parts.slice(0, 2).join(' · ');
@@ -231,7 +252,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
   
-  const { recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
+  const { profile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const queueRef = useRef<SocialPost[]>([]);
@@ -241,6 +262,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const isContinuousRef = useRef(false);
   const activeMoodRef = useRef<VibeMood>('all');
   const getPersonalScoreRef = useRef(getPersonalScore);
+  const userEmbeddingRef = useRef(profile.vibeEmbedding);
 
   React.useEffect(() => { queueRef.current = queue; }, [queue]);
   React.useEffect(() => { allPostsRef.current = allPosts; }, [allPosts]);
@@ -249,6 +271,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   React.useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
   React.useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
   React.useEffect(() => { getPersonalScoreRef.current = getPersonalScore; }, [getPersonalScore]);
+  React.useEffect(() => { userEmbeddingRef.current = profile.vibeEmbedding; }, [profile.vibeEmbedding]);
 
   const isMiniPlayerVisible = !!activePostId;
 
@@ -270,14 +293,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
+    const userEmbedding = userEmbeddingRef.current;
     
-    const localRanked = buildSmartQueue(current, pool, mood, scorer);
+    const localRanked = buildSmartQueue(current, pool, mood, scorer, userEmbedding);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, scorer),
-        reason: buildReason(current, p, scorer),
+        score: computeVibeScore(current, p, scorer, userEmbedding),
+        reason: buildReason(current, p, scorer, userEmbedding),
       }));
 
     setQueue([current, ...localRanked]);

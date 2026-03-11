@@ -1,18 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   doc, getDoc, setDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import type { SocialPost } from '@/lib/types';
+import { generateUserEmbedding } from '@/ai/flows/update-user-embedding';
 
 export interface VibeProfile {
   tagWeights:    Record<string, number>;
   authorWeights: Record<string, number>;
   typeWeights:   Record<string, number>;
   campusWeights: Record<string, number>;
+  vibeEmbedding?: number[]; // THE SEMANTIC TASTE VECTOR
 }
 
 export const EMPTY_PROFILE: VibeProfile = {
@@ -32,7 +34,7 @@ const SIGNAL_WEIGHTS: Record<SignalType, {
   reaction:       { tag: 2.0,  author: 1.0,  type: 1.0, campus: 0.5 },
   play:           { tag: 1.0,  author: 0.5,  type: 0.5, campus: 0.3 },
   watched_to_end: { tag: 4.0,  author: 3.0,  type: 2.0, campus: 1.5 },
-  skip:           { tag: -1.5, author: -1.0, type: -0.5, campus: -0.2 }, // ⏭️ Skip Punishments
+  skip:           { tag: -1.5, author: -1.0, type: -0.5, campus: -0.2 },
 };
 
 const CAP   = 100;
@@ -58,6 +60,7 @@ export function useVibeProfile() {
 
   const [profile, setProfile] = useState<VibeProfile>(EMPTY_PROFILE);
   const [isLoaded, setIsLoaded] = useState(false);
+  const signalCountRef = useRef(0);
 
   useEffect(() => {
     if (!firestore || !user?.id) {
@@ -73,13 +76,21 @@ export function useVibeProfile() {
           authorWeights: data.authorWeights ?? {},
           typeWeights:   data.typeWeights   ?? {},
           campusWeights: data.campusWeights ?? {},
+          vibeEmbedding: data.vibeEmbedding,
         });
       }
       setIsLoaded(true);
     }).catch(() => setIsLoaded(true));
   }, [firestore, user?.id]);
 
-  const recordSignal = useCallback((post: SocialPost, signal: SignalType) => {
+  const getTopInterests = useCallback((n = 8): string[] => {
+    return Object.entries(profile.tagWeights)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, n)
+      .map(([tag]) => tag);
+  }, [profile.tagWeights]);
+
+  const recordSignal = useCallback(async (post: SocialPost, signal: SignalType) => {
     if (!firestore || !user?.id) return;
 
     const w = SIGNAL_WEIGHTS[signal];
@@ -88,17 +99,47 @@ export function useVibeProfile() {
     const types   = [post.mediaType];
     const campus  = post.campusId ? [post.campusId] : [];
 
+    signalCountRef.current += 1;
+
     setProfile(prev => {
       const next: VibeProfile = {
+        ...prev,
         tagWeights:    applyWeights(prev.tagWeights,    tags,    w.tag),
         authorWeights: applyWeights(prev.authorWeights, authors, w.author),
         typeWeights:   applyWeights(prev.typeWeights,   types,   w.type),
         campusWeights: applyWeights(prev.campusWeights, campus,  w.campus),
       };
 
-      const profileRef = doc(firestore, 'vibe_profiles', user.id);
-      setDoc(profileRef, { ...next, updatedAt: serverTimestamp() }, { merge: true })
-        .catch(err => console.warn('vibe_profile write failed:', err));
+      // 🧠 LIAISON BRAIN: Periodic Semantic Taste Vector Refresh
+      // Only re-generate embedding every 5 signals to save API costs
+      const shouldRefreshEmbedding = signalCountRef.current % 5 === 0;
+
+      const performUpdate = async () => {
+        let finalEmbedding = prev.vibeEmbedding;
+        
+        if (shouldRefreshEmbedding) {
+            const interests = Object.entries(next.tagWeights)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 15)
+                .map(([tag]) => tag);
+            
+            const newEmbedding = await generateUserEmbedding(interests);
+            if (newEmbedding) finalEmbedding = newEmbedding;
+        }
+
+        const profileRef = doc(firestore, 'vibe_profiles', user.id);
+        await setDoc(profileRef, { 
+            ...next, 
+            vibeEmbedding: finalEmbedding,
+            updatedAt: serverTimestamp() 
+        }, { merge: true });
+        
+        if (shouldRefreshEmbedding) {
+            setProfile(p => ({ ...p, vibeEmbedding: finalEmbedding }));
+        }
+      };
+
+      performUpdate().catch(err => console.warn('vibe_profile write failed:', err));
 
       return next;
     });
@@ -123,13 +164,6 @@ export function useVibeProfile() {
 
     return score;
   }, [profile, isLoaded]);
-
-  const getTopInterests = useCallback((n = 8): string[] => {
-    return Object.entries(profile.tagWeights)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, n)
-      .map(([tag]) => tag);
-  }, [profile]);
 
   return { profile, isLoaded, recordSignal, getPersonalScore, getTopInterests };
 }
