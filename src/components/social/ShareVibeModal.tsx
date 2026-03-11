@@ -16,12 +16,13 @@ import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 import { extractHashtags, updateHashtagIndex } from '@/lib/hashtag-utils';
+import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
 
 /**
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Now with strict Hashtag Policy validation and Analytics indexing.
+ * Now with AI Semantic Hashtags and Analytics indexing.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -72,7 +73,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       return;
     }
     
-    // 1. HASHTAG VALIDATION
+    // 1. HASHTAG VALIDATION (Manual)
     const rawTags = (content.match(/#\w+/g) || []);
     if (rawTags.length > 10) {
         toast({ variant: 'destructive', title: 'Policy Violation', description: 'Maximum 10 hashtags per vibration allowed.' });
@@ -95,10 +96,29 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       let mediaUrl: string | null = null;
       let mediaType: SocialPost['mediaType'] = 'text';
 
+      const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
+      const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
+
+      // A. AI SEMANTIC UPGRADE: Generate Tags
+      const manualTags = extractHashtags(content);
+      let aiTags: string[] = [];
+      try {
+        const aiResult = await generateSemanticHashtags({ 
+          content: content || "", 
+          campusAcronym: targetCampusAcronym 
+        });
+        aiTags = aiResult.tags;
+      } catch (e) {
+        console.warn("Liaison AI: Semantic tagging failed, falling back to manual.");
+      }
+
+      const finalHashtags = Array.from(new Set([...manualTags, ...aiTags])).slice(0, 10);
+
+      // B. Multimedia Upload
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(fileRef, imageFile);
+        await uploadBytes(fileRef, file);
         imageUrl = await getDownloadURL(fileRef);
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
@@ -110,11 +130,8 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaUrl = externalUrl;
       }
       
-      const hashtags = extractHashtags(content);
-      const embedding = await generatePostEmbedding({ content: content || "", tags: hashtags });
-
-      const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
-      const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
+      // C. Generate Semantic Embedding (Now includes AI tags!)
+      const embedding = await generatePostEmbedding({ content: content || "", tags: finalHashtags });
 
       const postData = {
         authorId: auth.currentUser.uid,
@@ -126,7 +143,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaType: mediaType,
         imageUrl: imageUrl,
         mediaUrl: mediaUrl,
-        tags: hashtags,
+        tags: finalHashtags,
         embedding: embedding,
         likes: 0,
         commentCount: 0,
@@ -138,9 +155,9 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // Update Global Hashtag Index for Analytics & Trending
-      if (hashtags.length > 0) {
-        await updateHashtagIndex(firestore, hashtags);
+      // D. Update Global Hashtag Index for Analytics & Trending
+      if (finalHashtags.length > 0) {
+        await updateHashtagIndex(firestore, finalHashtags);
       }
       
       toast({ title: isGlobal ? 'Global Vibe Broadcasted!' : 'Vibe Shared!' });
@@ -197,12 +214,12 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
             <div className="space-y-2">
                 <textarea 
-                    placeholder="What's the frequency, Citizen? 😊 Use #hashtags to index your vibe." 
+                    placeholder="What's the frequency, Citizen? 😊 Liaison AI will automatically tag your vibe." 
                     className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
                     value={content}
                     onChange={(e) => setContent(e.target.value)} 
                 />
-                <p className="text-[9px] text-muted-foreground px-4 italic">Policy: Max 10 hashtags. Anti-spam active.</p>
+                <p className="text-[9px] text-muted-foreground px-4 italic">Liaison AI semantic tagging active. 🤖✨</p>
             </div>
             
             {preview && (

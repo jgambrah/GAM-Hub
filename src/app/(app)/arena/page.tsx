@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 import { extractHashtags, updateHashtagIndex } from '@/lib/hashtag-utils';
+import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
 
 const INITIAL_LIMIT = 100;
 const LOAD_MORE_BATCH = 50;
@@ -28,7 +29,7 @@ const LOAD_MORE_BATCH = 50;
  * ArenaPage Component
  * 
  * National inter-uni battleground. 
- * Updated with strict Hashtag Anti-Spam validation and Analytics indexing.
+ * Now with AI Semantic Hashtags for improved battle indexing.
  */
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
@@ -75,7 +76,7 @@ export default function ArenaPage() {
         e.preventDefault();
         if (!user || (!content.trim() && !file && !videoUrl.trim())) return;
 
-        // POLICY: Anti-Spam Hashtag Validation
+        // POLICY: Anti-Spam Hashtag Validation (Manual Check)
         const rawTags = (content.match(/#\w+/g) || []);
         if (rawTags.length > 10) {
             toast({ variant: 'destructive', title: 'Too many tags!', description: 'Limit your battle tags to 10 for maximum vibe impact.' });
@@ -110,14 +111,26 @@ export default function ArenaPage() {
                 postData.mediaType = videoUrl.includes('youtube') ? 'youtube' : 'tiktok';
             }
 
-            // 2. HASHTAG ENGINE
-            const hashtags = extractHashtags(content);
-            postData.tags = hashtags;
+            // 2. AI SEMANTIC UPGRADE: Generate Battle Tags
+            const manualTags = extractHashtags(content);
+            let aiTags: string[] = [];
+            try {
+                const aiResult = await generateSemanticHashtags({ 
+                    content: content, 
+                    campusAcronym: userCampusInfo?.acronym 
+                });
+                aiTags = aiResult.tags;
+            } catch (e) {
+                console.warn("Arena AI: Semantic tagging failed.");
+            }
 
-            // 3. Generate Semantic Embedding
+            const finalHashtags = Array.from(new Set([...manualTags, ...aiTags])).slice(0, 10);
+            postData.tags = finalHashtags;
+
+            // 3. Generate Semantic Embedding (Includes AI tags)
             const embedding = await generatePostEmbedding({
                 content: content,
-                tags: hashtags
+                tags: finalHashtags
             });
             postData.embedding = embedding;
 
@@ -125,8 +138,8 @@ export default function ArenaPage() {
             await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
             
             // 5. Update Global Hashtag Index for Analytics
-            if (hashtags.length > 0) {
-                await updateHashtagIndex(firestore, hashtags);
+            if (finalHashtags.length > 0) {
+                await updateHashtagIndex(firestore, finalHashtags);
             }
 
             toast({ title: 'Vibe Shared in The Arena!' });
@@ -172,12 +185,12 @@ export default function ArenaPage() {
                             <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="p-2.5 text-muted-foreground hover:text-amber-500 rounded-full"><Smile size={18}/></button>
                             <input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f){ setFile(f); setPreviewUrl(URL.createObjectURL(f));}}} className="hidden" />
                             <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-muted-foreground hover:text-blue-500 rounded-full"><ImagePlus size={18}/></button>
-                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Semantic Shade incoming... use #tags" className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
+                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Broadcasting battle vibes... AI will tag this." className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
                             <Button type="submit" disabled={isLoading} className={cn("p-4 rounded-full shadow-lg h-auto", vibeType === 'shade' ? 'bg-red-600' : 'bg-green-600')}>
                                 {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
                             </Button>
                         </div>
-                        <p className="text-[9px] text-muted-foreground px-6 italic">Battle Policy: Max 10 tags. Spam detection active. 🛡️</p>
+                        <p className="text-[9px] text-muted-foreground px-6 italic">Liaison AI semantic indexing active. 🛡️✨</p>
                     </form>
                 </div>
             )}
