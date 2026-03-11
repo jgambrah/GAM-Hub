@@ -41,6 +41,7 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
     score *= 1.5;
   }
 
+  // 🎓 VIRAL GRADUATION THRESHOLD
   if (views > 300 && (completions / Math.max(views, 1)) > 0.6) {
     score = Math.max(score, 50); 
   }
@@ -132,7 +133,7 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 /**
  * 📈 TRENDING HASHTAG UPDATER (PROFESSIONAL VELOCITY ENGINE)
  * Calculates hashtag velocity and trending scores every 5 minutes.
- * Uses a rolling window to detect exploding narratives.
+ * Uses a rolling window to detect exploding narratives and VIRAL thresholds.
  */
 exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
@@ -162,13 +163,9 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
     const velocity = totalNewPosts / lookbackMins;
 
     // 2. Compute Trending Score (Weighted Formula)
-    // trendScore = (velocity * 0.6) + (engagement * 0.3) + (freshness * 0.1)
-    
     const lastUsedAt = data.lastUsedAt?.toDate ? data.lastUsedAt.toDate() : now;
     const ageMinutes = Math.max(0, (now.getTime() - lastUsedAt.getTime()) / 60000);
     const freshness = 1 / (ageMinutes + 1);
-    
-    // Derived engagement metric based on velocity and historic count
     const engagement = velocity > 0 ? 0.5 : 0; 
 
     const trendScore = (velocity * 0.6) + (engagement * 0.3) + (freshness * 0.1);
@@ -178,6 +175,17 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
       velocity,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
+
+    // 3. 🛡️ VIRAL THRESHOLD PROMOTION
+    // score > 30 → mark as official VIRAL event
+    if (trendScore > 30) {
+      const viralRef = db.collection("viral_hashtags").doc(tag);
+      batch.set(viralRef, {
+        tag,
+        trendScore,
+        detectedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
   });
 
   await Promise.all(processPromises);

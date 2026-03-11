@@ -20,6 +20,10 @@ interface TrendingTagsProps {
  * Elite discovery UI for the Yard.
  * Fetches real-time hashtag data from the 'hashtags' collection registry.
  * Ranks by trendScore (velocity) to show the Yard's hottest topics.
+ * 
+ * Thresholds:
+ * - score > 30 → Viral 🔥
+ * - score > 15 → Trending 📈
  */
 export default function TrendingTags({ onTagSelect, activeTag = 'All', useLinks = false }: TrendingTagsProps) {
   const { firestore } = useFirebase();
@@ -28,7 +32,7 @@ export default function TrendingTags({ onTagSelect, activeTag = 'All', useLinks 
     if (!firestore) return null;
     return query(
       collection(firestore, 'hashtags'),
-      // Ordered by the Liaison Velocity Engine (calculated every 10m)
+      // Ordered by the Liaison Velocity Engine (calculated every 5m)
       orderBy('trendScore', 'desc'),
       limit(15)
     );
@@ -45,7 +49,10 @@ export default function TrendingTags({ onTagSelect, activeTag = 'All', useLinks 
   const renderTag = (tag: any, index: number) => {
     const tagName = tag.tag;
     const isActive = activeTag === tagName || activeTag === `#${tagName}`;
-    const isViral = index < 3 && tag.trendScore > 5; 
+    
+    // 🛡️ LIAISON VIRAL THRESHOLDS
+    const isViral = tag.trendScore > 30;
+    const isTrending = tag.trendScore > 15;
 
     const content = (
         <>
@@ -53,7 +60,7 @@ export default function TrendingTags({ onTagSelect, activeTag = 'All', useLinks 
                 "text-sm group-hover:scale-125 transition-transform",
                 isViral && !isActive ? "animate-bounce" : ""
             )}>
-                {isViral ? '🔥' : '#'}
+                {isViral ? '🔥' : isTrending ? '📈' : '#'}
             </span>
             <span className="uppercase tracking-widest">{tagName}</span>
             {tag.postCount > 0 && (
@@ -71,7 +78,9 @@ export default function TrendingTags({ onTagSelect, activeTag = 'All', useLinks 
         "flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-xs transition-all active:scale-95 border-2 shadow-sm group",
         isActive 
             ? "bg-blue-600 text-white border-blue-600 shadow-xl" 
-            : "bg-white border-slate-100 text-slate-700 hover:border-blue-200"
+            : isViral
+                ? "bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 shadow-amber-50"
+                : "bg-white border-slate-100 text-slate-700 hover:border-blue-200"
     );
 
     if (useLinks) {
