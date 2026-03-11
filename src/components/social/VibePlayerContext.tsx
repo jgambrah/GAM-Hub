@@ -43,8 +43,8 @@ export interface ReactionBurst {
 }
 
 /**
- * 📐 SEMANTIC ENGINE: Cosine Similarity
- * Calculates the semantic "Vibe Distance" between two vectors.
+ * 📐 COSINE SIMILARITY ENGINE
+ * Measures semantic "distance" between two high-dimensional vectors.
  */
 export function cosineSimilarity(a: number[], b: number[]) {
   if (!a || !b || a.length !== b.length) return 0;
@@ -73,47 +73,59 @@ function exponentialFreshness(date: Date) {
   return 10 * Math.exp(-ageDays / 3);
 }
 
+/**
+ * 🏗️ STAGE 1: VECTOR RANKER (THE NET)
+ * Filters millions of candidates down to the top semantic matches for the user.
+ */
+export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
+  if (!userVector) return posts;
+  const ranked = posts
+    .filter(p => p.embedding)
+    .map(p => ({
+      post: p,
+      score: cosineSimilarity(userVector, p.embedding!)
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  return ranked.map(r => r.post);
+}
+
 export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
   let score = 0;
 
-  // 🧠 Stage 1: Vector Similarity (Semantic Layer - Post to Post)
+  // 🧠 Semantic Continuity (Post-to-Post)
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
-    // Semantic match carries high weight (max 60 points)
     score += similarity * 60;
   }
 
-  // Stage 2: Tag Synergy
+  // Tag Synergy
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const sharedTags = (candidate.tags || []).filter(t =>
     currentTags.has(t.toLowerCase())
   );
-
   score += sharedTags.length * 12;
 
-  // Stage 3: Categorical continuity
+  // Categorical continuity
   const currentCat = getMediaCategory(current.mediaType);
   const candidateCat = getMediaCategory(candidate.mediaType);
-
   if (currentCat === candidateCat) {
     score += 8;
     if (candidate.mediaType === current.mediaType) score += 7;
   }
 
-  // Stage 4: Regional proximity
+  // Regional proximity
   if (candidate.campusId === current.campusId) score += 10;
   else if (candidate.campusId === 'all') score += 5;
 
-  // Stage 5: Social Velocity
+  // Social Velocity
   score += Math.min((candidate.likes || 0) / 5, 15);
 
-  // Stage 6: Recency
+  // Recency
   if (candidate.createdAt) {
-    const date =
-      typeof candidate.createdAt === 'string'
+    const date = typeof candidate.createdAt === 'string'
         ? new Date(candidate.createdAt)
         : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
-
     score += exponentialFreshness(date);
   }
 
@@ -123,33 +135,22 @@ export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
 export function computeVibeScore(
   current: SocialPost,
   candidate: SocialPost,
-  getPersonalScore: (p: SocialPost) => number,
-  userEmbedding?: number[]
+  getPersonalScore: (p: SocialPost) => number
 ) {
   const base = computeBaseScore(current, candidate);
   const personal = getPersonalScore(candidate);
 
-  let finalScore = base * 0.6 + personal * 0.4;
-
-  // 🧠 Layer 3: Semantic Personal Taste Alignment (Taste Vector Match)
-  if (userEmbedding && candidate.embedding) {
-      const tasteSimilarity = cosineSimilarity(userEmbedding, candidate.embedding);
-      // Taste alignment adds a significant personal bias (max 25 points)
-      finalScore += tasteSimilarity * 25;
-  }
-
-  return finalScore;
+  return base * 0.6 + personal * 0.4;
 }
 
 /**
- * 🏎️ MASSIVELY OPTIMIZED SMART QUEUE BUILDER
+ * 🏎️ STAGE 2: LOCAL RANKING ENGINE (THE VIBE)
  */
 export function buildSmartQueue(
   current: SocialPost,
   pool: SocialPost[],
   mood: VibeMood,
-  getPersonalScore: (p: SocialPost) => number,
-  userEmbedding?: number[]
+  getPersonalScore: (p: SocialPost) => number
 ) {
   const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
@@ -166,13 +167,12 @@ export function buildSmartQueue(
       if (!match) continue;
     }
 
-    const score = computeVibeScore(current, p, getPersonalScore, userEmbedding);
+    const score = computeVibeScore(current, p, getPersonalScore);
     ranked.push({ post: p, score });
   }
 
   ranked.sort((a, b) => b.score - a.score);
-
-  return ranked.map(r => r.post);
+  return ranked;
 }
 
 function buildReason(
@@ -193,11 +193,6 @@ function buildReason(
   
   if (shared.length > 0 && parts.length < 2) parts.push(`#${shared[0]}`);
   if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Based on your history');
-  
-  if (current.embedding && candidate.embedding) {
-      const similarity = cosineSimilarity(current.embedding, candidate.embedding);
-      if (similarity > 0.85 && parts.length < 2) parts.push('Semantic discovery');
-  }
   
   if (parts.length === 0) parts.push('Trending on GAM Hub');
   return parts.slice(0, 2).join(' · ');
@@ -290,25 +285,37 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
 
+  /**
+   * 🏎️ REBUILD QUEUE: THE LIAISON 3-STAGE PIPELINE
+   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     const userEmbedding = userEmbeddingRef.current;
     
-    const localRanked = buildSmartQueue(current, pool, mood, scorer, userEmbedding);
+    // STAGE 1: Vector Filter (The Net) - Top 200 semantic matches
+    const vectorRanked = userEmbedding 
+        ? rankByEmbedding(pool, userEmbedding).slice(0, 200)
+        : pool;
+
+    // STAGE 2: Local Context (The Vibe) - Top 25 situational matches
+    const rankedResults = buildSmartQueue(current, vectorRanked, mood, scorer);
+    const localRanked = rankedResults.map(r => r.post);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, scorer, userEmbedding),
+        score: computeVibeScore(current, p, scorer),
         reason: buildReason(current, p, scorer, userEmbedding),
       }));
 
+    // Initial optimistic queue
     setQueue([current, ...localRanked]);
     setUpNext(makeUpNext(localRanked));
     setIsLoadingQueue(false);
 
     try {
+      // STAGE 3: AI RE-RANKING (The Brain) - Elite 5
       const eliteCandidates = localRanked.slice(0, 25).map(p => ({
         id: p.id, 
         content: p.content, 
@@ -322,32 +329,27 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       });
 
       const aiIds = recommendation.recommendedPostIds;
-      
       const postMap = new Map<string, SocialPost>();
       for (const p of pool) postMap.set(p.id, p);
 
       const safeIds = aiIds.filter(id => postMap.has(id));
-
-      const aiPosts = safeIds
-        .map(id => postMap.get(id)!)
-        .filter((p) => p.id !== current.id);
+      const aiPosts = safeIds.map(id => postMap.get(id)!).filter((p) => p.id !== current.id);
       
       const aiIdSet = new Set(safeIds);
       const remainingLocal = localRanked.filter(p => !aiIdSet.has(p.id));
-      
       const finalRanked = [...aiPosts, ...remainingLocal];
       
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
 
+      // PREFETCH ENGINE
       if (typeof window !== 'undefined') {
-        const prefetchList = finalRanked.slice(0, PREFETCH_SIZE);
-        prefetchList.forEach(p => {
-          if (p.mediaType === 'video' && p.mediaUrl) {
+        finalRanked.slice(0, PREFETCH_SIZE).forEach(p => {
+          if (getMediaCategory(p.mediaType) === 'video' && p.mediaUrl) {
             const v = document.createElement('video');
             v.src = p.mediaUrl;
             v.preload = 'auto';
-          } else if (p.mediaType === 'image' && p.imageUrl) {
+          } else if (p.imageUrl) {
             const img = new Image();
             img.src = p.imageUrl;
           }
@@ -455,7 +457,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       if (incoming.length === 0) return prev;
       
       let merged = [...prev, ...incoming];
-      
       if (merged.length > MAX_POOL_SIZE) {
         merged = merged.slice(-MAX_POOL_SIZE);
       }
