@@ -1,8 +1,7 @@
-
 'use client';
 
 import React from 'react';
-import { Hash, TrendingUp, Loader2 } from 'lucide-react';
+import { Hash, TrendingUp, Loader2, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, limit } from 'firebase/firestore';
@@ -15,8 +14,9 @@ interface TrendingTagsProps {
 /**
  * TrendingTags Component
  * 
- * Fetches real-time hashtag data from the 'hashtags' collection.
- * Ranks by trendScore (calculated by Cloud Functions) to show the Yard's hottest topics.
+ * Elite discovery UI for the Yard.
+ * Fetches real-time hashtag data from the 'hashtags' collection registry.
+ * Ranks by trendScore (velocity) to show the Yard's hottest topics.
  */
 export default function TrendingTags({ onTagSelect, activeTag = 'All' }: TrendingTagsProps) {
   const { firestore } = useFirebase();
@@ -25,9 +25,9 @@ export default function TrendingTags({ onTagSelect, activeTag = 'All' }: Trendin
     if (!firestore) return null;
     return query(
       collection(firestore, 'hashtags'),
-      // LIAISON SHIFT: order by trendScore instead of postCount
+      // Ordered by the Liaison Velocity Engine (calculated every 10m)
       orderBy('trendScore', 'desc'),
-      limit(10)
+      limit(15)
     );
   }, [firestore]);
 
@@ -40,40 +40,68 @@ export default function TrendingTags({ onTagSelect, activeTag = 'All' }: Trendin
   };
 
   return (
-    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-        <button 
-            onClick={() => handleTagClick('All')}
-            className={cn(
-                "flex-shrink-0 flex items-center gap-2 bg-card border px-4 py-2 rounded-2xl shadow-sm hover:shadow-md hover:border-primary/50 transition-all active:scale-95",
-                activeTag === 'All' ? "border-primary shadow-md bg-primary/5" : "border-border"
-            )}
-        >
-            <Hash size={14} className={activeTag === 'All' ? 'text-primary' : 'text-muted-foreground'} />
-            <span className={cn("text-xs font-bold", activeTag === 'All' ? 'text-primary' : 'text-card-foreground')}>All Vibes</span>
-        </button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between px-2">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+          <TrendingUp size={12} /> Hottest Vibrations
+        </h3>
+        {isLoading && <Loader2 className="animate-spin text-slate-300" size={12} />}
+      </div>
 
-        {isLoading ? (
-            <div className="flex items-center gap-2 px-4 py-2">
-                <Loader2 className="animate-spin text-muted-foreground" size={14} />
-                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Indexing...</span>
+      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+          <button 
+              onClick={() => handleTagClick('All')}
+              className={cn(
+                  "flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-xs transition-all active:scale-95 border-2 shadow-sm",
+                  activeTag === 'All' 
+                    ? "bg-slate-900 text-white border-slate-900 shadow-xl" 
+                    : "bg-white border-slate-100 text-slate-500 hover:border-slate-300"
+              )}
+          >
+              <span className="text-sm">🌍</span>
+              <span className="uppercase tracking-widest">All Vibes</span>
+          </button>
+
+          {!isLoading && hashtags?.map((tag, index) => {
+              const isActive = activeTag === tag.tag || activeTag === `#${tag.tag}`;
+              const isViral = index < 3 && tag.postCount > 10; // Top 3 tags get the 🔥
+
+              return (
+                <button 
+                  key={tag.tag}
+                  onClick={() => handleTagClick(tag.tag)}
+                  className={cn(
+                      "flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl font-black text-xs transition-all active:scale-95 border-2 shadow-sm group",
+                      isActive 
+                        ? "bg-blue-600 text-white border-blue-600 shadow-xl" 
+                        : "bg-white border-slate-100 text-slate-700 hover:border-blue-200"
+                  )}
+                >
+                  <span className={cn(
+                    "text-sm group-hover:scale-125 transition-transform",
+                    isViral && !isActive ? "animate-bounce" : ""
+                  )}>
+                    {isViral ? '🔥' : '#'}
+                  </span>
+                  <span className="uppercase tracking-widest">{tag.tag}</span>
+                  {tag.postCount > 0 && (
+                    <span className={cn(
+                      "text-[9px] font-black px-1.5 py-0.5 rounded-lg",
+                      isActive ? "bg-white/20 text-white" : "bg-slate-50 text-slate-400"
+                    )}>
+                      {tag.postCount.toLocaleString()}
+                    </span>
+                  )}
+                </button>
+              )
+          })}
+
+          {!isLoading && (!hashtags || hashtags.length === 0) && (
+            <div className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-muted/50 border-2 border-dashed border-border text-muted-foreground text-[10px] font-bold uppercase tracking-widest italic">
+              Awaiting First Vibes...
             </div>
-        ) : hashtags?.map((tag) => {
-            const isActive = activeTag === tag.tag || activeTag === `#${tag.tag}`;
-            return (
-              <button 
-                key={tag.tag}
-                onClick={() => handleTagClick(tag.tag)}
-                className={cn(
-                    "flex-shrink-0 flex items-center gap-2 bg-card border px-4 py-2 rounded-2xl shadow-sm hover:shadow-md hover:border-primary/50 transition-all active:scale-95",
-                    isActive ? "border-primary shadow-md bg-primary/5 text-primary" : "border-border"
-                )}
-              >
-                <Hash size={14} className={isActive ? 'text-primary' : 'text-blue-500'} />
-                <span className={cn("text-xs font-bold")}>{tag.tag}</span>
-                <span className="text-[10px] font-black text-muted-foreground/60">{tag.postCount?.toLocaleString() || 0}</span>
-              </button>
-            )
-        })}
+          )}
+      </div>
     </div>
   );
 }
