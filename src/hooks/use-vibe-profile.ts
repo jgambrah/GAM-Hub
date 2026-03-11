@@ -61,6 +61,12 @@ export function useVibeProfile() {
   const [profile, setProfile] = useState<VibeProfile>(EMPTY_PROFILE);
   const [isLoaded, setIsLoaded] = useState(false);
   const signalCountRef = useRef(0);
+  
+  // Track current profile in a ref to use in async side effects without closure staleness
+  const currentProfileRef = useRef<VibeProfile>(EMPTY_PROFILE);
+  useEffect(() => {
+    currentProfileRef.current = profile;
+  }, [profile]);
 
   useEffect(() => {
     if (!firestore || !user?.id) {
@@ -100,7 +106,9 @@ export function useVibeProfile() {
     const campus  = post.campusId ? [post.campusId] : [];
 
     signalCountRef.current += 1;
+    const shouldRefreshEmbedding = signalCountRef.current % 5 === 0;
 
+    // 1. UPDATE STATE OPTIMISTICALLY
     setProfile(prev => {
       const next: VibeProfile = {
         ...prev,
@@ -109,40 +117,52 @@ export function useVibeProfile() {
         typeWeights:   applyWeights(prev.typeWeights,   types,   w.type),
         campusWeights: applyWeights(prev.campusWeights, campus,  w.campus),
       };
-
-      // 🧠 LIAISON BRAIN: Periodic Semantic Taste Vector Refresh
-      // Only re-generate embedding every 5 signals to save API costs
-      const shouldRefreshEmbedding = signalCountRef.current % 5 === 0;
-
-      const performUpdate = async () => {
-        let finalEmbedding = prev.vibeEmbedding;
-        
-        if (shouldRefreshEmbedding) {
-            const interests = Object.entries(next.tagWeights)
-                .sort(([, a], [, b]) => b - a)
-                .slice(0, 15)
-                .map(([tag]) => tag);
-            
-            const newEmbedding = await generateUserEmbedding(interests);
-            if (newEmbedding) finalEmbedding = newEmbedding;
-        }
-
-        const profileRef = doc(firestore, 'vibe_profiles', user.id);
-        await setDoc(profileRef, { 
-            ...next, 
-            vibeEmbedding: finalEmbedding,
-            updatedAt: serverTimestamp() 
-        }, { merge: true });
-        
-        if (shouldRefreshEmbedding) {
-            setProfile(p => ({ ...p, vibeEmbedding: finalEmbedding }));
-        }
-      };
-
-      performUpdate().catch(err => console.warn('vibe_profile write failed:', err));
-
       return next;
     });
+
+    // 2. TRIGGER ASYNC SIDE EFFECT (OUTSIDE SETTER)
+    const performUpdate = async () => {
+      // Calculate 'next' for sync based on most recent stable ref
+      const prev = currentProfileRef.current;
+      const next: VibeProfile = {
+        ...prev,
+        tagWeights:    applyWeights(prev.tagWeights,    tags,    w.tag),
+        authorWeights: applyWeights(prev.authorWeights, authors, w.author),
+        typeWeights:   applyWeights(prev.typeWeights,   types,   w.type),
+        campusWeights: applyWeights(prev.campusWeights, campus,  w.campus),
+      };
+
+      let finalEmbedding = next.vibeEmbedding;
+      
+      // 🧠 LIAISON BRAIN: Periodic Semantic Taste Vector Refresh
+      if (shouldRefreshEmbedding) {
+          const interests = Object.entries(next.tagWeights)
+              .sort(([, a], [, b]) => b - a)
+              .slice(0, 15)
+              .map(([tag]) => tag);
+          
+          try {
+            const newEmbedding = await generateUserEmbedding(interests);
+            if (newEmbedding) {
+                finalEmbedding = newEmbedding;
+                setProfile(p => ({ ...p, vibeEmbedding: newEmbedding }));
+            }
+          } catch (e) {
+            console.warn('Liaison Brain: Embedding generation failed:', e);
+          }
+      }
+
+      const profileDocRef = doc(firestore, 'vibe_profiles', user.id);
+      await setDoc(profileDocRef, { 
+          ...next, 
+          vibeEmbedding: finalEmbedding,
+          updatedAt: serverTimestamp() 
+      }, { merge: true });
+    };
+
+    // Execute side effect asynchronously
+    performUpdate().catch(err => console.warn('vibe_profile sync failed:', err));
+
   }, [firestore, user?.id]);
 
   const getPersonalScore = useCallback((post: SocialPost): number => {
