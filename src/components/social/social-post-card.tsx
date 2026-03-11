@@ -27,6 +27,7 @@ import {
   DISPLAY_DURATIONS,
 } from './VibePlayerContext';
 import { VibeReactionBar } from './VibeReactions';
+import { recordEngagement } from '@/lib/trending-service';
 
 const getYouTubeId = (url: string) => {
   if (!url) return null;
@@ -59,24 +60,19 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
   
-  // Skip logic state
   const [isSkippingRestricted, setIsSkippingRestricted] = React.useState(false);
   const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
   const skipTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Dwell detection for skips
   const dwellStartTimeRef = React.useRef<number | null>(null);
 
-  // ── YouTube state ───────────────────────────────────────────────────────────
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
   const [ytMuted, setYtMuted] = React.useState(false);
   const [ytMounted, setYtMounted] = React.useState(false);
 
-  // ── ReactPlayer state ───────────────────────────────────────────────────────
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
 
-  // ── Image/text countdown ────────────────────────────────────────────────────
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -89,12 +85,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
-  // ── Register into global pool on mount ─────────────────────────────────────
   React.useEffect(() => {
     addToQueue([post]);
   }, [post.id, addToQueue]);
 
-  // ── Mounting Logic: Only mount players when active or once they've been active ────
   React.useEffect(() => {
     if (isActiveVibe) {
       if (post.mediaType === 'video') setReactPlayerMounted(true);
@@ -102,14 +96,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // ── Scroll into view when activated ─────────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     }
   }, [isActiveVibe]);
 
-  // ── ⏭️ Skip Signal Intelligence (TikTok Dwell Detection) ───────────────────
   React.useEffect(() => {
     if (!cardRef.current) return;
 
@@ -120,7 +112,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         } else {
           if (dwellStartTimeRef.current) {
             const timeVisible = Date.now() - dwellStartTimeRef.current;
-            // 🚨 IF SCROLLED AWAY IN < 1.5s, IT'S A SKIP
             if (timeVisible < 1500 && !isActiveVibe) {
               recordSkip(post);
             }
@@ -135,7 +126,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     return () => observer.disconnect();
   }, [post, recordSkip, isActiveVibe]);
 
-  // ── Record "play" signal once per activation ─────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && !hasRecordedPlay.current) {
       hasRecordedPlay.current = true;
@@ -146,7 +136,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post, recordPlay]);
 
-  // ── Image/text countdown display ─────────────────────────────────────────────
   React.useEffect(() => {
     if (countdownRef.current) clearInterval(countdownRef.current);
     if (isActiveVibe && isContinuous && mediaCategory !== 'video') {
@@ -168,7 +157,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
-  // ── YouTube auto-skip Effect ────────────────────────────────────────────────
   React.useEffect(() => {
     if (isActiveVibe && isSkippingRestricted && skipCountdown === 0) {
       setIsSkippingRestricted(false);
@@ -181,7 +169,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [skipCountdown, isSkippingRestricted, playNext, isActiveVibe]);
 
-  // ── YouTube pause when deactivated ──────────────────────────────────────────
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (!isActiveVibe && ytReadyRef.current && ytPlayerRef.current) {
@@ -193,14 +180,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe, post.mediaType]);
 
-  // ── Firebase like state on mount ────────────────────────────────────────────
   React.useEffect(() => {
     if (!user || !firestore) return;
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
     getDoc(likeRef).then(snap => { if (snap.exists()) setIsLiked(true); });
   }, [firestore, user, post.id]);
 
-  // ── Like handler — records profile signal ───────────────────────────────────
   const handleLike = async () => {
     if (!user || !firestore || isProcessingLike) return;
     setIsProcessingLike(true);
@@ -219,9 +204,25 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         setLikeCount(prev => prev + 1);
         setIsLiked(true);
         recordLike(post);
+        recordEngagement(firestore, post.id, 'like', post.createdAt);
       }
     } catch (error) { console.error(error); }
     finally { setIsProcessingLike(false); }
+  };
+
+  const handleShare = () => {
+    if (!firestore) return;
+    recordEngagement(firestore, post.id, 'share', post.createdAt);
+    if (navigator.share) {
+      navigator.share({
+        title: 'Check out this vibe on GAM Hub',
+        text: post.content,
+        url: window.location.href,
+      }).catch(() => toast({ title: "Link copied!" }));
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      toast({ title: "Link copied to clipboard!" });
+    }
   };
 
   const handleDeletePost = async (e: React.MouseEvent) => {
@@ -245,7 +246,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  // ── YouTube restriction auto-skip ────────────────────────────────────────────
   const handleYoutubeError = React.useCallback((e: { data: number }) => {
     const isEmbedRestricted = e.data === 101 || e.data === 150;
     if (!isEmbedRestricted) return;
@@ -287,7 +287,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     };
   }, []);
 
-  // ── YouTube IFrame handshake ─────────────────────────────────────────────────
   const onYoutubeReady = (event: any) => {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
@@ -366,21 +365,18 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* ── Media zone ──────────────────────────────────────────────────────── */}
       {post.mediaType !== 'text' && (
         <div className={cn(
           'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
 
-          {/* IMAGE */}
           {post.mediaType === 'image' && post.imageUrl && (
             <Image src={post.imageUrl} alt="post" fill
               className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')}
             />
           )}
 
-          {/* YOUTUBE: Poster-First conditional mounting */}
           {post.mediaType === 'youtube' && youtubeId && (
             <div className="relative w-full h-full">
               {!ytMounted && !isActiveVibe && (
@@ -462,14 +458,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </div>
           )}
 
-          {/* TIKTOK */}
           {post.mediaType === 'tiktok' && post.mediaUrl && (
             <div className="bg-black flex items-center justify-center h-full">
               <TikTokEmbed url={post.mediaUrl} />
             </div>
           )}
 
-          {/* NATIVE VIDEO: Poster-First conditional mounting */}
           {post.mediaType === 'video' && post.mediaUrl && (
             <div className="w-full h-full bg-black flex items-center justify-center">
               {!reactPlayerMounted && !isActiveVibe && (
@@ -497,7 +491,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* ── Info zone ────────────────────────────────────────────────────────── */}
       <div className={cn(
         'flex flex-col transition-all duration-500',
         isActiveVibe ? 'p-8 md:flex-row md:items-start md:gap-8' : 'p-6'
@@ -570,7 +563,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 <Trash2 size={16} />
               </button>
             )}
-            <button className={cn('bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90', isActiveVibe ? 'p-3' : 'p-2')}>
+            <button 
+              onClick={handleShare}
+              className={cn('bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90', isActiveVibe ? 'p-3' : 'p-2')}
+            >
               <Share2 size={isActiveVibe ? 22 : 18} />
             </button>
           </div>

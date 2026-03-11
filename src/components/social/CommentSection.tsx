@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { cn } from '@/lib/utils';
+import { recordEngagement } from '@/lib/trending-service';
 
 export default function CommentSection({ postId }: { postId: string }) {
   const [text, setText] = useState('');
@@ -55,9 +56,11 @@ export default function CommentSection({ postId }: { postId: string }) {
             commentCount: increment(1)
         });
 
+        // 🏎️ Record Viral Signal
+        recordEngagement(firestore, postId, 'comment');
+
         setText('');
         setShowEmojiPicker(false);
-        // Reset styles after post
         setIsExtraBold(false);
         setIsItalic(false);
     } catch (error) {
@@ -69,7 +72,6 @@ export default function CommentSection({ postId }: { postId: string }) {
 
   return (
     <div className="mt-6 pt-6 border-t border-border relative">
-      {/* COMMENTS LIST */}
       <div className="space-y-3 max-h-60 overflow-y-auto mb-4 no-scrollbar">
         {isLoading ? (
             <Skeleton className="h-12 w-full rounded-xl" />
@@ -97,7 +99,6 @@ export default function CommentSection({ postId }: { postId: string }) {
         )}
       </div>
 
-      {/* EMOJI PICKER OVERLAY */}
       {showEmojiPicker && (
         <div className="absolute bottom-32 left-0 z-[100] shadow-2xl bg-card rounded-3xl p-2 border animate-in slide-in-from-bottom-4 duration-300">
            <div className="flex justify-end mb-2">
@@ -109,7 +110,6 @@ export default function CommentSection({ postId }: { postId: string }) {
         </div>
       )}
 
-      {/* STYLE TOOLBAR */}
       <div className="flex items-center gap-2 mb-2 px-2">
           <button 
             type="button"
@@ -139,7 +139,6 @@ export default function CommentSection({ postId }: { postId: string }) {
           </span>
       </div>
 
-      {/* COMMENT FORM */}
       <form onSubmit={postComment} className="flex items-center gap-2 bg-muted p-1.5 rounded-[2rem] border border-transparent focus-within:bg-background focus-within:border-border transition-all shadow-inner">
         <button 
           type="button" 

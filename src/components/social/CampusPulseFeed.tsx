@@ -2,11 +2,11 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, limit, getDocs, QueryConstraint } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer } from './VibePlayerContext';
 import { Switch } from '../ui/switch';
@@ -20,8 +20,11 @@ const LOAD_MORE_BATCH = 50;
  * CampusPulseFeed Component
  * 
  * Implements the "Bucketed Retrieval Strategy" for discoverability at scale.
- * Fetches multiple candidate pools (Recent, Trending, Global) and merges them
- * to feed the 3-Stage Ranking Pipeline.
+ * Fetches multiple candidate pools:
+ * 1. RECENT: The local yard vibrations.
+ * 2. GLOBAL: High-energy national vibes.
+ * 3. TRENDING: Viral content detected by the Velocity Engine.
+ * 4. SEED: Official Liaison boosts.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -46,7 +49,6 @@ export default function CampusPulseFeed({
 
     /**
      * 🏗️ THE BUCKETED RETRIEVAL COMMAND
-     * Fetches candidates from multiple distinct Firestore indexes.
      */
     const fetchBucketedCandidates = async () => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return;
@@ -78,17 +80,41 @@ export default function CampusPulseFeed({
                 limit(10)
             );
 
-            const [recentSnap, globalSnap, seedSnap] = await Promise.all([
+            // Bucket 4: TRENDING (The Velocity Engine)
+            const trendingStatsQuery = query(
+                collection(firestore, 'trending_stats'),
+                orderBy('trendScore', 'desc'),
+                limit(30)
+            );
+
+            const [recentSnap, globalSnap, seedSnap, trendingSnap] = await Promise.all([
                 getDocs(recentQuery),
                 getDocs(globalQuery),
-                getDocs(seedQuery)
+                getDocs(seedQuery),
+                getDocs(trendingStatsQuery)
             ]);
 
             const mergedMap = new Map<string, SocialPost>();
             
+            // Merge all buckets into a unified candidate pool
             [...seedSnap.docs, ...globalSnap.docs, ...recentSnap.docs].forEach(doc => {
                 mergedMap.set(doc.id, { id: doc.id, ...doc.data() } as SocialPost);
             });
+
+            // Handle the Trending IDs specifically by fetching missing post data
+            const trendingIds = trendingSnap.docs.map(d => d.id);
+            const missingIds = trendingIds.filter(id => !mergedMap.has(id));
+            
+            if (missingIds.length > 0) {
+                // Fetch missing high-velocity posts
+                const missingFetches = missingIds.slice(0, 10).map(id => getDoc(doc(firestore, 'campus_pulse', id)));
+                const missingSnaps = await Promise.all(missingFetches);
+                missingSnaps.forEach(snap => {
+                    if (snap.exists()) {
+                        mergedMap.set(snap.id, { id: snap.id, ...snap.data() } as SocialPost);
+                    }
+                });
+            }
 
             const finalPool = Array.from(mergedMap.values()).sort((a, b) => 
                 new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -97,7 +123,7 @@ export default function CampusPulseFeed({
             setPosts(finalPool);
             addToQueue(finalPool);
 
-            // Fetch Official SRC Bulletin separately
+            // Fetch Official SRC Bulletin
             const srcQuery = query(
                 collection(firestore, 'src_posts'),
                 where('campusId', '==', activeCampusId),
@@ -172,8 +198,13 @@ export default function CampusPulseFeed({
                         <Zap size={20} className={isContinuous ? "animate-pulse" : ""} fill={isContinuous ? "currentColor" : "none"} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">Continuous Discovery</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bucket Retrieval: ACTIVE</p>
+                        <h4 className="font-black text-sm tracking-tight">Vibration Feed</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Velocity Engine:</span>
+                            <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                <TrendingUp size={10} /> Real-Time
+                            </span>
+                        </div>
                     </div>
                 </div>
                 
@@ -210,7 +241,7 @@ export default function CampusPulseFeed({
                             className="bg-slate-900 text-white rounded-[1.5rem] px-10 py-6 h-auto font-black text-sm shadow-xl active:scale-95 transition-all"
                         >
                             {isLoading ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" size={18} />}
-                            Expand Candidate Pool
+                            Expand Discovery Pool
                         </Button>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Discovery Engine: {posts.length} vibes indexed</p>
                     </div>

@@ -5,6 +5,7 @@ import type { SocialPost } from '@/lib/types';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
+import { recordEngagement } from '@/lib/trending-service';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -44,7 +45,6 @@ export interface ReactionBurst {
 
 /**
  * 📐 COSINE SIMILARITY ENGINE
- * Measures semantic "distance" between two high-dimensional vectors.
  */
 export function cosineSimilarity(a: number[], b: number[]) {
   if (!a || !b || a.length !== b.length) return 0;
@@ -75,7 +75,6 @@ function exponentialFreshness(date: Date) {
 
 /**
  * 🏗️ STAGE 1: VECTOR RANKER (THE NET)
- * Filters millions of candidates down to the top semantic matches for the user.
  */
 export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
   if (!userVector) return posts;
@@ -93,27 +92,22 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
   let score = 0;
 
-  // 🧠 Semantic Continuity (Post-to-Post)
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
     score += similarity * 60;
   }
 
-  // Tag Synergy
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const sharedTags = (candidate.tags || []).filter(t =>
     currentTags.has(t.toLowerCase())
   );
   score += sharedTags.length * 12;
 
-  // Regional proximity
   if (candidate.campusId === current.campusId) score += 10;
   else if (candidate.campusId === 'all') score += 5;
 
-  // Social Velocity
   score += Math.min((candidate.likes || 0) / 5, 15);
 
-  // Recency
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string'
         ? new Date(candidate.createdAt)
@@ -240,6 +234,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
   
   const { profile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
+  const { firestore } = useFirebase();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const queueRef = useRef<SocialPost[]>([]);
@@ -262,8 +257,16 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
   const isMiniPlayerVisible = !!activePostId;
 
-  const recordPlay         = useCallback((p: SocialPost) => recordSignal(p, 'play'),           [recordSignal]);
-  const recordWatchedToEnd = useCallback((p: SocialPost) => recordSignal(p, 'watched_to_end'), [recordSignal]);
+  const recordPlay = useCallback((p: SocialPost) => {
+    recordSignal(p, 'play');
+    if (firestore) recordEngagement(firestore, p.id, 'view', p.createdAt);
+  }, [recordSignal, firestore]);
+
+  const recordWatchedToEnd = useCallback((p: SocialPost) => {
+    recordSignal(p, 'watched_to_end');
+    if (firestore) recordEngagement(firestore, p.id, 'completion', p.createdAt);
+  }, [recordSignal, firestore]);
+
   const recordLike         = useCallback((p: SocialPost) => recordSignal(p, 'like'),           [recordSignal]);
   const recordUnlike       = useCallback((p: SocialPost) => recordSignal(p, 'unlike'),         [recordSignal]);
   const recordSkip         = useCallback((p: SocialPost) => recordSignal(p, 'skip'),           [recordSignal]);
@@ -277,20 +280,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
 
-  /**
-   * 🏎️ REBUILD QUEUE: THE LIAISON 3-STAGE DISCOVERY PIPELINE
-   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     const userEmbedding = userEmbeddingRef.current;
     
-    // STAGE 1: Vector Filter (The Net) - Top 200 semantic matches
     const vectorRanked = userEmbedding 
         ? rankByEmbedding(pool, userEmbedding).slice(0, 200)
         : pool;
 
-    // STAGE 2: Local Context (The Vibe) - Top 25 situational matches
     const rankedResults = buildSmartQueue(current, vectorRanked, mood, scorer);
     const localRanked = rankedResults.map(r => r.post);
     
@@ -301,13 +299,11 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         reason: buildReason(current, p, scorer, userEmbedding),
       }));
 
-    // Initial optimistic queue
     setQueue([current, ...localRanked]);
     setUpNext(makeUpNext(localRanked));
     setIsLoadingQueue(false);
 
     try {
-      // STAGE 3: AI RE-RANKING (The Brain) - Elite 5
       const eliteCandidates = localRanked.slice(0, 25).map(p => ({
         id: p.id, 
         content: p.content, 
@@ -334,7 +330,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
 
-      // PREFETCH ENGINE
       if (typeof window !== 'undefined') {
         finalRanked.slice(0, PREFETCH_SIZE).forEach(p => {
           if (getMediaCategory(p.mediaType) === 'video' && p.mediaUrl) {
@@ -472,13 +467,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       return { ...prev, [postId]: { ...postCounts, [emoji]: postCounts[emoji] + 1 } };
     });
     recordSignal(post, 'reaction');
+    if (firestore) recordEngagement(firestore, post.id, 'like', post.createdAt);
     const burst: ReactionBurst = {
       id: `${Date.now()}-${Math.random()}`, emoji,
       x: 20 + Math.random() * 60, y: 20 + Math.random() * 60,
     };
     setReactionBursts(prev => [...prev, burst]);
     setTimeout(() => setReactionBursts(prev => prev.filter(b => b.id !== burst.id)), 1200);
-  }, [recordSignal]);
+  }, [recordSignal, firestore]);
 
   const clearHistory = useCallback(() => setHistory([]), []);
   React.useEffect(() => () => clearDisplayTimer(), [clearDisplayTimer]);

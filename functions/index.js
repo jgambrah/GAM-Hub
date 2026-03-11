@@ -12,6 +12,54 @@ admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 /**
+ * 🏎️ REAL-TIME TRENDING ENGINE
+ * Triggers on any engagement update to recalculate the trendScore.
+ * Uses the formula: (Velocity) / (Age + 2)^1.3
+ */
+exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", async (event) => {
+  const data = event.data.after.data();
+  const oldData = event.data.before.data();
+
+  // 1. Loop Protection: Exit if only trendScore changed or nothing changed
+  if (data.trendScore && !Object.keys(data).some(k => k !== 'trendScore' && data[k] !== oldData[k])) {
+    return null;
+  }
+
+  // 2. Identify Temporal Context
+  const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+  const now = new Date();
+  const ageHours = (now - createdAt) / 3600000;
+
+  // 3. Extract Raw Signals
+  const views = data.views || 0;
+  const likes = data.likes || 0;
+  const comments = data.comments || 0;
+  const shares = data.shares || 0;
+  const completed = data.completedViews || 0;
+
+  // 4. Compute Engagement Velocity
+  const completionRate = views > 0 ? (completed / views) : 0;
+  
+  // Weights: views(1), likes(3), comments(5), shares(8), completion(20)
+  const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completionRate * 20);
+
+  // 5. Apply Power-Law Time Decay
+  // Ensures new viral posts rise quickly but old posts decay gracefully.
+  const score = velocity / Math.pow((ageHours + 2), 1.3);
+
+  // 6. Persistence Handshake
+  // Only update if the score has moved significantly to save write operations
+  if (data.trendScore && Math.abs(data.trendScore - score) < 0.001) {
+    return null;
+  }
+
+  return event.data.after.ref.update({ 
+    trendScore: score,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+});
+
+/**
  * 1. MEDIA CLEANUP: Deletes chat media older than 30 days.
  */
 exports.cleanupOldChatMedia = onSchedule("0 0 * * 0", async (event) => {
@@ -499,14 +547,9 @@ exports.sendOrderNotifications = onDocumentUpdated("orders/{orderId}",
 
 /**
  * 16. THE LIAISON VECTOR PRECOMPUTATION
- * Automatically generates semantic vectors for Discovery.
  */
 exports.onVibeCreated = onDocumentCreated("campus_pulse/{postId}", async (event) => {
   const data = event.data.data();
   if (data.embedding) return;
-
-  // Pattern: In a production environment, you would call your embedding logic here.
-  // For the prototype, we assume the client-side seeding handles the initial load,
-  // and this function would scale the background generation.
   console.log(`Liaison Intelligence: Precomputing vector for Vibe ${event.params.postId}`);
 });
