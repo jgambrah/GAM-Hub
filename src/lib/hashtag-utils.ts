@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -50,25 +49,24 @@ export async function updateHashtagIndex(firestore: Firestore, tags: string[]) {
 
 /**
  * Renders text with clickable hashtags linked to the hashtag feed.
+ * Uses React.createElement to avoid build errors in standard .ts files.
  */
 export function renderWithHashtags(text: string) {
   if (!text) return null;
 
+  // Split text by hashtags while capturing the hashtags themselves
   const parts = text.split(/(#\w+)/g);
   
   return parts.map((part, i) => {
     if (part.startsWith('#')) {
       const tag = part.slice(1).toLowerCase();
-      return (
-        <Link 
-          key={i} 
-          href={`/hashtag/${tag}`}
-          className="text-blue-500 hover:underline font-black"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {part}
-        </Link>
-      );
+      // We use React.createElement here because this is a .ts file (not .tsx)
+      return React.createElement(Link, {
+        key: i,
+        href: `/hashtag/${tag}`,
+        className: "text-blue-500 hover:underline font-black",
+        onClick: (e: any) => e.stopPropagation()
+      }, part);
     }
     return part;
   });
