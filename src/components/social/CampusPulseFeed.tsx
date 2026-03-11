@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -6,7 +7,7 @@ import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from '
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer } from './VibePlayerContext';
 import { Switch } from '../ui/switch';
@@ -16,8 +17,9 @@ import { Button } from '../ui/button';
 /**
  * CampusPulseFeed Component
  * 
- * Implements the "Bucketed Retrieval Strategy" for discoverability at scale.
- * This ensures the candidate pool is diverse and relevant without loading the entire DB.
+ * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
+ * This ensures the candidate pool is diverse, including personalized matches,
+ * trending viral content, and new vibrations for exploration.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -39,28 +41,28 @@ export default function CampusPulseFeed({
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     /**
-     * 🏗️ THE BUCKETED RETRIEVAL COMMAND
-     * Pipeline: Firestore Retrieval -> Vector Filter -> Local Ranking -> AI Selection
+     * 🏗️ THE BLENDED RETRIEVAL COMMAND
+     * Pipeline: Firestore Retrieval (4 Buckets) -> Vector Blending -> Local Ranking
      */
-    const fetchBucketedCandidates = async () => {
+    const fetchBlendedCandidates = async () => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return;
         
         setIsLoading(true);
         const pulseRef = collection(firestore, 'campus_pulse');
         
         try {
-            // Bucket 1: RECENT (National Hub - 200 candidates)
+            // Bucket 1: RECENT (National Hub - 150 candidates)
             const recentQuery = query(
                 pulseRef,
                 orderBy('createdAt', 'desc'),
-                limit(200)
+                limit(150)
             );
 
-            // Bucket 2: TRENDING (High Velocity - 150 candidates)
+            // Bucket 2: TRENDING (High Velocity - 100 candidates)
             const trendingStatsQuery = query(
                 collection(firestore, 'trending_stats'),
                 orderBy('trendScore', 'desc'),
-                limit(150)
+                limit(100)
             );
 
             // Bucket 3: LOCAL CAMPUS (Specific Yard - 100 candidates)
@@ -71,28 +73,44 @@ export default function CampusPulseFeed({
                 limit(100)
             );
 
-            // Liaison Handshake: Parallel retrieval for speed
-            const [recentSnap, trendingSnap, campusSnap] = await Promise.all([
+            // Bucket 4: EXPLORATION (Randomly sampling "under-vibrated" content)
+            // We use a different sort order or a random seed if available
+            const explorationQuery = query(
+                pulseRef,
+                where('likes', '<', 5), // Target newer/lesser known content
+                orderBy('likes', 'asc'),
+                orderBy('createdAt', 'desc'),
+                limit(50)
+            );
+
+            // Liaison Handshake: Parallel retrieval
+            const [recentSnap, trendingSnap, campusSnap, explorationSnap] = await Promise.all([
                 getDocs(recentQuery),
                 getDocs(trendingStatsQuery),
-                getDocs(campusQuery)
+                getDocs(campusQuery),
+                getDocs(explorationQuery)
             ]);
 
             const mergedMap = new Map<string, SocialPost>();
             
-            // 1. Add direct post data from snaps
-            [...recentSnap.docs, ...campusSnap.docs].forEach(doc => {
-                mergedMap.set(doc.id, { id: doc.id, ...doc.data() } as SocialPost);
-            });
+            // Merge all buckets into a unified pool
+            const addDocsToMap = (snap: any, type: SocialPost['type'] = 'regular') => {
+                snap.docs.forEach((doc: any) => {
+                    if (!mergedMap.has(doc.id)) {
+                        mergedMap.set(doc.id, { id: doc.id, ...doc.data() } as SocialPost);
+                    }
+                });
+            };
 
-            // 2. Hydrate Trending IDs (those not already in the map)
+            addDocsToMap(recentSnap);
+            addDocsToMap(campusSnap);
+            addDocsToMap(explorationSnap);
+
+            // Hydrate Trending IDs
             const trendingIds = trendingSnap.docs.map(d => d.id);
             const missingIds = trendingIds.filter(id => !mergedMap.has(id));
-            
             if (missingIds.length > 0) {
-                // Fetch missing high-velocity post data (limited batch for performance)
-                const missingFetches = missingIds.slice(0, 30).map(id => getDoc(doc(firestore, 'campus_pulse', id)));
-                const missingSnaps = await Promise.all(missingFetches);
+                const missingSnaps = await Promise.all(missingIds.slice(0, 30).map(id => getDoc(doc(firestore, 'campus_pulse', id))));
                 missingSnaps.forEach(snap => {
                     if (snap.exists()) {
                         mergedMap.set(snap.id, { id: snap.id, ...snap.data() } as SocialPost);
@@ -101,12 +119,10 @@ export default function CampusPulseFeed({
             }
 
             const finalPool = Array.from(mergedMap.values());
-
-            // Push to the Vector Pipeline in VibePlayerContext
             setPosts(finalPool);
             addToQueue(finalPool);
 
-            // Fetch Official SRC Bulletin separately for pinning
+            // Fetch Official SRC Bulletin
             const srcQuery = query(
                 collection(firestore, 'src_posts'),
                 where('campusId', '==', activeCampusId),
@@ -117,7 +133,7 @@ export default function CampusPulseFeed({
             setSrcPosts(srcSnap.docs.map(d => ({ id: d.id, ...d.data() } as SrcPost)));
 
         } catch (err) {
-            console.error("Liaison Bucketed Retrieval Error:", err);
+            console.error("Liaison Blended Retrieval Error:", err);
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
@@ -125,12 +141,12 @@ export default function CampusPulseFeed({
     };
 
     useEffect(() => {
-        fetchBucketedCandidates();
+        fetchBlendedCandidates();
     }, [firestore, activeCampusId, user?.id, isTokenReady]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
-        fetchBucketedCandidates();
+        fetchBlendedCandidates();
     };
 
     const filteredPosts = useMemo(() => {
@@ -172,14 +188,14 @@ export default function CampusPulseFeed({
             <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-blue-500 animate-in slide-in-from-top-4">
                 <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
-                        <Zap size={20} className={isContinuous ? "animate-pulse" : ""} fill={isContinuous ? "currentColor" : "none"} />
+                        <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">Bucketed Discovery</h4>
+                        <h4 className="font-black text-sm tracking-tight">Blended Discovery</h4>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipeline:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Multi-Armed Bandit:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> Active
+                                <TrendingUp size={10} /> Exploiting + Exploring
                             </span>
                         </div>
                     </div>

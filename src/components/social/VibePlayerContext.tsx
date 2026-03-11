@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
@@ -285,20 +286,35 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   /**
-   * 🏎️ THE RECOMMENDATION PIPELINE (3 STAGES)
+   * 🏗️ THE MULTI-ARMED BANDIT PIPELINE
+   * Pipeline: Retrieval Buckets -> Semantic Blending -> Context Filtering -> AI Re-ranking
    */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     const userEmbedding = userEmbeddingRef.current;
     
-    // STAGE 1: Vector Similarity Net (Identify top 200 semantic matches)
+    // STAGE 1: BLENDED CANDIDATE SELECTION
+    // 70% Semantic lookups, 20% Viral lookups, 10% Exploration lookups
+    
     const vectorRanked = userEmbedding 
-        ? rankByEmbedding(pool, userEmbedding).slice(0, 200)
-        : pool;
+        ? rankByEmbedding(pool, userEmbedding).slice(0, 140) // Exploitation: User Taste
+        : pool.slice(0, 140);
 
-    // STAGE 2: Local Vibe Ranking (Identify top 25 context matches)
-    const rankedResults = buildSmartQueue(current, vectorRanked, mood, scorer);
+    const trendingRanked = pool
+        .filter(p => !vectorRanked.some(v => v.id === p.id))
+        .sort((a, b) => (b.likes || 0) - (a.likes || 0))
+        .slice(0, 40); // Exploitation: Community Pulse
+
+    const explorationPool = pool
+        .filter(p => !vectorRanked.some(v => v.id === p.id) && !trendingRanked.some(t => t.id === p.id))
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 20); // Exploration: Multi-Armed Bandit Test
+
+    const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
+
+    // STAGE 2: Local Vibe Contextual Ranking
+    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer);
     const localRanked = rankedResults.map(r => r.post);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
@@ -313,7 +329,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(false);
 
     try {
-      // STAGE 3: AI Re-Ranking (The elite pick)
+      // STAGE 3: AI Re-Ranking (Elite Narrative Match)
       const eliteCandidates = localRanked.slice(0, 25).map(p => ({
         id: p.id, 
         content: p.content, 
@@ -340,16 +356,13 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
 
-      // 🚀 TIKTOK PREFETCH ENGINE: Smooth as butter
+      // 🚀 TikTok Prefetch
       if (typeof window !== 'undefined') {
         finalRanked.slice(0, PREFETCH_SIZE).forEach(p => {
           if (getMediaCategory(p.mediaType) === 'video' && p.mediaUrl) {
             const v = document.createElement('video');
             v.src = p.mediaUrl;
             v.preload = 'auto';
-          } else if (p.imageUrl) {
-            const img = new Image();
-            img.src = p.imageUrl;
           }
         });
       }
@@ -455,7 +468,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       if (incoming.length === 0) return prev;
       
       let merged = [...prev, ...incoming];
-      // 🛡️ MEMORY VAULT: Never grow indefinitely
       if (merged.length > MAX_POOL_SIZE) {
         merged = merged.slice(-MAX_POOL_SIZE);
       }
