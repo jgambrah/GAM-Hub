@@ -8,6 +8,7 @@ import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
 import { collection, query, orderBy, limit, getDocs, doc, getDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { getRelatedHashtags } from '@/lib/hashtag-utils';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -109,7 +110,8 @@ export function computeBaseScore(
   current: SocialPost, 
   candidate: SocialPost, 
   viralTags: Set<string> = new Set(),
-  trendingTags: Set<string> = new Set()
+  trendingTags: Set<string> = new Set(),
+  relatedTags: Set<string> = new Set() // GRAPH INTEGRATION
 ) {
   let score = 0;
 
@@ -121,9 +123,14 @@ export function computeBaseScore(
   // 🏷️ HASHTAG SIGNAL: Boost shared tags
   score += sharedTags.length * 10;
   
-  // 🚀 LIAISON VIRAL BOOST ENGINE
+  // 🕸️ GRAPH ADJACENCY: Boost related interests (+8)
+  // This allows discovery of adjacent topics (e.g. if watching #afrobeats, show #amapiano)
   const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
+  if (candidateTags.some(t => relatedTags.has(t))) {
+    score += 8;
+  }
   
+  // 🚀 LIAISON VIRAL BOOST ENGINE
   // 1. Viral Boost (+25): Top priority for exploding narratives
   if (candidateTags.some(t => viralTags.has(t))) {
     score += 25;
@@ -164,9 +171,10 @@ export function computeVibeScore(
   candidate: SocialPost,
   getPersonalScore: (p: SocialPost) => number,
   viralTags: Set<string> = new Set(),
-  trendingTags: Set<string> = new Set()
+  trendingTags: Set<string> = new Set(),
+  relatedTags: Set<string> = new Set()
 ) {
-  const base = computeBaseScore(current, candidate, viralTags, trendingTags);
+  const base = computeBaseScore(current, candidate, viralTags, trendingTags, relatedTags);
   const personal = getPersonalScore(candidate);
 
   return base * 0.6 + personal * 0.4;
@@ -178,7 +186,8 @@ export function buildSmartQueue(
   mood: VibeMood,
   getPersonalScore: (p: SocialPost) => number,
   viralTags: Set<string> = new Set(),
-  trendingTags: Set<string> = new Set()
+  trendingTags: Set<string> = new Set(),
+  relatedTags: Set<string> = new Set()
 ) {
   const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
@@ -195,7 +204,7 @@ export function buildSmartQueue(
       if (!match) continue;
     }
 
-    const score = computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags);
+    const score = computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags);
     ranked.push({ post: p, score });
   }
 
@@ -207,7 +216,8 @@ function buildReason(
   current: SocialPost,
   candidate: SocialPost,
   getPersonalScore: (p: SocialPost) => number,
-  userEmbedding?: number[]
+  userEmbedding?: number[],
+  relatedTags: Set<string> = new Set()
 ): string {
   const parts: string[] = [];
   
@@ -220,6 +230,14 @@ function buildReason(
   const shared = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
   
   if (shared.length > 0 && parts.length < 2) parts.push(`#${shared[0]}`);
+  
+  // Graph Discovery reason
+  const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
+  if (parts.length < 2 && candidateTags.some(t => relatedTags.has(t))) {
+      const tag = candidateTags.find(t => relatedTags.has(t));
+      parts.push(`Related: #${tag}`);
+  }
+
   if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Based on your history');
   
   // Multi-Armed Bandit Label
@@ -364,6 +382,21 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     
     const viral = viralTagsRef.current;
     const trending = trendingTagsRef.current;
+
+    // 🕸️ GRAPH EXPANSION: Resolve related tags for the active post
+    let relatedTags = new Set<string>();
+    const currentTags = current.tags || [];
+    if (currentTags.length > 0 && firestore) {
+        try {
+            // Check top 3 tags for expansion
+            const expansionPromises = currentTags.slice(0, 3).map(tag => getRelatedHashtags(firestore, tag));
+            const expansionResults = await Promise.all(expansionPromises);
+            expansionResults.flat().forEach(r => {
+                // thresholding for strong relations
+                if (r.weight > 5) relatedTags.add(r.tag.toLowerCase());
+            });
+        } catch (e) { console.warn("Graph expansion failed"); }
+    }
     
     // STAGE 1: BLENDED CANDIDATE SELECTION
     const vectorRanked = userEmbedding 
@@ -382,8 +415,8 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
-    // STAGE 2: Local Vibe Contextual Ranking
-    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending);
+    // STAGE 2: Local Vibe Contextual Ranking (Now with Graph relatedTags)
+    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags);
     
     // 🛡️ LIAISON DIVERSITY PROTOCOL: Prevent creator repetition
     const authorSeen = new Set<string>();
@@ -401,8 +434,8 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, scorer, viral, trending),
-        reason: buildReason(current, p, scorer, userEmbedding),
+        score: computeVibeScore(current, p, scorer, viral, trending, relatedTags),
+        reason: buildReason(current, p, scorer, userEmbedding, relatedTags),
       }));
 
     setQueue([current, ...finalPoolForNext]);
@@ -451,7 +484,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     } catch (err) {
       console.warn('Liaison Re-ranking AI bypassed:', err);
     }
-  }, [getTopInterests]);
+  }, [getTopInterests, firestore]);
 
   const pushToHistory = useCallback((post: SocialPost) => {
     setHistory(prev => {
