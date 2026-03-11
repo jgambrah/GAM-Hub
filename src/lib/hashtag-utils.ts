@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -56,7 +55,6 @@ export async function updateHashtagIndex(firestore: Firestore, tags: string[]) {
 
 /**
  * Updates the Hashtag Graph by mapping co-occurrence between tags.
- * This allows the system to learn that #afrobeats is related to #amapiano.
  */
 export async function updateHashtagGraph(firestore: Firestore, tags: string[]) {
   if (!firestore || !tags || tags.length < 2) return;
@@ -64,13 +62,11 @@ export async function updateHashtagGraph(firestore: Firestore, tags: string[]) {
   const batch = writeBatch(firestore);
   const normalizedTags = tags.map(t => t.toLowerCase());
 
-  // Iterate through every unique pair of tags
   for (let i = 0; i < normalizedTags.length; i++) {
     for (let j = i + 1; j < normalizedTags.length; j++) {
       const tagA = normalizedTags[i];
       const tagB = normalizedTags[j];
 
-      // Map relationship A -> B
       const refA = doc(firestore, "hashtagGraph", tagA, "edges", tagB);
       batch.set(refA, {
         tag: tagB,
@@ -78,7 +74,6 @@ export async function updateHashtagGraph(firestore: Firestore, tags: string[]) {
         lastConnectedAt: serverTimestamp()
       }, { merge: true });
 
-      // Map relationship B -> A (Bidirectional for easy lookup)
       const refB = doc(firestore, "hashtagGraph", tagB, "edges", tagA);
       batch.set(refB, {
         tag: tagA,
@@ -91,13 +86,13 @@ export async function updateHashtagGraph(firestore: Firestore, tags: string[]) {
   try {
     await batch.commit();
   } catch (err) {
-    console.error("Liaison Graph Error: Failed to update hashtag relationships:", err);
+    console.error("Liaison Graph Error:", err);
   }
 }
 
 /**
  * Searches for hashtags by prefix for autocomplete.
- * Now optionally fetches related tags if an exact match is found.
+ * Optionally fetches related tags from the graph.
  */
 export async function searchHashtags(firestore: Firestore, prefix: string, includeRelated: boolean = false) {
   const cleanPrefix = prefix.startsWith('#') ? prefix.slice(1).toLowerCase() : prefix.toLowerCase();
@@ -105,7 +100,6 @@ export async function searchHashtags(firestore: Firestore, prefix: string, inclu
 
   const q = query(
     collection(firestore, "hashtags"),
-    // Ordered by tag for range query
     orderBy("tag"), 
     startAt(cleanPrefix),
     endAt(cleanPrefix + "\uf8ff"),
@@ -115,11 +109,8 @@ export async function searchHashtags(firestore: Firestore, prefix: string, inclu
   const snap = await getDocs(q);
   let results = snap.docs.map(d => d.data() as any);
 
-  // 🕸️ GRAPH UPGRADE: If first result is an exact match, pull related tags
   if (includeRelated && results.length > 0 && results[0].tag === cleanPrefix) {
       const related = await getRelatedHashtags(firestore, results[0].tag);
-      
-      // Merge: Original result first, then related tags
       const relatedMapped = related.map(r => ({ tag: r.tag, postCount: 0, weight: r.weight, isRelated: true }));
       results = [results[0], ...relatedMapped.filter(r => r.tag !== cleanPrefix)];
   }
@@ -128,52 +119,35 @@ export async function searchHashtags(firestore: Firestore, prefix: string, inclu
 }
 
 /**
- * Fetches related hashtags from the graph based on co-occurrence weight.
+ * Fetches related hashtags based on graph co-occurrence weight.
  */
 export async function getRelatedHashtags(firestore: Firestore, tag: string) {
     const cleanTag = tag.startsWith('#') ? tag.slice(1).toLowerCase() : tag.toLowerCase();
-    
-    const q = query(
-        collection(firestore, "hashtagGraph", cleanTag, "edges"),
-        orderBy("weight", "desc"),
-        limit(10)
-    );
-
+    const q = query(collection(firestore, "hashtagGraph", cleanTag, "edges"), orderBy("weight", "desc"), limit(10));
     const snap = await getDocs(q);
-    
-    return snap.docs.map(d => ({
-        tag: d.id,
-        weight: d.data().weight
-    }));
+    return snap.docs.map(d => ({ tag: d.id, weight: d.data().weight }));
 }
 
 /**
  * Fetches active trending clusters (events).
  */
 export async function getTrendingEvents(firestore: Firestore) {
-    const q = query(
-        collection(firestore, "trend_events"),
-        where("status", "==", "active"),
-        orderBy("collectiveVelocity", "desc"),
-        limit(5)
-    );
+    const q = query(collection(firestore, "trend_events"), where("status", "==", "active"), orderBy("collectiveVelocity", "desc"), limit(5));
     const snap = await getDocs(q);
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 /**
- * Renders text with clickable hashtags linked to the hashtag feed.
+ * Renders text with clickable hashtags.
+ * Uses React.createElement to avoid JSX syntax errors in .ts files.
  */
 export function renderWithHashtags(text: string) {
   if (!text) return null;
-
   const parts = text.split(/(#\w+)/g);
-  
   return parts.map((part, i) => {
     if (part.startsWith('#')) {
       const tag = part.slice(1).toLowerCase();
-      if (BANNED_TAGS.has(tag)) return part; // Don't link banned tags
-
+      if (BANNED_TAGS.has(tag)) return part;
       return React.createElement(Link, {
         key: i,
         href: `/hashtag/${tag}`,
