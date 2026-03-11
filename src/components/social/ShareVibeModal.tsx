@@ -15,7 +15,7 @@ import type { SocialPost } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
-import { extractHashtags } from '@/lib/hashtag-utils';
+import { extractHashtags, updateHashtagIndex } from '@/lib/hashtag-utils';
 
 /**
  * ShareVibeModal Component
@@ -144,8 +144,13 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         createdAt: new Date().toISOString(),
       };
 
-      // 6. BROADCAST
+      // 6. BROADCAST & INDEX
       await addDoc(collection(firestore, 'campus_pulse'), postData);
+      
+      // 7. Update Global Hashtag Index
+      if (hashtags.length > 0) {
+        await updateHashtagIndex(firestore, hashtags);
+      }
       
       toast({ title: isGlobal ? 'Global Vibe Broadcasted!' : 'Vibe Shared!' });
       onClose();

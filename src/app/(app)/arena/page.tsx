@@ -21,7 +21,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
-import { extractHashtags } from '@/lib/hashtag-utils';
+import { extractHashtags, updateHashtagIndex } from '@/lib/hashtag-utils';
 
 const INITIAL_LIMIT = 100;
 const LOAD_MORE_BATCH = 50;
@@ -122,7 +122,13 @@ export default function ArenaPage() {
             postData.embedding = embedding;
 
             // 4. Launch to Yard
-            addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
+            await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
+            
+            // 5. Update Global Hashtag Index
+            if (hashtags.length > 0) {
+                await updateHashtagIndex(firestore, hashtags);
+            }
+
             toast({ title: 'Vibe Shared in The Arena!' });
             resetInputs();
         } catch (error) {
