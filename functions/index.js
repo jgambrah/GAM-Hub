@@ -67,7 +67,7 @@ exports.updateScheduledTrendingScores = onSchedule("every 5 minutes", async (eve
 
   snapshot.forEach((docSnap) => {
     const data = docSnap.data();
-    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : now;
     const ageHours = (now - createdAt) / 3600000;
 
     const views = data.views || 0;
@@ -132,8 +132,7 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 
 /**
  * 📈 TRENDING HASHTAG UPDATER (PROFESSIONAL VELOCITY ENGINE)
- * Calculates hashtag velocity and trending scores every 5 minutes.
- * Incorporates Viral Thresholds and Exponential Decay.
+ * Calculates hashtag velocity, trending scores, and identifies TRENDING CLUSTERS.
  */
 exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
@@ -144,6 +143,8 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
   const lookbackMins = 30;
   const startTime = new Date(now.getTime() - lookbackMins * 60000);
   const startTimeString = startTime.toISOString().slice(0, 16);
+
+  const trendingPool = [];
 
   const processPromises = hashtagsSnapshot.docs.map(async (docSnap) => {
     const tag = docSnap.id;
@@ -178,6 +179,10 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
+    if (trendScore > 10) {
+      trendingPool.push({ tag, score: trendScore, ref: docSnap.ref });
+    }
+
     // 🛡️ VIRAL THRESHOLD PROMOTION
     if (trendScore > 30) {
       const viralRef = db.collection("viral_hashtags").doc(tag);
@@ -190,7 +195,42 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
   });
 
   await Promise.all(processPromises);
+
+  // 🕸️ TRENDING CLUSTER DETECTION (Semantic Pass)
+  // Logic: If multiple top-trending tags share a strong graph relation, promote them as an Event.
+  const clusterBatch = db.batch();
+  if (trendingPool.length >= 2) {
+    const sortedPool = trendingPool.sort((a, b) => b.score - a.score).slice(0, 15);
+    
+    for (let i = 0; i < sortedPool.length; i++) {
+      for (let j = i + 1; j < sortedPool.length; j++) {
+        const tagA = sortedPool[i].tag;
+        const tagB = sortedPool[j].tag;
+        
+        // Check graph weight
+        const edgeRef = db.collection("hashtagGraph").doc(tagA).collection("edges").doc(tagB);
+        const edgeSnap = await edgeRef.get();
+        
+        if (edgeSnap.exists() && edgeSnap.data().weight > 20) {
+          // CLUSTER DETECTED: Mark tags as part of an active event
+          const eventId = `EVENT_${[tagA, tagB].sort().join('_')}`;
+          clusterBatch.set(db.collection("trend_events").doc(eventId), {
+            tags: [tagA, tagB],
+            collectiveVelocity: sortedPool[i].score + sortedPool[j].score,
+            detectedAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'active'
+          }, { merge: true });
+
+          // Update tags with event ID for UI badging
+          clusterBatch.update(sortedPool[i].ref, { activeEventId: eventId });
+          clusterBatch.update(sortedPool[j].ref, { activeEventId: eventId });
+        }
+      }
+    }
+  }
+
   await batch.commit();
+  await clusterBatch.commit();
 });
 
 /**

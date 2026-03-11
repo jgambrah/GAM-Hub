@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -5,7 +6,7 @@
  * Handles extraction, anti-spam validation, indexing, graph relationships, and rendering.
  */
 
-import { doc, setDoc, increment, serverTimestamp, Firestore, query, collection, orderBy, startAt, endAt, getDocs, limit, writeBatch } from "firebase/firestore";
+import { doc, setDoc, increment, serverTimestamp, Firestore, query, collection, orderBy, startAt, endAt, getDocs, limit, writeBatch, where } from "firebase/firestore";
 import React from 'react';
 import Link from 'next/link';
 
@@ -144,6 +145,20 @@ export async function getRelatedHashtags(firestore: Firestore, tag: string) {
         tag: d.id,
         weight: d.data().weight
     }));
+}
+
+/**
+ * Fetches active trending clusters (events).
+ */
+export async function getTrendingEvents(firestore: Firestore) {
+    const q = query(
+        collection(firestore, "trend_events"),
+        where("status", "==", "active"),
+        orderBy("collectiveVelocity", "desc"),
+        limit(5)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 /**

@@ -1,3 +1,4 @@
+
 export type User = {
   id: string;
   name: string;
@@ -479,4 +480,12 @@ export type StudyRoom = {
   isPrivate?: boolean;
   isOfficial?: boolean;
   creatorRole?: string;
+};
+
+export type TrendEvent = {
+    id: string;
+    tags: string[];
+    collectiveVelocity: number;
+    detectedAt: any;
+    status: 'active' | 'archived';
 };
