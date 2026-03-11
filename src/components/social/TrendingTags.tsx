@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -15,7 +16,7 @@ interface TrendingTagsProps {
  * TrendingTags Component
  * 
  * Fetches real-time hashtag data from the 'hashtags' collection.
- * Ranks by postCount to show the Yard's hottest topics.
+ * Ranks by trendScore (calculated by Cloud Functions) to show the Yard's hottest topics.
  */
 export default function TrendingTags({ onTagSelect, activeTag = 'All' }: TrendingTagsProps) {
   const { firestore } = useFirebase();
@@ -24,7 +25,8 @@ export default function TrendingTags({ onTagSelect, activeTag = 'All' }: Trendin
     if (!firestore) return null;
     return query(
       collection(firestore, 'hashtags'),
-      orderBy('postCount', 'desc'),
+      // LIAISON SHIFT: order by trendScore instead of postCount
+      orderBy('trendScore', 'desc'),
       limit(10)
     );
   }, [firestore]);
@@ -68,7 +70,7 @@ export default function TrendingTags({ onTagSelect, activeTag = 'All' }: Trendin
               >
                 <Hash size={14} className={isActive ? 'text-primary' : 'text-blue-500'} />
                 <span className={cn("text-xs font-bold")}>{tag.tag}</span>
-                <span className="text-[10px] font-black text-muted-foreground/60">{tag.postCount.toLocaleString()}</span>
+                <span className="text-[10px] font-black text-muted-foreground/60">{tag.postCount?.toLocaleString() || 0}</span>
               </button>
             )
         })}

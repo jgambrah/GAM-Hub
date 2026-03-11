@@ -116,6 +116,34 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 });
 
 /**
+ * 📈 TRENDING HASHTAG UPDATER
+ * Calculates hashtag velocity scores every 10 minutes.
+ */
+exports.updateTrendingHashtags = onSchedule("every 10 minutes", async (event) => {
+  const db = admin.firestore();
+  const snapshot = await db.collection("hashtags").get();
+  const batch = db.batch();
+  const now = new Date();
+
+  snapshot.forEach((docSnap) => {
+    const data = docSnap.data();
+    const postCount = data.postCount || 0;
+    const lastUsedAt = data.lastUsedAt?.toDate ? data.lastUsedAt.toDate() : new Date();
+    const ageHours = (now - lastUsedAt) / 3600000;
+
+    // Formula: postVelocity / (ageHours + 2)^1.5
+    const trendScore = postCount / Math.pow(ageHours + 2, 1.5);
+
+    batch.update(docSnap.ref, {
+      trendScore,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  });
+
+  await batch.commit();
+});
+
+/**
  * 1. MEDIA CLEANUP
  */
 exports.cleanupOldChatMedia = onSchedule("0 0 * * 0", async (event) => {
