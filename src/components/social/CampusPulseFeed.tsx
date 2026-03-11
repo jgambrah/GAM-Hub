@@ -51,18 +51,18 @@ export default function CampusPulseFeed({
         const pulseRef = collection(firestore, 'campus_pulse');
         
         try {
-            // Bucket 1: RECENT (National Hub - 150 candidates)
+            // Bucket 1: RECENT (National Hub - 200 candidates)
             const recentQuery = query(
                 pulseRef,
                 orderBy('createdAt', 'desc'),
-                limit(150)
+                limit(200)
             );
 
-            // Bucket 2: TRENDING (High Velocity - 100 candidates)
+            // Bucket 2: TRENDING (High Velocity - 150 candidates)
             const trendingStatsQuery = query(
                 collection(firestore, 'trending_stats'),
                 orderBy('trendScore', 'desc'),
-                limit(100)
+                limit(150)
             );
 
             // Bucket 3: LOCAL CAMPUS (Specific Yard - 100 candidates)
@@ -73,11 +73,10 @@ export default function CampusPulseFeed({
                 limit(100)
             );
 
-            // Bucket 4: EXPLORATION (Randomly sampling "under-vibrated" content)
-            // We use a different sort order or a random seed if available
+            // Bucket 4: EXPLORATION (New/Random undervibrated posts - 50 candidates)
             const explorationQuery = query(
                 pulseRef,
-                where('likes', '<', 5), // Target newer/lesser known content
+                where('likes', '<', 10), 
                 orderBy('likes', 'asc'),
                 orderBy('createdAt', 'desc'),
                 limit(50)
@@ -94,7 +93,7 @@ export default function CampusPulseFeed({
             const mergedMap = new Map<string, SocialPost>();
             
             // Merge all buckets into a unified pool
-            const addDocsToMap = (snap: any, type: SocialPost['type'] = 'regular') => {
+            const addDocsToMap = (snap: any) => {
                 snap.docs.forEach((doc: any) => {
                     if (!mergedMap.has(doc.id)) {
                         mergedMap.set(doc.id, { id: doc.id, ...doc.data() } as SocialPost);
@@ -110,7 +109,7 @@ export default function CampusPulseFeed({
             const trendingIds = trendingSnap.docs.map(d => d.id);
             const missingIds = trendingIds.filter(id => !mergedMap.has(id));
             if (missingIds.length > 0) {
-                const missingSnaps = await Promise.all(missingIds.slice(0, 30).map(id => getDoc(doc(firestore, 'campus_pulse', id))));
+                const missingSnaps = await Promise.all(missingIds.slice(0, 50).map(id => getDoc(doc(firestore, 'campus_pulse', id))));
                 missingSnaps.forEach(snap => {
                     if (snap.exists()) {
                         mergedMap.set(snap.id, { id: snap.id, ...snap.data() } as SocialPost);

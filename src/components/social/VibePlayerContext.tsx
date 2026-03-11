@@ -76,6 +76,19 @@ function exponentialFreshness(date: Date) {
 }
 
 /**
+ * 🚀 EXPLORATION BOOST (Multi-Armed Bandit)
+ * Ensures small creators get exposure by artificially boosting newer content.
+ */
+export function explorationBoost(post: SocialPost) {
+  const likes = post.likes || 0;
+  // We use likes as a proxy for exposure in the client pool
+  if (likes < 10) return 15;
+  if (likes < 50) return 8;
+  if (likes < 100) return 3;
+  return 0;
+}
+
+/**
  * 🏗️ PIPELINE STAGE 1: VECTOR RANKER (THE NET)
  */
 export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
@@ -115,6 +128,9 @@ export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
   else if (candidate.campusId === 'all') score += 5;
 
   score += Math.min((candidate.likes || 0) / 5, 15);
+
+  // Apply Bandit Entropy Boost
+  score += explorationBoost(candidate);
 
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string'
@@ -185,6 +201,9 @@ function buildReason(
   if (shared.length > 0 && parts.length < 2) parts.push(`#${shared[0]}`);
   if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Based on your history');
   
+  // Multi-Armed Bandit Label
+  if (explorationBoost(candidate) > 5 && parts.length === 0) parts.push('Fresh Discovery');
+
   if (parts.length === 0) parts.push('Trending on GAM Hub');
   return parts.slice(0, 2).join(' · ');
 }
