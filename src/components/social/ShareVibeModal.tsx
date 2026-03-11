@@ -15,14 +15,14 @@ import type { SocialPost } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
-import { extractHashtags, updateHashtagIndex } from '@/lib/hashtag-utils';
+import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/hashtag-utils';
 import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
 
 /**
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Now with AI Semantic Hashtags and Analytics indexing.
+ * Now with AI Semantic Hashtags, Graph Relationships, and Analytics indexing.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -155,9 +155,12 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // D. Update Global Hashtag Index for Analytics & Trending
+      // D. Update Global Hashtag Index & Graph Relationships
       if (finalHashtags.length > 0) {
         await updateHashtagIndex(firestore, finalHashtags);
+        if (finalHashtags.length >= 2) {
+            await updateHashtagGraph(firestore, finalHashtags);
+        }
       }
       
       toast({ title: isGlobal ? 'Global Vibe Broadcasted!' : 'Vibe Shared!' });

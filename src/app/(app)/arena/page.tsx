@@ -19,7 +19,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
-import { extractHashtags, updateHashtagIndex } from '@/lib/hashtag-utils';
+import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/hashtag-utils';
 import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
 
 const INITIAL_LIMIT = 100;
@@ -29,7 +29,7 @@ const LOAD_MORE_BATCH = 50;
  * ArenaPage Component
  * 
  * National inter-uni battleground. 
- * Now with AI Semantic Hashtags for improved battle indexing.
+ * Now with AI Semantic Hashtags and Hashtag Graph relationships.
  */
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
@@ -137,9 +137,12 @@ export default function ArenaPage() {
             // 4. Launch to Yard
             await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
             
-            // 5. Update Global Hashtag Index for Analytics
+            // 5. Update Global Hashtag Index & Graph Relationships
             if (finalHashtags.length > 0) {
                 await updateHashtagIndex(firestore, finalHashtags);
+                if (finalHashtags.length >= 2) {
+                    await updateHashtagGraph(firestore, finalHashtags);
+                }
             }
 
             toast({ title: 'Vibe Shared in The Arena!' });

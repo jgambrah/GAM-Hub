@@ -2,10 +2,10 @@
 
 /**
  * @fileOverview Enterprise-Grade Hashtag Engine for GAM Hub.
- * Handles extraction, anti-spam validation, indexing, and rendering.
+ * Handles extraction, anti-spam validation, indexing, graph relationships, and rendering.
  */
 
-import { doc, setDoc, increment, serverTimestamp, Firestore, query, collection, orderBy, startAt, endAt, getDocs, limit } from "firebase/firestore";
+import { doc, setDoc, increment, serverTimestamp, Firestore, query, collection, orderBy, startAt, endAt, getDocs, limit, writeBatch } from "firebase/firestore";
 import React from 'react';
 import Link from 'next/link';
 
@@ -51,6 +51,47 @@ export async function updateHashtagIndex(firestore: Firestore, tags: string[]) {
   });
 
   return Promise.all(promises);
+}
+
+/**
+ * Updates the Hashtag Graph by mapping co-occurrence between tags.
+ * This allows the system to learn that #afrobeats is related to #amapiano.
+ */
+export async function updateHashtagGraph(firestore: Firestore, tags: string[]) {
+  if (!firestore || !tags || tags.length < 2) return;
+
+  const batch = writeBatch(firestore);
+  const normalizedTags = tags.map(t => t.toLowerCase());
+
+  // Iterate through every unique pair of tags
+  for (let i = 0; i < normalizedTags.length; i++) {
+    for (let j = i + 1; j < normalizedTags.length; j++) {
+      const tagA = normalizedTags[i];
+      const tagB = normalizedTags[j];
+
+      // Map relationship A -> B
+      const refA = doc(firestore, "hashtagGraph", tagA, "edges", tagB);
+      batch.set(refA, {
+        tag: tagB,
+        weight: increment(1),
+        lastConnectedAt: serverTimestamp()
+      }, { merge: true });
+
+      // Map relationship B -> A (Bidirectional for easy lookup)
+      const refB = doc(firestore, "hashtagGraph", tagB, "edges", tagA);
+      batch.set(refB, {
+        tag: tagA,
+        weight: increment(1),
+        lastConnectedAt: serverTimestamp()
+      }, { merge: true });
+    }
+  }
+
+  try {
+    await batch.commit();
+  } catch (err) {
+    console.error("Liaison Graph Error: Failed to update hashtag relationships:", err);
+  }
 }
 
 /**
