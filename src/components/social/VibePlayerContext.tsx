@@ -1,12 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import type { SocialPost } from '@/lib/types';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
+import { collection, query, orderBy, limit, getDocs, doc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -76,10 +77,9 @@ function exponentialFreshness(date: Date) {
 
 /**
  * 🚀 EXPLORATION BOOST (Multi-Armed Bandit)
- * Ensures small creators get exposure by artificially boosting newer content.
  */
 export function explorationBoost(post: SocialPost) {
-  const views = post.likes || 0; // Using likes as a proxy for engagement in the client pool
+  const views = post.likes || 0; 
   if (views < 50) return 15;
   if (views < 200) return 8;
   if (views < 500) return 3;
@@ -105,14 +105,25 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 /**
  * 🏎️ PIPELINE STAGE 2: LOCAL CONTEXT RANKING (THE VIBE)
  */
-export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
+export function computeBaseScore(
+  current: SocialPost, 
+  candidate: SocialPost, 
+  hotTags: Set<string> = new Set()
+) {
   let score = 0;
 
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const sharedTags = (candidate.tags || []).filter(t =>
     currentTags.has(t.toLowerCase())
   );
-  score += sharedTags.length * 12;
+  
+  // 🏷️ HASHTAG SIGNAL: Boost shared tags
+  score += sharedTags.length * 10;
+  
+  // 🔥 TRENDING TAG BOOST: Boost posts using Yard's hottest tags
+  const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
+  const hasHotTag = candidateTags.some(t => hotTags.has(t));
+  if (hasHotTag) score += 12;
 
   const currentCat = getMediaCategory(current.mediaType);
   const candidateCat = getMediaCategory(candidate.mediaType);
@@ -143,9 +154,10 @@ export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
 export function computeVibeScore(
   current: SocialPost,
   candidate: SocialPost,
-  getPersonalScore: (p: SocialPost) => number
+  getPersonalScore: (p: SocialPost) => number,
+  hotTags: Set<string> = new Set()
 ) {
-  const base = computeBaseScore(current, candidate);
+  const base = computeBaseScore(current, candidate, hotTags);
   const personal = getPersonalScore(candidate);
 
   return base * 0.6 + personal * 0.4;
@@ -155,7 +167,8 @@ export function buildSmartQueue(
   current: SocialPost,
   pool: SocialPost[],
   mood: VibeMood,
-  getPersonalScore: (p: SocialPost) => number
+  getPersonalScore: (p: SocialPost) => number,
+  hotTags: Set<string> = new Set()
 ) {
   const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
@@ -172,7 +185,7 @@ export function buildSmartQueue(
       if (!match) continue;
     }
 
-    const score = computeVibeScore(current, p, getPersonalScore);
+    const score = computeVibeScore(current, p, getPersonalScore, hotTags);
     ranked.push({ post: p, score });
   }
 
@@ -243,6 +256,7 @@ interface VibePlayerContextType {
 const VibePlayerContext = createContext<VibePlayerContextType | undefined>(undefined);
 
 export function VibePlayerProvider({ children }: { children: React.ReactNode }) {
+  const { firestore } = useFirebase();
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const [activePost, setActivePostState] = useState<SocialPost | null>(null);
   const [queue, setQueue] = useState<SocialPost[]>([]);
@@ -254,9 +268,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [history, setHistory] = useState<SocialPost[]>([]);
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
+  const [hotTags, setHotTags] = useState<Set<string>>(new Set());
   
   const { profile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
-  const { firestore } = useFirebase();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const queueRef = useRef<SocialPost[]>([]);
@@ -267,17 +281,29 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const activeMoodRef = useRef<VibeMood>('all');
   const getPersonalScoreRef = useRef(getPersonalScore);
   const userEmbeddingRef = useRef(profile.vibeEmbedding);
+  const hotTagsRef = useRef(hotTags);
 
-  React.useEffect(() => { queueRef.current = queue; }, [queue]);
-  React.useEffect(() => { allPostsRef.current = allPosts; }, [allPosts]);
-  React.useEffect(() => { activePostIdRef.current = activePostId; }, [activePostId]);
-  React.useEffect(() => { activePostRef.current = activePost; }, [activePost]);
-  React.useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
-  React.useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
-  React.useEffect(() => { getPersonalScoreRef.current = getPersonalScore; }, [getPersonalScore]);
-  React.useEffect(() => { userEmbeddingRef.current = profile.vibeEmbedding; }, [profile.vibeEmbedding]);
+  useEffect(() => { queueRef.current = queue; }, [queue]);
+  useEffect(() => { allPostsRef.current = allPosts; }, [allPosts]);
+  useEffect(() => { activePostIdRef.current = activePostId; }, [activePostId]);
+  useEffect(() => { activePostRef.current = activePost; }, [activePost]);
+  useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
+  useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
+  useEffect(() => { getPersonalScoreRef.current = getPersonalScore; }, [getPersonalScore]);
+  useEffect(() => { userEmbeddingRef.current = profile.vibeEmbedding; }, [profile.vibeEmbedding]);
+  useEffect(() => { hotTagsRef.current = hotTags; }, [hotTags]);
 
   const isMiniPlayerVisible = !!activePostId;
+
+  // 🛰️ LIAISON CONTEXT: Fetch hot tags for discovery boost
+  useEffect(() => {
+    if (!firestore) return;
+    const q = query(collection(firestore, 'hashtags'), orderBy('trendScore', 'desc'), limit(15));
+    getDocs(q).then(snap => {
+        const tags = new Set(snap.docs.map(d => d.data().tag?.toLowerCase()).filter(Boolean));
+        setHotTags(tags);
+    });
+  }, [firestore]);
 
   const recordPlay = useCallback((p: SocialPost) => {
     recordSignal(p, 'play');
@@ -304,16 +330,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
   /**
    * 🏗️ THE MULTI-ARMED BANDIT PIPELINE
-   * Pipeline: Retrieval Buckets -> Semantic Blending -> Context Filtering -> AI Re-ranking
    */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     const userEmbedding = userEmbeddingRef.current;
+    const tags = hotTagsRef.current;
     
     // STAGE 1: BLENDED CANDIDATE SELECTION
-    // 70% Semantic lookups (Exploitation), 20% Viral hits (Exploitation), 10% Fresh content (Exploration)
-    
     const vectorRanked = userEmbedding 
         ? rankByEmbedding(pool, userEmbedding).slice(0, 140) 
         : pool.slice(0, 140);
@@ -331,9 +355,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
     // STAGE 2: Local Vibe Contextual Ranking
-    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer);
+    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, tags);
     
-    // 🚫 LIAISON DIVERSITY PROTOCOL: Prevent creator repetition
+    // Diversity Protocol
     const authorSeen = new Set<string>();
     const diverseRanked: SocialPost[] = [];
     for (const entry of rankedResults) {
@@ -349,7 +373,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, scorer),
+        score: computeVibeScore(current, p, scorer, tags),
         reason: buildReason(current, p, scorer, userEmbedding),
       }));
 
@@ -358,7 +382,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(false);
 
     try {
-      // STAGE 3: AI Re-Ranking (Elite Narrative Match)
+      // STAGE 3: AI Re-Ranking
       const eliteCandidates = finalPoolForNext.slice(0, 25).map(p => ({
         id: p.id, 
         content: p.content, 
@@ -385,7 +409,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
 
-      // 🚀 TikTok Prefetch (Speed Layer)
+      // TikTok Prefetch
       if (typeof window !== 'undefined') {
         finalRanked.slice(0, PREFETCH_SIZE).forEach(p => {
           if (getMediaCategory(p.mediaType) === 'video' && p.mediaUrl) {

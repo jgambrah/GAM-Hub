@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
-import { MessageSquare, Plus, Video, Camera, Type, Info, Sparkles, Search, X } from 'lucide-react';
+import { MessageSquare, Plus, Video, Camera, Type, Info, Sparkles, Search, X, Hash } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import ShareVibeModal from '@/components/social/ShareVibeModal';
 import UpNextPanel from '@/components/social/UpNextPanel';
 import { VictoryTakeover } from '@/components/politics/VictoryTakeover';
 import { Skeleton } from '@/components/ui/skeleton';
 import TrendingSearchTicker from '@/components/social/TrendingSearchTicker';
+import { searchHashtags } from '@/lib/hashtag-utils';
+import { cn } from '@/lib/utils';
 
 function ElectionWinnerWatcher() {
   const { user, isTokenReady } = useAuth();
@@ -62,8 +64,27 @@ function ElectionWinnerWatcher() {
 
 export default function PulsePage() {
   const { user, isUserLoading } = useAuth();
+  const { firestore } = useFirebase();
   const [isVibeModalOpen, setVibeModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [hashtagResults, setHashtagResults] = useState<any[]>([]);
+  const [isSearchingTags, setIsSearchingTags] = useState(false);
+
+  // 🏷️ HASHTAG AUTOCOMPLETE ENGINE
+  useEffect(() => {
+    if (searchQuery.startsWith('#') && searchQuery.length > 1 && firestore) {
+        setIsSearchingTags(true);
+        const timer = setTimeout(async () => {
+            const results = await searchHashtags(firestore, searchQuery);
+            setHashtagResults(results);
+            setIsSearchingTags(false);
+        }, 300);
+        return () => clearTimeout(timer);
+    } else {
+        setHashtagResults([]);
+        setIsSearchingTags(false);
+    }
+  }, [searchQuery, firestore]);
 
   if (isUserLoading || !user) {
     return (
@@ -100,8 +121,8 @@ export default function PulsePage() {
           </div>
         </div>
 
-        {/* SEARCH */}
-        <div className="space-y-4">
+        {/* SEARCH & AUTOCOMPLETE */}
+        <div className="space-y-4 relative">
             <div className="relative group">
                 <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={20} />
                 <input 
@@ -119,6 +140,30 @@ export default function PulsePage() {
                     </button>
                 )}
             </div>
+
+            {/* AUTOCOMPLETE DROPDOWN */}
+            {hashtagResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 z-[100] bg-white rounded-[2rem] shadow-2xl border border-slate-100 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between px-4 mb-3">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hashtag Suggestions</span>
+                        {isSearchingTags && <Loader2 className="animate-spin text-slate-300" size={12} />}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {hashtagResults.map((tag) => (
+                            <button
+                                key={tag.tag}
+                                onClick={() => setSearchQuery(`#${tag.tag}`)}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 rounded-2xl transition-all active:scale-95 group"
+                            >
+                                <Hash size={14} className="text-slate-400 group-hover:text-indigo-500" />
+                                <span className="font-black text-xs uppercase tracking-widest">{tag.tag}</span>
+                                <span className="text-[10px] font-bold opacity-40">{tag.postCount.toLocaleString()}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <TrendingSearchTicker onSelect={setSearchQuery} />
         </div>
 

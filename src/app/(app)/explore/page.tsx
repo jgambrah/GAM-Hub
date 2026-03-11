@@ -1,15 +1,36 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles, Hash, Loader2 } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import TrendingTags from '@/components/social/TrendingTags';
 import TrendingSearchTicker from '@/components/social/TrendingSearchTicker';
 import UpNextPanel from '@/components/social/UpNextPanel';
+import { searchHashtags } from '@/lib/hashtag-utils';
+import { useFirebase } from '@/firebase';
 
 export default function ExplorePage() {
+  const { firestore } = useFirebase();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'people' | 'market' | 'vlogs'>('all');
+  const [hashtagResults, setHashtagResults] = useState<any[]>([]);
+  const [isSearchingTags, setIsSearchingTags] = useState(false);
+
+  // 🏷️ HASHTAG AUTOCOMPLETE ENGINE
+  useEffect(() => {
+    if (searchQuery.startsWith('#') && searchQuery.length > 1 && firestore) {
+        setIsSearchingTags(true);
+        const timer = setTimeout(async () => {
+            const results = await searchHashtags(firestore, searchQuery);
+            setHashtagResults(results);
+            setIsSearchingTags(false);
+        }, 300);
+        return () => clearTimeout(timer);
+    } else {
+        setHashtagResults([]);
+        setIsSearchingTags(false);
+    }
+  }, [searchQuery, firestore]);
 
   return (
     <div className="min-h-screen bg-white pb-24">
@@ -33,6 +54,31 @@ export default function ExplorePage() {
                 >
                     <X size={16} />
                 </button>
+            )}
+
+            {/* AUTOCOMPLETE DROPDOWN */}
+            {hashtagResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-4 z-[100] bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 p-6 animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between px-2 mb-4">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Matching Hashtags</span>
+                        {isSearchingTags && <Loader2 className="animate-spin text-indigo-500" size={14} />}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {hashtagResults.map((tag) => (
+                            <button
+                                key={tag.tag}
+                                onClick={() => { setSearchQuery(`#${tag.tag}`); setHashtagResults([]); }}
+                                className="flex items-center justify-between p-4 bg-slate-50 hover:bg-indigo-600 hover:text-white rounded-2xl transition-all active:scale-95 group text-slate-900"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <Hash size={16} className="text-indigo-500 group-hover:text-white" />
+                                    <span className="font-black text-sm uppercase tracking-wide">{tag.tag}</span>
+                                </div>
+                                <span className="text-[10px] font-bold opacity-40 group-hover:opacity-80">{tag.postCount.toLocaleString()} posts</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
             )}
           </div>
 
@@ -61,7 +107,7 @@ export default function ExplorePage() {
             <TrendingSearchTicker onSelect={setSearchQuery} />
             
             <section className="space-y-8">
-              <TrendingTags onTagSelect={(tag) => setSearchQuery(tag === 'All' ? '' : `#${tag.toLowerCase()}`)} />
+              <TrendingTags onTagSelect={(tag) => setSearchQuery(tag === 'All' ? '' : `#${tag.toLowerCase()}`)} activeTag={searchQuery} />
               
               <div className="space-y-6">
                 <div className="flex items-center justify-between px-2">

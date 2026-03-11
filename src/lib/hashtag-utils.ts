@@ -5,7 +5,7 @@
  * Handles the normalization, extraction, and global indexing of campus keywords.
  */
 
-import { doc, setDoc, increment, serverTimestamp, Firestore } from "firebase/firestore";
+import { doc, setDoc, increment, serverTimestamp, Firestore, query, collection, orderBy, startAt, endAt, getDocs, limit } from "firebase/firestore";
 import React from 'react';
 import Link from 'next/link';
 
@@ -48,8 +48,26 @@ export async function updateHashtagIndex(firestore: Firestore, tags: string[]) {
 }
 
 /**
+ * Searches for hashtags by prefix for autocomplete.
+ */
+export async function searchHashtags(firestore: Firestore, prefix: string) {
+  const cleanPrefix = prefix.startsWith('#') ? prefix.slice(1).toLowerCase() : prefix.toLowerCase();
+  if (!cleanPrefix) return [];
+
+  const q = query(
+    collection(firestore, "hashtags"),
+    orderBy("tag"),
+    startAt(cleanPrefix),
+    endAt(cleanPrefix + "\uf8ff"),
+    limit(5)
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map(d => d.data());
+}
+
+/**
  * Renders text with clickable hashtags linked to the hashtag feed.
- * Uses React.createElement to avoid build errors in standard .ts files.
  */
 export function renderWithHashtags(text: string) {
   if (!text) return null;
@@ -60,7 +78,6 @@ export function renderWithHashtags(text: string) {
   return parts.map((part, i) => {
     if (part.startsWith('#')) {
       const tag = part.slice(1).toLowerCase();
-      // We use React.createElement here because this is a .ts file (not .tsx)
       return React.createElement(Link, {
         key: i,
         href: `/hashtag/${tag}`,
