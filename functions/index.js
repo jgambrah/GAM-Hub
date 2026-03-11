@@ -12,9 +12,8 @@ admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🏎️ REAL-TIME TRENDING ENGINE
- * Triggers on any engagement update to recalculate the trendScore.
- * Uses the formula: (Velocity) / (Age + 2)^1.3
+ * 🏎️ REAL-TIME TRENDING ENGINE (REACTIVE)
+ * Triggers on any engagement update to recalculate the trendScore immediately.
  */
 exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
@@ -44,11 +43,9 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
   const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completionRate * 20);
 
   // 5. Apply Power-Law Time Decay
-  // Ensures new viral posts rise quickly but old posts decay gracefully.
   const score = velocity / Math.pow((ageHours + 2), 1.3);
 
   // 6. Persistence Handshake
-  // Only update if the score has moved significantly to save write operations
   if (data.trendScore && Math.abs(data.trendScore - score) < 0.001) {
     return null;
   }
@@ -57,6 +54,41 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
     trendScore: score,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
+});
+
+/**
+ * 🛰️ SCHEDULED TRENDING UPDATE (CRON)
+ * Runs every 5 minutes to ensure scores decay even if no new interaction occurs.
+ */
+exports.updateScheduledTrendingScores = onSchedule("every 5 minutes", async (event) => {
+  const db = admin.firestore();
+  const snapshot = await db.collection("trending_stats").get();
+  const batch = db.batch();
+  const now = new Date();
+
+  snapshot.forEach((docSnap) => {
+    const data = docSnap.data();
+    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+    const ageHours = (now - createdAt) / 3600000;
+
+    const views = data.views || 0;
+    const likes = data.likes || 0;
+    const comments = data.comments || 0;
+    const shares = data.shares || 0;
+    const completed = data.completedViews || 0;
+    const completionRate = views > 0 ? (completed / views) : 0;
+
+    const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completionRate * 20);
+    const trendScore = velocity / Math.pow((ageHours + 2), 1.3);
+
+    batch.update(docSnap.ref, {
+      trendScore,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  });
+
+  await batch.commit();
+  console.log(`Liaison Intelligence: Recalculated trending scores for ${snapshot.size} vibrations.`);
 });
 
 /**
@@ -274,7 +306,6 @@ exports.gamHubAuthGate = beforeUserCreated(async (event) => {
 
   if (!studentSnap.empty) {
     const campusData = studentSnap.docs[0].data();
-    console.log(`New Student joining from: ${campusData.name}`);
     return {
       customClaims: {
         role: "student",
@@ -286,7 +317,6 @@ exports.gamHubAuthGate = beforeUserCreated(async (event) => {
 
   if (!staffSnap.empty) {
     const campusData = staffSnap.docs[0].data();
-    console.log(`New Staff member joining from: ${campusData.name}`);
     return {
       customClaims: {
         role: "staff",
