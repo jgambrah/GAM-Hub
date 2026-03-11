@@ -130,30 +130,57 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 });
 
 /**
- * 📈 TRENDING HASHTAG UPDATER
- * Calculates hashtag velocity scores every 10 minutes.
+ * 📈 TRENDING HASHTAG UPDATER (PROFESSIONAL VELOCITY ENGINE)
+ * Calculates hashtag velocity and trending scores every 10 minutes.
+ * Uses a rolling window to detect exploding narratives.
  */
 exports.updateTrendingHashtags = onSchedule("every 10 minutes", async (event) => {
   const db = admin.firestore();
-  const snapshot = await db.collection("hashtags").get();
-  const batch = db.batch();
+  const hashtagsSnapshot = await db.collection("hashtags").get();
   const now = new Date();
+  const batch = db.batch();
 
-  snapshot.forEach((docSnap) => {
+  // Define lookback window (30 minutes for velocity)
+  const lookbackMins = 30;
+  const startTime = new Date(now.getTime() - lookbackMins * 60000);
+  const startTimeString = startTime.toISOString().slice(0, 16);
+
+  // Process hashtags in parallel to calculate burst velocity
+  const processPromises = hashtagsSnapshot.docs.map(async (docSnap) => {
+    const tag = docSnap.id;
     const data = docSnap.data();
-    const postCount = data.postCount || 0;
-    const lastUsedAt = data.lastUsedAt?.toDate ? data.lastUsedAt.toDate() : new Date();
-    const ageHours = (now - lastUsedAt) / 3600000;
+    
+    // 1. Compute Velocity (Posts per minute in the lookback window)
+    const statsSnapshot = await db.collection("hashtagStats")
+      .doc(tag)
+      .collection("minutes")
+      .where("__name__", ">=", startTimeString)
+      .get();
 
-    // Formula: postVelocity / (ageHours + 2)^1.5
-    const trendScore = postCount / Math.pow(ageHours + 2, 1.5);
+    const counts = statsSnapshot.docs.map(d => d.data().count || 0);
+    const totalNewPosts = counts.reduce((a, b) => a + b, 0);
+    const velocity = totalNewPosts / lookbackMins;
+
+    // 2. Compute Trending Score (Weighted Formula)
+    // trendScore = (velocity * 0.6) + (engagement * 0.3) + (freshness * 0.1)
+    
+    const lastUsedAt = data.lastUsedAt?.toDate ? data.lastUsedAt.toDate() : now;
+    const ageMinutes = Math.max(0, (now.getTime() - lastUsedAt.getTime()) / 60000);
+    const freshness = 1 / (ageMinutes + 1);
+    
+    // Simple engagement metric for the prototype: derived from recent velocity vs historical count
+    const engagement = velocity > 0 ? 0.5 : 0; 
+
+    const trendScore = (velocity * 0.6) + (engagement * 0.3) + (freshness * 0.1);
 
     batch.update(docSnap.ref, {
       trendScore,
+      velocity,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
   });
 
+  await Promise.all(processPromises);
   await batch.commit();
 });
 
