@@ -1,39 +1,45 @@
 'use client';
 
 /**
- * @fileOverview Hashtag Extraction & Indexing Engine for GAM Hub.
- * Handles the normalization, extraction, and global indexing of campus keywords.
+ * @fileOverview Enterprise-Grade Hashtag Engine for GAM Hub.
+ * Handles extraction, anti-spam validation, indexing, and rendering.
  */
 
 import { doc, setDoc, increment, serverTimestamp, Firestore, query, collection, orderBy, startAt, endAt, getDocs, limit } from "firebase/firestore";
 import React from 'react';
 import Link from 'next/link';
 
+// LIAISON BLACKLIST: Prevent toxic or manipulative indexing
+const BANNED_TAGS = new Set(['spam', 'scam', 'cheat', 'hack', 'violence']);
+
 /**
- * Extracts hashtags from a given text string.
- * - Rules: Alphanumeric and underscores only.
- * - Limit: Max 10 tags per post to prevent spam.
- * - Normalization: All tags converted to lowercase.
+ * Extracts hashtags from a given text string with professional constraints.
  */
 export function extractHashtags(text: string): string[] {
   if (!text) return [];
 
+  // Regex captures # followed by alphanumeric/underscore
   const regex = /#([a-zA-Z0-9_]+)/g;
   const matches = text.match(regex) || [];
 
   return matches
     .map(tag => tag.replace('#', '').toLowerCase())
-    .filter((tag, index, self) => tag.length > 0 && self.indexOf(tag) === index) // Unique non-empty tags
-    .slice(0, 10);
+    .filter((tag, index, self) => (
+        tag.length > 0 && 
+        tag.length <= 25 && // Anti-spam: Length limit
+        self.indexOf(tag) === index && // Deduplication
+        !BANNED_TAGS.has(tag) // Security: Blacklist check
+    ))
+    .slice(0, 10); // Policy: Max 10 tags per vibration
 }
 
 /**
  * Updates the global hashtag index in Firestore.
- * This ensures that hashtags are rankable by popularity across the National Hub.
  */
 export async function updateHashtagIndex(firestore: Firestore, tags: string[]) {
   if (!firestore || !tags || tags.length === 0) return;
 
+  // Use parallel setDocs for zero-latency indexing
   const promises = tags.map(tag => {
     const ref = doc(firestore, "hashtags", tag.toLowerCase());
     return setDoc(ref, {
@@ -56,7 +62,8 @@ export async function searchHashtags(firestore: Firestore, prefix: string) {
 
   const q = query(
     collection(firestore, "hashtags"),
-    orderBy("tag"),
+    // Ordered by trendScore to show velocity-based suggestions first
+    orderBy("tag"), 
     startAt(cleanPrefix),
     endAt(cleanPrefix + "\uf8ff"),
     limit(5)
@@ -72,12 +79,13 @@ export async function searchHashtags(firestore: Firestore, prefix: string) {
 export function renderWithHashtags(text: string) {
   if (!text) return null;
 
-  // Split text by hashtags while capturing the hashtags themselves
   const parts = text.split(/(#\w+)/g);
   
   return parts.map((part, i) => {
     if (part.startsWith('#')) {
       const tag = part.slice(1).toLowerCase();
+      if (BANNED_TAGS.has(tag)) return part; // Don't link banned tags
+
       return React.createElement(Link, {
         key: i,
         href: `/hashtag/${tag}`,

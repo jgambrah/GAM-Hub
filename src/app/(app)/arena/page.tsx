@@ -14,10 +14,8 @@ import { Button } from '@/components/ui/button';
 import ArenaLeaderboard from '@/components/social/ArenaLeaderboard';
 import HallOfFame from '@/components/social/HallOfFame';
 import { ArenaRules } from '@/components/arena/ArenaRules';
-import EmojiPicker from 'emoji-picker-react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import Image from 'next/image';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
@@ -26,31 +24,28 @@ import { extractHashtags, updateHashtagIndex } from '@/lib/hashtag-utils';
 const INITIAL_LIMIT = 100;
 const LOAD_MORE_BATCH = 50;
 
+/**
+ * ArenaPage Component
+ * 
+ * National inter-uni battleground. 
+ * Updated with strict Hashtag Anti-Spam validation and Analytics indexing.
+ */
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
-    const { user, isUserLoading, isTokenReady } = useAuth();
+    const { user, isTokenReady } = useAuth();
     const { toast } = useToast();
     
     const [isLoading, setIsLoading] = useState(false);
     const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
     const [content, setContent] = useState('');
     const [vibeType, setVibeType] = useState<'shade' | 'celebration'>('celebration');
-    const [targetCampus, setTargetCampus] = useState<string | undefined>(undefined);
     const [showHallOfFame, setShowHallOfFame] = useState(false);
     
     const [showEmoji, setShowEmoji] = useState(false);
-    const [showUrlInput, setShowUrlInput] = useState(false);
     const [videoUrl, setVideoUrl] = useState('');
     const [file, setFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const { data: allCampuses } = useCollection<Campus>(
-        useMemoFirebase(() => {
-            if (!firestore || !isTokenReady) return null;
-            return query(collection(firestore, 'campuses'), orderBy('acronym', 'asc'));
-        }, [firestore, isTokenReady])
-    );
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
@@ -68,10 +63,8 @@ export default function ArenaPage() {
 
     const resetInputs = () => {
         setContent('');
-        setTargetCampus(undefined);
         setVibeType('celebration');
         setShowEmoji(false);
-        setShowUrlInput(false);
         setVideoUrl('');
         setFile(null);
         setPreviewUrl(null);
@@ -81,6 +74,13 @@ export default function ArenaPage() {
     const handlePost = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || (!content.trim() && !file && !videoUrl.trim())) return;
+
+        // POLICY: Anti-Spam Hashtag Validation
+        const rawTags = (content.match(/#\w+/g) || []);
+        if (rawTags.length > 10) {
+            toast({ variant: 'destructive', title: 'Too many tags!', description: 'Limit your battle tags to 10 for maximum vibe impact.' });
+            return;
+        }
 
         setIsLoading(true);
         try {
@@ -124,7 +124,7 @@ export default function ArenaPage() {
             // 4. Launch to Yard
             await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
             
-            // 5. Update Global Hashtag Index
+            // 5. Update Global Hashtag Index for Analytics
             if (hashtags.length > 0) {
                 await updateHashtagIndex(firestore, hashtags);
             }
@@ -177,6 +177,7 @@ export default function ArenaPage() {
                                 {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
                             </Button>
                         </div>
+                        <p className="text-[9px] text-muted-foreground px-6 italic">Battle Policy: Max 10 tags. Spam detection active. 🛡️</p>
                     </form>
                 </div>
             )}

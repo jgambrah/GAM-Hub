@@ -21,20 +21,18 @@ import { extractHashtags, updateHashtagIndex } from '@/lib/hashtag-utils';
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Securely handles Text, Image/Video Uploads, and YouTube/TikTok Links.
+ * Now with strict Hashtag Policy validation and Analytics indexing.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
   const { isTokenReady, isAdmin } = useAuth();
   const { toast } = useToast();
   
-  // Vibe State
   const [postType, setPostType] = useState<'text' | 'image' | 'native' | 'link'>('text');
   const [content, setContent] = useState('');
   const [externalUrl, setExternalUrl] = useState('');
   const [isGlobal, setIsGlobal] = useState(false);
   
-  // Media State
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -70,14 +68,17 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     if (loading) return;
 
     if (!isTokenReady || !userProfile || !auth?.currentUser || !firestore) {
-      toast({ 
-        variant: 'destructive', 
-        title: 'Identity Syncing', 
-        description: 'Wait a moment for the Yard to verify your credentials.' 
-      });
+      toast({ variant: 'destructive', title: 'Identity Syncing', description: 'Wait a moment for the Yard to verify your credentials.' });
       return;
     }
     
+    // 1. HASHTAG VALIDATION
+    const rawTags = (content.match(/#\w+/g) || []);
+    if (rawTags.length > 10) {
+        toast({ variant: 'destructive', title: 'Policy Violation', description: 'Maximum 10 hashtags per vibration allowed.' });
+        return;
+    }
+
     const hasMedia = (postType === 'image' && imageFile) || 
                      (postType === 'native' && videoFile) || 
                      (postType === 'link' && externalUrl.trim());
@@ -94,11 +95,10 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       let mediaUrl: string | null = null;
       let mediaType: SocialPost['mediaType'] = 'text';
 
-      // 1. MULTIMEDIA PROCESSING
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(fileRef, file);
+        await uploadBytes(fileRef, imageFile);
         imageUrl = await getDownloadURL(fileRef);
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
@@ -110,20 +110,12 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaUrl = externalUrl;
       }
       
-      // 2. HASHTAG ENGINE: Professional Extraction
       const hashtags = extractHashtags(content);
+      const embedding = await generatePostEmbedding({ content: content || "", tags: hashtags });
 
-      // 3. VECTOR EMBEDDING GENERATION
-      const embedding = await generatePostEmbedding({ 
-        content: content || "", 
-        tags: hashtags 
-      });
-
-      // 4. TARGETING LOGIC
       const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
       const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
 
-      // 5. CONSTRUCT PAYLOAD
       const postData = {
         authorId: auth.currentUser.uid,
         authorName: userProfile.name || "Campus Member",
@@ -144,10 +136,9 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         createdAt: new Date().toISOString(),
       };
 
-      // 6. BROADCAST & INDEX
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // 7. Update Global Hashtag Index
+      // Update Global Hashtag Index for Analytics & Trending
       if (hashtags.length > 0) {
         await updateHashtagIndex(firestore, hashtags);
       }
@@ -157,11 +148,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
     } catch (err: any) { 
         console.error("🚨 BROADCAST CRASH:", err); 
-        toast({ 
-          variant: 'destructive', 
-          title: 'Broadcast Failed', 
-          description: 'Check your connection and try again.' 
-        });
+        toast({ variant: 'destructive', title: 'Broadcast Failed', description: 'Check your connection and try again.' });
     } finally { 
         setLoading(false); 
     }
@@ -201,23 +188,22 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                   </div>
                   <div>
                     <p className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest leading-none">Global Hub Seeding</p>
-                    <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-tight">Semantic visibility across ALL current and future campuses.</p>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-tight">Semantic visibility across ALL campuses.</p>
                   </div>
                 </div>
-                <Switch 
-                  checked={isGlobal} 
-                  onCheckedChange={setIsGlobal} 
-                  className="data-[state=checked]:bg-amber-500"
-                />
+                <Switch checked={isGlobal} onCheckedChange={setIsGlobal} className="data-[state=checked]:bg-amber-500" />
               </div>
             )}
 
-            <textarea 
-                placeholder="What's the frequency, Citizen? 😊 Use #hashtags to index your vibe." 
-                className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
-                value={content}
-                onChange={(e) => setContent(e.target.value)} 
-            />
+            <div className="space-y-2">
+                <textarea 
+                    placeholder="What's the frequency, Citizen? 😊 Use #hashtags to index your vibe." 
+                    className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)} 
+                />
+                <p className="text-[9px] text-muted-foreground px-4 italic">Policy: Max 10 hashtags. Anti-spam active.</p>
+            </div>
             
             {preview && (
                 <div className="relative aspect-video rounded-[2rem] overflow-hidden border-4 border-muted shadow-inner bg-black group">
@@ -247,7 +233,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 </div>
             )}
 
-            {/* CHANNEL SELECTOR */}
             <div className="flex gap-2 bg-muted/30 p-1 rounded-3xl border">
                 {[
                     { id: 'text', icon: Type, label: 'Text' },
@@ -273,7 +258,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 ))}
             </div>
 
-            {/* HIDDEN INPUTS */}
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
             <input type="file" ref={videoInputRef} className="hidden" accept="video/*" onChange={handleVideoSelect} />
 
