@@ -69,11 +69,11 @@ export function cosineSimilarity(a: number[], b: number[]) {
 }
 
 /**
- * 📉 EXPONENTIAL FRESHNESS DECAY
+ * 📉 EXPONENTIAL FRESHNESS DECAY (12h Half-life)
  */
 function exponentialFreshness(date: Date) {
   const ageHours = (Date.now() - date.getTime()) / 3600000;
-  return 10 * Math.exp(-ageHours / 3);
+  return 10 * Math.exp(-ageHours / 12);
 }
 
 /**
@@ -88,7 +88,7 @@ export function explorationBoost(post: SocialPost) {
 }
 
 /**
- * 🏗️ PIPELINE STAGE 1: VECTOR RANKER (THE NET)
+ * 🏗️ PIPELINE STAGE 1: VECTOR RANKER
  */
 export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
   if (!userVector) return posts;
@@ -104,58 +104,53 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 }
 
 /**
- * 🏎️ PIPELINE STAGE 2: LOCAL CONTEXT RANKING (THE VIBE)
+ * 🏎️ PIPELINE STAGE 2: FINAL DISCOVERY ARCHITECTURE
+ * Implements: Shared Tags + Graph Related Tags + Viral Boost + Freshness
  */
 export function computeBaseScore(
   current: SocialPost, 
   candidate: SocialPost, 
   viralTags: Set<string> = new Set(),
   trendingTags: Set<string> = new Set(),
-  relatedTags: Set<string> = new Set() // GRAPH INTEGRATION
+  relatedGraphTags: Set<string> = new Set() 
 ) {
   let score = 0;
 
+  // 🏷️ 1. SHARED TAGS BOOST (+10 per tag)
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const sharedTags = (candidate.tags || []).filter(t =>
     currentTags.has(t.toLowerCase())
   );
-  
-  // 🏷️ HASHTAG SIGNAL: Boost shared tags
   score += sharedTags.length * 10;
   
-  // 🕸️ GRAPH ADJACENCY: Boost related interests (+8)
-  // This allows discovery of adjacent topics (e.g. if watching #afrobeats, show #amapiano)
+  // 🕸️ 2. GRAPH RELATED TAGS BOOST (+5 per match)
   const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
-  if (candidateTags.some(t => relatedTags.has(t))) {
-    score += 8;
-  }
+  const relatedMatches = candidateTags.filter(t => relatedGraphTags.has(t));
+  score += relatedMatches.length * 5;
   
-  // 🚀 LIAISON VIRAL BOOST ENGINE
-  // 1. Viral Boost (+25): Top priority for exploding narratives
+  // 🔥 3. VIRAL VELOCITY BOOST
   if (candidateTags.some(t => viralTags.has(t))) {
-    score += 25;
-  }
-  // 2. Trending Boost (+12): High weight for rising topics
-  else if (candidateTags.some(t => trendingTags.has(t))) {
-    score += 12;
+    score += 25; // Massive boost for national breakouts
+  } else if (candidateTags.some(t => trendingTags.has(t))) {
+    score += 12; // High boost for rising campus trends
   }
 
+  // 🎬 MEDIA CONTINUITY
   const currentCat = getMediaCategory(current.mediaType);
   const candidateCat = getMediaCategory(candidate.mediaType);
-
   if (currentCat === candidateCat) {
     score += 8;
     if (candidate.mediaType === current.mediaType) score += 7;
   }
 
+  // 📍 GEOGRAPHIC RELEVANCE
   if (candidate.campusId === current.campusId) score += 10;
   else if (candidate.campusId === 'all') score += 5;
 
-  score += Math.min((candidate.likes || 0) / 5, 15);
-
-  // Apply Bandit Entropy Boost (Testing new content)
+  // 🚀 EXPLORATION & BANDIT SIGNALS
   score += explorationBoost(candidate);
 
+  // 📉 FRESHNESS DECAY
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string'
         ? new Date(candidate.createdAt)
@@ -177,6 +172,7 @@ export function computeVibeScore(
   const base = computeBaseScore(current, candidate, viralTags, trendingTags, relatedTags);
   const personal = getPersonalScore(candidate);
 
+  // Balanced blend of national discovery (60%) and personal history (40%)
   return base * 0.6 + personal * 0.4;
 }
 
@@ -196,6 +192,7 @@ export function buildSmartQueue(
   for (const p of pool) {
     if (p.id === current.id) continue;
 
+    // Mood filtering
     if (moodTagSet.size > 0) {
       const match =
         (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) ||
@@ -223,7 +220,7 @@ function buildReason(
   
   if (userEmbedding && candidate.embedding) {
       const tasteSimilarity = cosineSimilarity(userEmbedding, candidate.embedding);
-      if (tasteSimilarity > 0.88) parts.push('Vibe taste match');
+      if (tasteSimilarity > 0.88) parts.push('Personal Taste Match');
   }
 
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
@@ -238,11 +235,8 @@ function buildReason(
       parts.push(`Related: #${tag}`);
   }
 
-  if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Based on your history');
+  if (parts.length < 2 && getPersonalScore(candidate) > 15) parts.push('Based on your history');
   
-  // Multi-Armed Bandit Label
-  if (explorationBoost(candidate) > 5 && parts.length === 0) parts.push('Fresh Discovery');
-
   if (parts.length === 0) parts.push('Trending on GAM Hub');
   return parts.slice(0, 2).join(' · ');
 }
@@ -297,7 +291,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
   
-  // 🛰️ LIAISON VIRAL TRACKERS
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());
   const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
   
@@ -328,9 +321,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => { viralTagsRef.current = viralTags; }, [viralTags]);
   useEffect(() => { trendingTagsRef.current = trendingTags; }, [trendingTags]);
 
-  const isMiniPlayerVisible = !!activePostId;
-
-  // 🛰️ LIAISON CONTEXT: Fetch viral and trending tags for discovery boost
   useEffect(() => {
     if (!firestore) return;
     const q = query(collection(firestore, 'hashtags'), orderBy('trendScore', 'desc'), limit(20));
@@ -372,33 +362,26 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
 
-  /**
-   * 🏗️ THE MULTI-ARMED BANDIT PIPELINE
-   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     const userEmbedding = userEmbeddingRef.current;
-    
     const viral = viralTagsRef.current;
     const trending = trendingTagsRef.current;
 
-    // 🕸️ GRAPH EXPANSION: Resolve related tags for the active post
     let relatedTags = new Set<string>();
     const currentTags = current.tags || [];
     if (currentTags.length > 0 && firestore) {
         try {
-            // Check top 3 tags for expansion
             const expansionPromises = currentTags.slice(0, 3).map(tag => getRelatedHashtags(firestore, tag));
             const expansionResults = await Promise.all(expansionPromises);
             expansionResults.flat().forEach(r => {
-                // thresholding for strong relations
                 if (r.weight > 5) relatedTags.add(r.tag.toLowerCase());
             });
         } catch (e) { console.warn("Graph expansion failed"); }
     }
     
-    // STAGE 1: BLENDED CANDIDATE SELECTION
+    // BLENDED CANDIDATE SELECTION
     const vectorRanked = userEmbedding 
         ? rankByEmbedding(pool, userEmbedding).slice(0, 140) 
         : pool.slice(0, 140);
@@ -415,10 +398,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
-    // STAGE 2: Local Vibe Contextual Ranking (Now with Graph relatedTags)
+    // FINAL RANKING ENGINE (STAGE 2)
     const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags);
     
-    // 🛡️ LIAISON DIVERSITY PROTOCOL: Prevent creator repetition
+    // DIVERSITY & FREQUENCY CAPPING
     const authorSeen = new Set<string>();
     const diverseRanked: SocialPost[] = [];
     for (const entry of rankedResults) {
@@ -443,11 +426,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(false);
 
     try {
-      // STAGE 3: AI Re-Ranking
+      // AI RE-RANKER (STAGE 3)
       const eliteCandidates = finalPoolForNext.slice(0, 25).map(p => ({
-        id: p.id, 
-        content: p.content, 
-        tags: p.tags || [],
+        id: p.id, content: p.content, tags: p.tags || [],
       }));
 
       const recommendation = await getRecommendedVibes({
@@ -456,11 +437,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         availablePosts: eliteCandidates,
       });
 
-      const aiIds = recommendation.recommendedPostIds;
       const postMap = new Map<string, SocialPost>();
       for (const p of pool) postMap.set(p.id, p);
 
-      const safeIds = aiIds.filter(id => postMap.has(id));
+      const safeIds = recommendation.recommendedPostIds.filter(id => postMap.has(id));
       const aiPosts = safeIds.map(id => postMap.get(id)!).filter((p) => p.id !== current.id);
       
       const aiIdSet = new Set(safeIds);
@@ -470,19 +450,8 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
 
-      // TikTok Prefetch
-      if (typeof window !== 'undefined') {
-        finalRanked.slice(0, PREFETCH_SIZE).forEach(p => {
-          if (getMediaCategory(p.mediaType) === 'video' && p.mediaUrl) {
-            const v = document.createElement('video');
-            v.src = p.mediaUrl;
-            v.preload = 'auto';
-          }
-        });
-      }
-
     } catch (err) {
-      console.warn('Liaison Re-ranking AI bypassed:', err);
+      console.warn('Liaison Stage 3 AI bypassed:', err);
     }
   }, [getTopInterests, firestore]);
 
@@ -505,36 +474,32 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         const idx = currentQueue.findIndex(p => p.id === currentId);
         const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
         if (nextPost) {
-          setTimeout(() => {
-            setActivePostId(nextPost.id);
-            setActivePostState(nextPost);
-            pushToHistory(nextPost);
-          }, 0);
+          setActivePostId(nextPost.id);
+          setActivePostState(nextPost);
+          pushToHistory(nextPost);
         }
       }, duration);
     }
   }, [clearDisplayTimer, pushToHistory]);
 
   const setActivePost = useCallback((post: SocialPost | null) => {
-    setTimeout(() => {
-      if (!post) { 
-        if (activePostIdRef.current !== null) {
-          clearDisplayTimer();
-          setActivePostId(null); 
-          setActivePostState(null); 
-        }
-        return; 
+    if (!post) { 
+      if (activePostIdRef.current !== null) {
+        clearDisplayTimer();
+        setActivePostId(null); 
+        setActivePostState(null); 
       }
-      
-      if (activePostIdRef.current === post.id) return;
-      
-      clearDisplayTimer();
-      setActivePostId(post.id);
-      setActivePostState(post);
-      pushToHistory(post);
-      rebuildQueue(post, allPostsRef.current, activeMoodRef.current);
-      startDisplayTimer(post);
-    }, 0);
+      return; 
+    }
+    
+    if (activePostIdRef.current === post.id) return;
+    
+    clearDisplayTimer();
+    setActivePostId(post.id);
+    setActivePostState(post);
+    pushToHistory(post);
+    rebuildQueue(post, allPostsRef.current, activeMoodRef.current);
+    startDisplayTimer(post);
   }, [rebuildQueue, pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const setActiveMood = useCallback((mood: VibeMood) => {
@@ -544,35 +509,31 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [rebuildQueue]);
 
   const playNext = useCallback(() => {
-    setTimeout(() => {
-      const currentQueue = queueRef.current;
-      const currentId = activePostIdRef.current;
-      if (currentQueue.length <= 1) return;
-      const idx = currentQueue.findIndex(p => p.id === currentId);
-      const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
-      if (nextPost) {
-        clearDisplayTimer();
-        setActivePostId(nextPost.id);
-        setActivePostState(nextPost);
-        pushToHistory(nextPost);
-        startDisplayTimer(nextPost);
-      }
-    }, 0);
+    const currentQueue = queueRef.current;
+    const currentId = activePostIdRef.current;
+    if (currentQueue.length <= 1) return;
+    const idx = currentQueue.findIndex(p => p.id === currentId);
+    const nextPost = currentQueue[idx === -1 ? 0 : (idx + 1) % currentQueue.length];
+    if (nextPost) {
+      clearDisplayTimer();
+      setActivePostId(nextPost.id);
+      setActivePostState(nextPost);
+      pushToHistory(nextPost);
+      startDisplayTimer(nextPost);
+    }
   }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const playPrev = useCallback(() => {
-    setTimeout(() => {
-      setHistory(prev => {
-        if (prev.length < 2) return prev;
-        const prevPost = prev[1];
-        clearDisplayTimer();
-        setActivePostId(prevPost.id);
-        setActivePostState(prevPost);
-        rebuildQueue(prevPost, allPostsRef.current, activeMoodRef.current);
-        startDisplayTimer(prevPost);
-        return prev.slice(1);
-      });
-    }, 0);
+    setHistory(prev => {
+      if (prev.length < 2) return prev;
+      const prevPost = prev[1];
+      clearDisplayTimer();
+      setActivePostId(prevPost.id);
+      setActivePostState(prevPost);
+      rebuildQueue(prevPost, allPostsRef.current, activeMoodRef.current);
+      startDisplayTimer(prevPost);
+      return prev.slice(1);
+    });
   }, [rebuildQueue, clearDisplayTimer, startDisplayTimer]);
 
   const addToQueue = useCallback((posts: SocialPost[]) => {
@@ -582,20 +543,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       if (incoming.length === 0) return prev;
       
       let merged = [...prev, ...incoming];
-      if (merged.length > MAX_POOL_SIZE) {
-        merged = merged.slice(-MAX_POOL_SIZE);
-      }
+      if (merged.length > MAX_POOL_SIZE) merged = merged.slice(-MAX_POOL_SIZE);
 
       const currentPost = activePostRef.current;
       if (currentPost && isContinuousRef.current) {
-        setTimeout(() => rebuildQueue(currentPost, merged, activeMoodRef.current), 0);
+        rebuildQueue(currentPost, merged, activeMoodRef.current);
       }
       return merged;
     });
-    setQueue(prev => {
-      if (prev.length > 0) return prev;
-      return [...posts];
-    });
+    setQueue(prev => prev.length > 0 ? prev : [...posts]);
   }, [rebuildQueue]);
 
   const sendReaction = useCallback((emoji: VibeReaction, post: SocialPost) => {
