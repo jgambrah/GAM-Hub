@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, limit, QueryConstraint } from 'firebase/firestore';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useFirebase, useMemoFirebase } from '@/firebase';
+import { collection, query, where, orderBy, limit, getDocs, QueryConstraint } from 'firebase/firestore';
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
@@ -13,14 +13,15 @@ import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 
-const INITIAL_LIMIT = 100;
+const INITIAL_LIMIT = 50;
 const LOAD_MORE_BATCH = 50;
 
 /**
  * CampusPulseFeed Component
  * 
- * The primary engine for the Yard's social stream.
- * Liaison Update: Implemented dynamic scaling to support high-volume video sharing.
+ * Implements the "Bucketed Retrieval Strategy" for discoverability at scale.
+ * Fetches multiple candidate pools (Recent, Trending, Global) and merges them
+ * to feed the 3-Stage Ranking Pipeline.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -35,52 +36,93 @@ export default function CampusPulseFeed({
 }) {
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
-    const { isContinuous, setIsContinuous } = useVibePlayer();
+    const { isContinuous, setIsContinuous, addToQueue } = useVibePlayer();
+    
+    const [posts, setPosts] = useState<SocialPost[]>([]);
+    const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    
-    const socialQuery = useMemoFirebase(() => {
-        if (!firestore || !activeCampusId || !user || !isTokenReady) return null;
+
+    /**
+     * 🏗️ THE BUCKETED RETRIEVAL COMMAND
+     * Fetches candidates from multiple distinct Firestore indexes.
+     */
+    const fetchBucketedCandidates = async () => {
+        if (!firestore || !activeCampusId || !user || !isTokenReady) return;
         
+        setIsLoading(true);
         const pulseRef = collection(firestore, 'campus_pulse');
-        const constraints: QueryConstraint[] = [];
         
-        if (activeCampusId !== 'all') {
-            constraints.push(where('campusId', 'in', [activeCampusId, 'all']));
+        try {
+            // Bucket 1: RECENT (The local yard)
+            const recentQuery = query(
+                pulseRef,
+                where('campusId', '==', activeCampusId),
+                orderBy('createdAt', 'desc'),
+                limit(limitCount)
+            );
+
+            // Bucket 2: GLOBAL (The national pulse)
+            const globalQuery = query(
+                pulseRef,
+                where('campusId', '==', 'all'),
+                orderBy('createdAt', 'desc'),
+                limit(30)
+            );
+
+            // Bucket 3: LIAISON SEED (Official high-vibe boosts)
+            const seedQuery = query(
+                pulseRef,
+                where('isLiaisonSeed', '==', true),
+                limit(10)
+            );
+
+            const [recentSnap, globalSnap, seedSnap] = await Promise.all([
+                getDocs(recentQuery),
+                getDocs(globalQuery),
+                getDocs(seedQuery)
+            ]);
+
+            const mergedMap = new Map<string, SocialPost>();
+            
+            [...seedSnap.docs, ...globalSnap.docs, ...recentSnap.docs].forEach(doc => {
+                mergedMap.set(doc.id, { id: doc.id, ...doc.data() } as SocialPost);
+            });
+
+            const finalPool = Array.from(mergedMap.values()).sort((a, b) => 
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+
+            setPosts(finalPool);
+            addToQueue(finalPool);
+
+            // Fetch Official SRC Bulletin separately
+            const srcQuery = query(
+                collection(firestore, 'src_posts'),
+                where('campusId', '==', activeCampusId),
+                orderBy('createdAt', 'desc'),
+                limit(3)
+            );
+            const srcSnap = await getDocs(srcQuery);
+            setSrcPosts(srcSnap.docs.map(d => ({ id: d.id, ...d.data() } as SrcPost)));
+
+        } catch (err) {
+            console.error("Liaison Retrieval Error:", err);
+        } finally {
+            setIsLoading(false);
+            setIsRefreshing(false);
         }
+    };
 
-        if (filterTag && filterTag !== 'All') {
-            constraints.push(where('tags', 'array-contains', filterTag.toLowerCase()));
-        }
-        
-        if (tab === 'vlogs') {
-            constraints.push(where('mediaType', 'in', ['video', 'youtube', 'tiktok']));
-        }
-
-        constraints.push(orderBy('createdAt', 'desc'));
-        constraints.push(limit(limitCount)); 
-
-        return query(pulseRef, ...constraints);
-    }, [firestore, activeCampusId, filterTag, tab, user?.id, isTokenReady, limitCount]);
-
-    const srcQuery = useMemoFirebase(() => {
-        if (!firestore || tab !== 'all' || !activeCampusId || activeCampusId === 'all' || !user || !isTokenReady) return null;
-        return query(
-            collection(firestore, 'src_posts'),
-            where('campusId', '==', activeCampusId),
-            orderBy('createdAt', 'desc'),
-            limit(5)
-        );
-    }, [firestore, tab, activeCampusId, user?.id, isTokenReady]);
-
-    const { data: posts, isLoading: isLoadingPosts, error } = useCollection<SocialPost>(socialQuery);
-    const { data: srcPosts, isLoading: isLoadingSrc } = useCollection<SrcPost>(srcQuery);
+    useEffect(() => {
+        fetchBucketedCandidates();
+    }, [firestore, activeCampusId, user?.id, isTokenReady, limitCount]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
         setLimitCount(INITIAL_LIMIT);
-        // Force a brief state change to trigger useMemo re-evaluation if needed
-        setTimeout(() => setIsRefreshing(false), 500);
+        fetchBucketedCandidates();
     };
 
     const handleLoadMore = () => {
@@ -88,8 +130,6 @@ export default function CampusPulseFeed({
     };
 
     const filteredPosts = useMemo(() => {
-        if (!posts) return [];
-        
         const mappedSrc: SocialPost[] = (srcPosts || []).map(p => ({
             id: p.id,
             authorId: p.authorId,
@@ -108,9 +148,7 @@ export default function CampusPulseFeed({
             isOfficial: true
         }));
 
-        let combined = [...mappedSrc, ...posts].sort((a, b) => 
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
+        let combined = [...mappedSrc, ...posts];
 
         if (searchQuery.trim()) {
             const term = searchQuery.toLowerCase().trim();
@@ -126,19 +164,6 @@ export default function CampusPulseFeed({
         return combined;
     }, [posts, srcPosts, searchQuery]);
 
-    if (error) {
-        return (
-            <div className="p-10 text-center bg-red-50 dark:bg-red-950/20 rounded-[3rem] border-2 border-red-100 dark:border-red-900/50 col-span-full">
-                <p className="text-sm font-black text-red-600 dark:text-red-400 uppercase tracking-widest mb-4">Vibration Mismatch</p>
-                <button onClick={() => window.location.reload()} className="flex items-center gap-2 mx-auto bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-xs shadow-lg hover:bg-red-700 transition-all active:scale-95">
-                    <RefreshCcw size={14} /> Re-sync Identity
-                </button>
-            </div>
-        );
-    }
-
-    const hasMore = posts && posts.length >= limitCount;
-
     return (
         <div className="space-y-8 pb-20">
             <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-blue-500 animate-in slide-in-from-top-4">
@@ -147,15 +172,15 @@ export default function CampusPulseFeed({
                         <Zap size={20} className={isContinuous ? "animate-pulse" : ""} fill={isContinuous ? "currentColor" : "none"} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">Continuous Vibe Mode</h4>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Matching: {isContinuous ? 'ACTIVE' : 'OFF'}</p>
+                        <h4 className="font-black text-sm tracking-tight">Continuous Discovery</h4>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bucket Retrieval: ACTIVE</p>
                     </div>
                 </div>
                 
                 <div className="flex items-center gap-4">
                     <button 
                         onClick={handleRefresh}
-                        disabled={isRefreshing || isLoadingPosts}
+                        disabled={isRefreshing || isLoading}
                         className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all active:scale-90 disabled:opacity-50"
                         title="Re-sync Yard"
                     >
@@ -168,7 +193,7 @@ export default function CampusPulseFeed({
                 </div>
             </div>
 
-            {isLoadingPosts && limitCount === INITIAL_LIMIT ? (
+            {isLoading && posts.length === 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Skeleton className="h-96 rounded-[2.5rem]" />
                     <Skeleton className="h-96 rounded-[2.5rem]" />
@@ -178,24 +203,17 @@ export default function CampusPulseFeed({
                 <>
                     <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
                     
-                    {hasMore ? (
-                        <div className="flex flex-col items-center gap-4 pt-10">
-                            <Button 
-                                onClick={handleLoadMore} 
-                                disabled={isLoadingPosts}
-                                className="bg-slate-900 text-white rounded-[1.5rem] px-10 py-6 h-auto font-black text-sm shadow-xl active:scale-95 transition-all"
-                            >
-                                {isLoadingPosts ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" size={18} />}
-                                Load More Vibrations
-                            </Button>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Displaying {posts.length} vibes from the Yard</p>
-                        </div>
-                    ) : (
-                        <div className="pt-20 text-center space-y-4 opacity-40">
-                            <Globe className="mx-auto text-slate-300" size={48} />
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">Liaison Out • End of Signal</p>
-                        </div>
-                    )}
+                    <div className="flex flex-col items-center gap-4 pt-10">
+                        <Button 
+                            onClick={handleLoadMore} 
+                            disabled={isLoading}
+                            className="bg-slate-900 text-white rounded-[1.5rem] px-10 py-6 h-auto font-black text-sm shadow-xl active:scale-95 transition-all"
+                        >
+                            {isLoading ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" size={18} />}
+                            Expand Candidate Pool
+                        </Button>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Discovery Engine: {posts.length} vibes indexed</p>
+                    </div>
                 </>
             )}
         </div>

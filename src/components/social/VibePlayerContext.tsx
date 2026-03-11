@@ -106,14 +106,6 @@ export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
   );
   score += sharedTags.length * 12;
 
-  // Categorical continuity
-  const currentCat = getMediaCategory(current.mediaType);
-  const candidateCat = getMediaCategory(candidate.mediaType);
-  if (currentCat === candidateCat) {
-    score += 8;
-    if (candidate.mediaType === current.mediaType) score += 7;
-  }
-
   // Regional proximity
   if (candidate.campusId === current.campusId) score += 10;
   else if (candidate.campusId === 'all') score += 5;
@@ -286,7 +278,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   /**
-   * 🏎️ REBUILD QUEUE: THE LIAISON 3-STAGE PIPELINE
+   * 🏎️ REBUILD QUEUE: THE LIAISON 3-STAGE DISCOVERY PIPELINE
    */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
