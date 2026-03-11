@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles, Hash, Loader2 } from 'lucide-react';
+import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles, Hash, Loader2, Share2 } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import TrendingTags from '@/components/social/TrendingTags';
 import TrendingSearchTicker from '@/components/social/TrendingSearchTicker';
@@ -21,7 +21,8 @@ export default function ExplorePage() {
     if (searchQuery.startsWith('#') && searchQuery.length > 1 && firestore) {
         setIsSearchingTags(true);
         const timer = setTimeout(async () => {
-            const results = await searchHashtags(firestore, searchQuery);
+            // GRAPH UPGRADE: Set includeRelated to true for smarter suggestions
+            const results = await searchHashtags(firestore, searchQuery, true);
             setHashtagResults(results);
             setIsSearchingTags(false);
         }, 300);
@@ -60,7 +61,9 @@ export default function ExplorePage() {
             {hashtagResults.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-4 z-[100] bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 p-6 animate-in zoom-in-95 duration-200">
                     <div className="flex items-center justify-between px-2 mb-4">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Matching Hashtags</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            {hashtagResults[0].isRelated ? 'Discover Related Vibes' : 'Matching Hashtags'}
+                        </span>
                         {isSearchingTags && <Loader2 className="animate-spin text-indigo-500" size={14} />}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -71,10 +74,13 @@ export default function ExplorePage() {
                                 className="flex items-center justify-between p-4 bg-slate-50 hover:bg-indigo-600 hover:text-white rounded-2xl transition-all active:scale-95 group text-slate-900"
                             >
                                 <div className="flex items-center gap-3">
-                                    <Hash size={16} className="text-indigo-500 group-hover:text-white" />
+                                    {tag.isRelated ? <Share2 size={12} className="text-indigo-400" /> : <Hash size={16} className="text-indigo-500 group-hover:text-white" />}
                                     <span className="font-black text-sm uppercase tracking-wide">{tag.tag}</span>
+                                    {tag.isRelated && <span className="text-[8px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-black uppercase">Related</span>}
                                 </div>
-                                <span className="text-[10px] font-bold opacity-40 group-hover:opacity-80">{tag.postCount.toLocaleString()} posts</span>
+                                <span className="text-[10px] font-bold opacity-40 group-hover:opacity-80">
+                                    {tag.isRelated ? `${tag.weight} links` : `${tag.postCount.toLocaleString()} posts`}
+                                </span>
                             </button>
                         ))}
                     </div>

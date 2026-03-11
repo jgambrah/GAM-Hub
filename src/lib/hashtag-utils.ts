@@ -96,14 +96,15 @@ export async function updateHashtagGraph(firestore: Firestore, tags: string[]) {
 
 /**
  * Searches for hashtags by prefix for autocomplete.
+ * Now optionally fetches related tags if an exact match is found.
  */
-export async function searchHashtags(firestore: Firestore, prefix: string) {
+export async function searchHashtags(firestore: Firestore, prefix: string, includeRelated: boolean = false) {
   const cleanPrefix = prefix.startsWith('#') ? prefix.slice(1).toLowerCase() : prefix.toLowerCase();
   if (!cleanPrefix) return [];
 
   const q = query(
     collection(firestore, "hashtags"),
-    // Ordered by trendScore to show velocity-based suggestions first
+    // Ordered by tag for range query
     orderBy("tag"), 
     startAt(cleanPrefix),
     endAt(cleanPrefix + "\uf8ff"),
@@ -111,7 +112,38 @@ export async function searchHashtags(firestore: Firestore, prefix: string) {
   );
 
   const snap = await getDocs(q);
-  return snap.docs.map(d => d.data());
+  let results = snap.docs.map(d => d.data() as any);
+
+  // 🕸️ GRAPH UPGRADE: If first result is an exact match, pull related tags
+  if (includeRelated && results.length > 0 && results[0].tag === cleanPrefix) {
+      const related = await getRelatedHashtags(firestore, results[0].tag);
+      
+      // Merge: Original result first, then related tags
+      const relatedMapped = related.map(r => ({ tag: r.tag, postCount: 0, weight: r.weight, isRelated: true }));
+      results = [results[0], ...relatedMapped.filter(r => r.tag !== cleanPrefix)];
+  }
+
+  return results;
+}
+
+/**
+ * Fetches related hashtags from the graph based on co-occurrence weight.
+ */
+export async function getRelatedHashtags(firestore: Firestore, tag: string) {
+    const cleanTag = tag.startsWith('#') ? tag.slice(1).toLowerCase() : tag.toLowerCase();
+    
+    const q = query(
+        collection(firestore, "hashtagGraph", cleanTag, "edges"),
+        orderBy("weight", "desc"),
+        limit(10)
+    );
+
+    const snap = await getDocs(q);
+    
+    return snap.docs.map(d => ({
+        tag: d.id,
+        weight: d.data().weight
+    }));
 }
 
 /**

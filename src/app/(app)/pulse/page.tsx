@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
-import { MessageSquare, Plus, Video, Camera, Type, Info, Sparkles, Search, X, Hash } from 'lucide-react';
+import { MessageSquare, Plus, Video, Camera, Type, Info, Sparkles, Search, X, Hash, Share2, Loader2 } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import ShareVibeModal from '@/components/social/ShareVibeModal';
 import UpNextPanel from '@/components/social/UpNextPanel';
@@ -75,7 +75,8 @@ export default function PulsePage() {
     if (searchQuery.startsWith('#') && searchQuery.length > 1 && firestore) {
         setIsSearchingTags(true);
         const timer = setTimeout(async () => {
-            const results = await searchHashtags(firestore, searchQuery);
+            // GRAPH UPGRADE: Set includeRelated to true for smarter suggestions
+            const results = await searchHashtags(firestore, searchQuery, true);
             setHashtagResults(results);
             setIsSearchingTags(false);
         }, 300);
@@ -145,7 +146,9 @@ export default function PulsePage() {
             {hashtagResults.length > 0 && (
                 <div className="absolute top-full left-0 right-0 mt-2 z-[100] bg-white rounded-[2rem] shadow-2xl border border-slate-100 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="flex items-center justify-between px-4 mb-3">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hashtag Suggestions</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            {hashtagResults[0].isRelated ? 'Topic Expansion suggestions' : 'Hashtag Suggestions'}
+                        </span>
                         {isSearchingTags && <Loader2 className="animate-spin text-slate-300" size={12} />}
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -153,11 +156,13 @@ export default function PulsePage() {
                             <button
                                 key={tag.tag}
                                 onClick={() => setSearchQuery(`#${tag.tag}`)}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-600 rounded-2xl transition-all active:scale-95 group"
+                                className="flex items-center gap-2 px-5 py-2.5 bg-slate-50 hover:bg-indigo-600 hover:text-indigo-600 rounded-2xl transition-all active:scale-95 group border border-transparent hover:border-indigo-100"
                             >
-                                <Hash size={14} className="text-slate-400 group-hover:text-indigo-500" />
+                                {tag.isRelated ? <Share2 size={12} className="text-indigo-400" /> : <Hash size={14} className="text-slate-400 group-hover:text-indigo-500" />}
                                 <span className="font-black text-xs uppercase tracking-widest">{tag.tag}</span>
-                                <span className="text-[10px] font-bold opacity-40">{tag.postCount.toLocaleString()}</span>
+                                <span className="text-[10px] font-bold opacity-40">
+                                    {tag.isRelated ? `${tag.weight}` : tag.postCount.toLocaleString()}
+                                </span>
                             </button>
                         ))}
                     </div>
