@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
-import { collection, query, orderBy, limit, getDocs, doc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, getDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -108,7 +108,8 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 export function computeBaseScore(
   current: SocialPost, 
   candidate: SocialPost, 
-  hotTags: Set<string> = new Set()
+  viralTags: Set<string> = new Set(),
+  trendingTags: Set<string> = new Set()
 ) {
   let score = 0;
 
@@ -120,10 +121,17 @@ export function computeBaseScore(
   // 🏷️ HASHTAG SIGNAL: Boost shared tags
   score += sharedTags.length * 10;
   
-  // 🔥 TRENDING TAG BOOST: Boost posts using Yard's hottest tags
+  // 🚀 LIAISON VIRAL BOOST ENGINE
   const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
-  const hasHotTag = candidateTags.some(t => hotTags.has(t));
-  if (hasHotTag) score += 12;
+  
+  // 1. Viral Boost (+25): Top priority for exploding narratives
+  if (candidateTags.some(t => viralTags.has(t))) {
+    score += 25;
+  }
+  // 2. Trending Boost (+12): High weight for rising topics
+  else if (candidateTags.some(t => trendingTags.has(t))) {
+    score += 12;
+  }
 
   const currentCat = getMediaCategory(current.mediaType);
   const candidateCat = getMediaCategory(candidate.mediaType);
@@ -155,9 +163,10 @@ export function computeVibeScore(
   current: SocialPost,
   candidate: SocialPost,
   getPersonalScore: (p: SocialPost) => number,
-  hotTags: Set<string> = new Set()
+  viralTags: Set<string> = new Set(),
+  trendingTags: Set<string> = new Set()
 ) {
-  const base = computeBaseScore(current, candidate, hotTags);
+  const base = computeBaseScore(current, candidate, viralTags, trendingTags);
   const personal = getPersonalScore(candidate);
 
   return base * 0.6 + personal * 0.4;
@@ -168,7 +177,8 @@ export function buildSmartQueue(
   pool: SocialPost[],
   mood: VibeMood,
   getPersonalScore: (p: SocialPost) => number,
-  hotTags: Set<string> = new Set()
+  viralTags: Set<string> = new Set(),
+  trendingTags: Set<string> = new Set()
 ) {
   const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
@@ -185,7 +195,7 @@ export function buildSmartQueue(
       if (!match) continue;
     }
 
-    const score = computeVibeScore(current, p, getPersonalScore, hotTags);
+    const score = computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags);
     ranked.push({ post: p, score });
   }
 
@@ -268,7 +278,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [history, setHistory] = useState<SocialPost[]>([]);
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
-  const [hotTags, setHotTags] = useState<Set<string>>(new Set());
+  
+  // 🛰️ LIAISON VIRAL TRACKERS
+  const [viralTags, setViralTags] = useState<Set<string>>(new Set());
+  const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
   
   const { profile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
@@ -281,7 +294,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const activeMoodRef = useRef<VibeMood>('all');
   const getPersonalScoreRef = useRef(getPersonalScore);
   const userEmbeddingRef = useRef(profile.vibeEmbedding);
-  const hotTagsRef = useRef(hotTags);
+  
+  const viralTagsRef = useRef(viralTags);
+  const trendingTagsRef = useRef(trendingTags);
 
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { allPostsRef.current = allPosts; }, [allPosts]);
@@ -291,17 +306,28 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
   useEffect(() => { getPersonalScoreRef.current = getPersonalScore; }, [getPersonalScore]);
   useEffect(() => { userEmbeddingRef.current = profile.vibeEmbedding; }, [profile.vibeEmbedding]);
-  useEffect(() => { hotTagsRef.current = hotTags; }, [hotTags]);
+  
+  useEffect(() => { viralTagsRef.current = viralTags; }, [viralTags]);
+  useEffect(() => { trendingTagsRef.current = trendingTags; }, [trendingTags]);
 
   const isMiniPlayerVisible = !!activePostId;
 
-  // 🛰️ LIAISON CONTEXT: Fetch hot tags for discovery boost
+  // 🛰️ LIAISON CONTEXT: Fetch viral and trending tags for discovery boost
   useEffect(() => {
     if (!firestore) return;
-    const q = query(collection(firestore, 'hashtags'), orderBy('trendScore', 'desc'), limit(15));
+    const q = query(collection(firestore, 'hashtags'), orderBy('trendScore', 'desc'), limit(20));
     getDocs(q).then(snap => {
-        const tags = new Set(snap.docs.map(d => d.data().tag?.toLowerCase()).filter(Boolean));
-        setHotTags(tags);
+        const viral = new Set<string>();
+        const trending = new Set<string>();
+        snap.docs.forEach(d => {
+            const data = d.data();
+            const tag = data.tag?.toLowerCase();
+            if (!tag) return;
+            if (data.trendScore > 30) viral.add(tag);
+            else if (data.trendScore > 15) trending.add(tag);
+        });
+        setViralTags(viral);
+        setTrendingTags(trending);
     });
   }, [firestore]);
 
@@ -335,7 +361,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     const userEmbedding = userEmbeddingRef.current;
-    const tags = hotTagsRef.current;
+    
+    const viral = viralTagsRef.current;
+    const trending = trendingTagsRef.current;
     
     // STAGE 1: BLENDED CANDIDATE SELECTION
     const vectorRanked = userEmbedding 
@@ -355,9 +383,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
     // STAGE 2: Local Vibe Contextual Ranking
-    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, tags);
+    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending);
     
-    // Diversity Protocol
+    // 🛡️ LIAISON DIVERSITY PROTOCOL: Prevent creator repetition
     const authorSeen = new Set<string>();
     const diverseRanked: SocialPost[] = [];
     for (const entry of rankedResults) {
@@ -373,7 +401,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, scorer, tags),
+        score: computeVibeScore(current, p, scorer, viral, trending),
         reason: buildReason(current, p, scorer, userEmbedding),
       }));
 

@@ -133,7 +133,7 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 /**
  * 📈 TRENDING HASHTAG UPDATER (PROFESSIONAL VELOCITY ENGINE)
  * Calculates hashtag velocity and trending scores every 5 minutes.
- * Uses a rolling window to detect exploding narratives and VIRAL thresholds.
+ * Incorporates Viral Thresholds and Exponential Decay.
  */
 exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
@@ -141,17 +141,14 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
   const now = new Date();
   const batch = db.batch();
 
-  // Define lookback window (30 minutes for velocity)
   const lookbackMins = 30;
   const startTime = new Date(now.getTime() - lookbackMins * 60000);
   const startTimeString = startTime.toISOString().slice(0, 16);
 
-  // Process hashtags in parallel to calculate burst velocity
   const processPromises = hashtagsSnapshot.docs.map(async (docSnap) => {
     const tag = docSnap.id;
     const data = docSnap.data();
     
-    // 1. Compute Velocity (Posts per minute in the lookback window)
     const statsSnapshot = await db.collection("hashtagStats")
       .doc(tag)
       .collection("minutes")
@@ -162,13 +159,18 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
     const totalNewPosts = counts.reduce((a, b) => a + b, 0);
     const velocity = totalNewPosts / lookbackMins;
 
-    // 2. Compute Trending Score (Weighted Formula)
     const lastUsedAt = data.lastUsedAt?.toDate ? data.lastUsedAt.toDate() : now;
     const ageMinutes = Math.max(0, (now.getTime() - lastUsedAt.getTime()) / 60000);
+    const ageHours = ageMinutes / 60;
     const freshness = 1 / (ageMinutes + 1);
     const engagement = velocity > 0 ? 0.5 : 0; 
 
-    const trendScore = (velocity * 0.6) + (engagement * 0.3) + (freshness * 0.1);
+    // LIAISON VIRAL LIFECYCLE: Apply exponential decay (12h half-life)
+    const halfLife = 12;
+    const decay = Math.exp(-ageHours / halfLife);
+
+    const baseScore = (velocity * 0.6) + (engagement * 0.3) + (freshness * 0.1);
+    const trendScore = baseScore * decay;
 
     batch.update(docSnap.ref, {
       trendScore,
@@ -176,8 +178,7 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // 3. 🛡️ VIRAL THRESHOLD PROMOTION
-    // score > 30 → mark as official VIRAL event
+    // 🛡️ VIRAL THRESHOLD PROMOTION
     if (trendScore > 30) {
       const viralRef = db.collection("viral_hashtags").doc(tag);
       batch.set(viralRef, {
