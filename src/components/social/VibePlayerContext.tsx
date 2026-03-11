@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
@@ -333,7 +332,19 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
     // STAGE 2: Local Vibe Contextual Ranking
     const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer);
-    const localRanked = rankedResults.map(r => r.post);
+    
+    // 🚫 LIAISON DIVERSITY PROTOCOL: Prevent creator repetition
+    const authorSeen = new Set<string>();
+    const diverseRanked: SocialPost[] = [];
+    for (const entry of rankedResults) {
+      if (entry.post.authorId && !authorSeen.has(entry.post.authorId)) {
+        diverseRanked.push(entry.post);
+        authorSeen.add(entry.post.authorId);
+      }
+      if (diverseRanked.length >= 25) break; 
+    }
+
+    const finalPoolForNext = diverseRanked.length > 0 ? diverseRanked : rankedResults.map(r => r.post);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
@@ -342,13 +353,13 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         reason: buildReason(current, p, scorer, userEmbedding),
       }));
 
-    setQueue([current, ...localRanked]);
-    setUpNext(makeUpNext(localRanked));
+    setQueue([current, ...finalPoolForNext]);
+    setUpNext(makeUpNext(finalPoolForNext));
     setIsLoadingQueue(false);
 
     try {
       // STAGE 3: AI Re-Ranking (Elite Narrative Match)
-      const eliteCandidates = localRanked.slice(0, 25).map(p => ({
+      const eliteCandidates = finalPoolForNext.slice(0, 25).map(p => ({
         id: p.id, 
         content: p.content, 
         tags: p.tags || [],
@@ -368,8 +379,8 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       const aiPosts = safeIds.map(id => postMap.get(id)!).filter((p) => p.id !== current.id);
       
       const aiIdSet = new Set(safeIds);
-      const remainingLocal = localRanked.filter(p => !aiIdSet.has(p.id));
-      const finalRanked = [...aiPosts, ...remainingLocal];
+      const remainingDiverse = finalPoolForNext.filter(p => !aiIdSet.has(p.id));
+      const finalRanked = [...aiPosts, ...remainingDiverse];
       
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
