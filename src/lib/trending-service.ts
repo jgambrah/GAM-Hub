@@ -25,7 +25,7 @@ export function recordEngagement(
   if (type === 'like') updates.likes = increment(1);
   if (type === 'comment') updates.comments = increment(1);
   if (type === 'share') updates.shares = increment(1);
-  if (type === 'completion') updates.completedViews = increment(1);
+  if (type === 'completion') updates.completions = increment(1);
 
   // 2. Persistent Handshake: Ensure the document exists with a creation timestamp
   const data: any = { ...updates };

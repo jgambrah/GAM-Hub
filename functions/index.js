@@ -34,16 +34,19 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
   const likes = data.likes || 0;
   const comments = data.comments || 0;
   const shares = data.shares || 0;
-  const completed = data.completedViews || 0;
+  const completions = data.completions || 0;
 
   // 4. Compute Engagement Velocity
-  const completionRate = views > 0 ? (completed / views) : 0;
-  
-  // Weights: views(1), likes(3), comments(5), shares(8), completion(20)
-  const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completionRate * 20);
+  // Weights: views(1), likes(3), comments(5), shares(8), completions(20)
+  const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completions * 20);
 
   // 5. Apply Power-Law Time Decay
-  const score = velocity / Math.pow((ageHours + 2), 1.3);
+  let score = velocity / Math.pow((ageHours + 2), 1.3);
+
+  // 🚀 VIRAL EARLY BOOST: Early detection for fast-rising posts
+  if (views > 500 && ageHours < 2) {
+    score *= 1.5;
+  }
 
   // 6. Persistence Handshake
   if (data.trendScore && Math.abs(data.trendScore - score) < 0.001) {
@@ -75,11 +78,16 @@ exports.updateScheduledTrendingScores = onSchedule("every 5 minutes", async (eve
     const likes = data.likes || 0;
     const comments = data.comments || 0;
     const shares = data.shares || 0;
-    const completed = data.completedViews || 0;
-    const completionRate = views > 0 ? (completed / views) : 0;
+    const completions = data.completions || 0;
 
-    const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completionRate * 20);
-    const trendScore = velocity / Math.pow((ageHours + 2), 1.3);
+    const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completions * 20);
+    
+    let trendScore = velocity / Math.pow((ageHours + 2), 1.3);
+
+    // Early Boost in schedule as well
+    if (views > 500 && ageHours < 2) {
+      trendScore *= 1.5;
+    }
 
     batch.update(docSnap.ref, {
       trendScore,
