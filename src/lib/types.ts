@@ -154,6 +154,7 @@ export type SocialPost = {
   likes: number;
   commentCount: number;
   tags?: string[];
+  embedding?: number[]; // SEMANTIC VECTOR
   originalVideoPath?: string;
   mediaStatus?: 'processing' | 'ready' | 'error';
   isProtected?: boolean;
@@ -185,6 +186,7 @@ export type ArenaPost = {
   comebackCount?: number;
   mediaUrl?: string;
   mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
+  embedding?: number[]; // SEMANTIC VECTOR
   status?: 'active' | 'blocked';
   moderationNote?: string;
 };

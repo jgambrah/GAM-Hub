@@ -14,13 +14,14 @@ import Image from 'next/image';
 import type { SocialPost } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
+import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 
 /**
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
  * Securely handles Text, Image/Video Uploads, and YouTube/TikTok Links.
- * Liaison Update: Supports Global Broadcasts to all campuses.
+ * Liaison Update: Now generates semantic embeddings for Vector-based discovery.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -68,8 +69,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     e.preventDefault();
     if (loading) return;
 
-    console.log("📡 Broadcast Attempted:", { isTokenReady, userId: auth?.currentUser?.uid, isGlobal });
-
     if (!isTokenReady || !userProfile || !auth?.currentUser || !firestore) {
       toast({ 
         variant: 'destructive', 
@@ -95,7 +94,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       let mediaUrl: string | null = null;
       let mediaType: SocialPost['mediaType'] = 'text';
 
-      // MULTIMEDIA PROCESSING
+      // 1. MULTIMEDIA PROCESSING
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
@@ -113,11 +112,17 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       
       const hashtags = (content || '').match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
 
-      // LIAISON SEEDING LOGIC: 'all' campusId makes post visible to everyone
+      // 2. VECTOR EMBEDDING GENERATION (Liaison Upgrade)
+      const embedding = await generatePostEmbedding({ 
+        content: content || "", 
+        tags: hashtags 
+      });
+
+      // 3. TARGETING LOGIC
       const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
       const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
 
-      // CONSTRUCT PAYLOAD
+      // 4. CONSTRUCT PAYLOAD
       const postData = {
         authorId: auth.currentUser.uid,
         authorName: userProfile.name || "Campus Member",
@@ -129,6 +134,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         imageUrl: imageUrl,
         mediaUrl: mediaUrl,
         tags: hashtags,
+        embedding: embedding, // Semantics stored for discovery
         likes: 0,
         commentCount: 0,
         type: 'regular',
@@ -137,21 +143,18 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         createdAt: new Date().toISOString(),
       };
 
-      // BROADCAST
+      // 5. BROADCAST
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       
       toast({ title: isGlobal ? 'Global Vibe Broadcasted!' : 'Vibe Shared!' });
-      
-      setTimeout(() => onClose(), 100);
+      onClose();
 
     } catch (err: any) { 
         console.error("🚨 BROADCAST CRASH:", err); 
         toast({ 
           variant: 'destructive', 
           title: 'Broadcast Failed', 
-          description: err.message.includes('permission') 
-            ? 'The Fortress blocked this post. Check verification.' 
-            : 'Check your connection and try again.' 
+          description: 'Check your connection and try again.' 
         });
     } finally { 
         setLoading(false); 
@@ -184,7 +187,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
           <form onSubmit={handlePublish} className="space-y-6">
             
-            {/* LIAISON GLOBAL TOGGLE (THE POWER BUTTON) */}
             {isAdmin && (
               <div className="bg-amber-50 dark:bg-amber-900/20 p-5 rounded-[2rem] border-2 border-amber-200 dark:border-amber-800 flex items-center justify-between animate-in slide-in-from-top-4 duration-500 shadow-lg shadow-amber-100/50">
                 <div className="flex items-center gap-4">
@@ -193,7 +195,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                   </div>
                   <div>
                     <p className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest leading-none">Global Hub Seeding</p>
-                    <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-tight">Activate to show this vibe on ALL current and future campuses.</p>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-tight">Semantic visibility across ALL current and future campuses.</p>
                   </div>
                 </div>
                 <Switch 
@@ -211,7 +213,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 onChange={(e) => setContent(e.target.value)} 
             />
             
-            {/* MEDIA PREVIEW AREA */}
             {preview && (
                 <div className="relative aspect-video rounded-[2rem] overflow-hidden border-4 border-muted shadow-inner bg-black group">
                     {postType === 'image' ? (
@@ -279,7 +280,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 )}
             >
               {loading ? <Loader2 className="animate-spin" /> : <Send size={20}/>}
-              {isGlobal ? 'Seed to All Campuses' : 'Broadcast to Yard'}
+              {isGlobal ? 'Semantic Seed to Yard' : 'Broadcast to Yard'}
             </button>
           </form>
         </div>

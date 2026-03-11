@@ -20,8 +20,9 @@ import Image from 'next/image';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 
-const INITIAL_LIMIT = 50;
+const INITIAL_LIMIT = 100;
 const LOAD_MORE_BATCH = 50;
 
 export default function ArenaPage() {
@@ -52,7 +53,6 @@ export default function ArenaPage() {
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
-    // UNIFIED QUERY: Query the flat 'campus_pulse' collection for arena entries
     const postsQuery = useMemoFirebase(() => {
         if (!firestore || !user || !isTokenReady) return null;
         return query(
@@ -97,6 +97,7 @@ export default function ArenaPage() {
                 campusId: user.campusId,
             };
 
+            // 1. Process Media
             if (file) {
                 const filePath = `arena_media/${user.id}/${Date.now()}_${file.name}`;
                 const fileRef = ref(storage, filePath);
@@ -108,6 +109,15 @@ export default function ArenaPage() {
                 postData.mediaType = videoUrl.includes('youtube') ? 'youtube' : 'tiktok';
             }
 
+            // 2. Generate Semantic Embedding (Liaison Upgrade)
+            const hashtags = content.match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
+            const embedding = await generatePostEmbedding({
+                content: content,
+                tags: hashtags
+            });
+            postData.embedding = embedding;
+
+            // 3. Launch to Yard
             addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
             toast({ title: 'Vibe Shared in The Arena!' });
             resetInputs();
@@ -152,7 +162,7 @@ export default function ArenaPage() {
                             <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="p-2.5 text-muted-foreground hover:text-amber-500 rounded-full"><Smile size={18}/></button>
                             <input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f){ setFile(f); setPreviewUrl(URL.createObjectURL(f));}}} className="hidden" />
                             <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-muted-foreground hover:text-blue-500 rounded-full"><ImagePlus size={18}/></button>
-                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="What's the good news?" className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
+                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Semantic Shade incoming..." className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
                             <Button type="submit" disabled={isLoading} className={cn("p-4 rounded-full shadow-lg h-auto", vibeType === 'shade' ? 'bg-red-600' : 'bg-green-600')}>
                                 {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
                             </Button>
@@ -174,7 +184,7 @@ export default function ArenaPage() {
                             className="bg-slate-900 text-white rounded-2xl px-10 h-14 font-black"
                         >
                             {isLoadingPosts ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" />}
-                            Load Older Battles
+                            Load More Battles
                         </Button>
                     </div>
                 ) : posts && posts.length > 0 && (

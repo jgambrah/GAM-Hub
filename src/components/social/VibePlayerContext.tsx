@@ -43,6 +43,26 @@ export interface ReactionBurst {
 }
 
 /**
+ * 📐 SEMANTIC ENGINE: Cosine Similarity
+ * Calculates the semantic "Vibe Distance" between two vectors.
+ */
+function cosineSimilarity(vecA: number[], vecB: number[]) {
+  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+  let dotProduct = 0;
+  let mA = 0;
+  let mB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    mA += vecA[i] * vecA[i];
+    mB += vecB[i] * vecB[i];
+  }
+  mA = Math.sqrt(mA);
+  mB = Math.sqrt(mB);
+  if (mA === 0 || mB === 0) return 0;
+  return dotProduct / (mA * mB);
+}
+
+/**
  * 📉 EXPONENTIAL FRESHNESS DECAY
  */
 function exponentialFreshness(date: Date) {
@@ -53,6 +73,14 @@ function exponentialFreshness(date: Date) {
 export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
   let score = 0;
 
+  // 🧠 Stage 1: Vector Similarity (Semantic Layer)
+  if (current.embedding && candidate.embedding) {
+    const similarity = cosineSimilarity(current.embedding, candidate.embedding);
+    // Semantic match carries high weight (max 60 points)
+    score += similarity * 60;
+  }
+
+  // Stage 2: Tag Synergy
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const sharedTags = (candidate.tags || []).filter(t =>
     currentTags.has(t.toLowerCase())
@@ -60,6 +88,7 @@ export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
 
   score += sharedTags.length * 12;
 
+  // Stage 3: Categorical continuity
   const currentCat = getMediaCategory(current.mediaType);
   const candidateCat = getMediaCategory(candidate.mediaType);
 
@@ -68,11 +97,14 @@ export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
     if (candidate.mediaType === current.mediaType) score += 7;
   }
 
+  // Stage 4: Regional proximity
   if (candidate.campusId === current.campusId) score += 10;
   else if (candidate.campusId === 'all') score += 5;
 
+  // Stage 5: Social Velocity
   score += Math.min((candidate.likes || 0) / 5, 15);
 
+  // Stage 6: Recency
   if (candidate.createdAt) {
     const date =
       typeof candidate.createdAt === 'string'
@@ -139,9 +171,12 @@ function buildReason(
   const shared = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
   
   if (shared.length > 0) parts.push(`#${shared[0]}`);
-  if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Matched to your profile');
+  if (getPersonalScore(candidate) > 15 && parts.length < 2) parts.push('Personal vibe match');
+  if (current.embedding && candidate.embedding) {
+      const similarity = cosineSimilarity(current.embedding, candidate.embedding);
+      if (similarity > 0.85 && parts.length < 2) parts.push('Semantic discovery');
+  }
   if (candidate.campusId === current.campusId && parts.length < 2) parts.push('Same Yard');
-  if (candidate.authorId === current.authorId && parts.length < 2) parts.push('Creator match');
   
   if (parts.length === 0) parts.push('Trending on GAM Hub');
   return parts.slice(0, 2).join(' · ');
@@ -149,8 +184,8 @@ function buildReason(
 
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
 export const HISTORY_MAX = 30;
-export const MAX_POOL_SIZE = 800; // 🛡️ Memory Protection Limit
-export const PREFETCH_SIZE = 5;   // 🚀 TikTok Prefetch Size
+export const MAX_POOL_SIZE = 800; 
+export const PREFETCH_SIZE = 5;   
 
 interface VibePlayerContextType {
   activePostId: string | null;
@@ -236,7 +271,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     
-    // Stage 1: Local Optimized Retrieval
     const localRanked = buildSmartQueue(current, pool, mood, scorer);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
@@ -268,7 +302,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       const postMap = new Map<string, SocialPost>();
       for (const p of pool) postMap.set(p.id, p);
 
-      // AI Safety Guard: Filter out any hallucinated IDs
       const safeIds = aiIds.filter(id => postMap.has(id));
 
       const aiPosts = safeIds
@@ -283,7 +316,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
 
-      // 🚀 Stage 3: TikTok-Style Prefetch Engine
       if (typeof window !== 'undefined') {
         const prefetchList = finalRanked.slice(0, PREFETCH_SIZE);
         prefetchList.forEach(p => {
@@ -400,7 +432,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       
       let merged = [...prev, ...incoming];
       
-      // 🛡️ MEMORY PROTECTION: Eject oldest items if we exceed 800
       if (merged.length > MAX_POOL_SIZE) {
         merged = merged.slice(-MAX_POOL_SIZE);
       }
