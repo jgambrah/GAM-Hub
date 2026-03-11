@@ -15,13 +15,13 @@ import type { SocialPost } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
+import { extractHashtags } from '@/lib/hashtag-utils';
 
 /**
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
  * Securely handles Text, Image/Video Uploads, and YouTube/TikTok Links.
- * Liaison Update: Now generates semantic embeddings for Vector-based discovery.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -110,19 +110,20 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaUrl = externalUrl;
       }
       
-      const hashtags = (content || '').match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
+      // 2. HASHTAG ENGINE: Professional Extraction
+      const hashtags = extractHashtags(content);
 
-      // 2. VECTOR EMBEDDING GENERATION (Liaison Upgrade)
+      // 3. VECTOR EMBEDDING GENERATION
       const embedding = await generatePostEmbedding({ 
         content: content || "", 
         tags: hashtags 
       });
 
-      // 3. TARGETING LOGIC
+      // 4. TARGETING LOGIC
       const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
       const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
 
-      // 4. CONSTRUCT PAYLOAD
+      // 5. CONSTRUCT PAYLOAD
       const postData = {
         authorId: auth.currentUser.uid,
         authorName: userProfile.name || "Campus Member",
@@ -134,7 +135,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         imageUrl: imageUrl,
         mediaUrl: mediaUrl,
         tags: hashtags,
-        embedding: embedding, // Semantics stored for discovery
+        embedding: embedding,
         likes: 0,
         commentCount: 0,
         type: 'regular',
@@ -143,7 +144,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         createdAt: new Date().toISOString(),
       };
 
-      // 5. BROADCAST
+      // 6. BROADCAST
       await addDoc(collection(firestore, 'campus_pulse'), postData);
       
       toast({ title: isGlobal ? 'Global Vibe Broadcasted!' : 'Vibe Shared!' });
@@ -207,7 +208,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             )}
 
             <textarea 
-                placeholder="What's the frequency, Citizen? 😊" 
+                placeholder="What's the frequency, Citizen? 😊 Use #hashtags to index your vibe." 
                 className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
                 value={content}
                 onChange={(e) => setContent(e.target.value)} 

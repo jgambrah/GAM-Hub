@@ -15,48 +15,36 @@ setGlobalOptions({maxInstances: 10});
 /**
  * 🏎️ REAL-TIME TRENDING ENGINE (REACTIVE)
  * Triggers on any engagement update to recalculate the trendScore immediately.
- * Now includes the Viral Testing Loop for auto-promotion.
  */
 exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
   const oldData = event.data.before.data();
 
-  // 1. Loop Protection: Exit if only trendScore changed or nothing changed
   if (data.trendScore && !Object.keys(data).some(k => k !== 'trendScore' && data[k] !== oldData[k])) {
     return null;
   }
 
-  // 2. Identify Temporal Context
   const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
   const now = new Date();
   const ageHours = (now - createdAt) / 3600000;
 
-  // 3. Extract Raw Signals
   const views = data.views || 0;
   const likes = data.likes || 0;
   const comments = data.comments || 0;
   const shares = data.shares || 0;
   const completions = data.completions || 0;
 
-  // 4. Compute Engagement Velocity
-  // Formula: (views + likes*3 + comments*5 + shares*8 + completions*20)
   const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completions * 20);
-
-  // 5. Apply Power-Law Time Decay
   let score = velocity / Math.pow((ageHours + 2), 1.3);
 
-  // 🚀 VIRAL EARLY BOOST: Early detection for fast-rising posts
   if (views > 500 && ageHours < 2) {
     score *= 1.5;
   }
 
-  // 🎓 VIRAL TESTING LOOP: Promotion Threshold
-  // If views > 300 and completion rate > 60% -> Force high trend score
   if (views > 300 && (completions / Math.max(views, 1)) > 0.6) {
     score = Math.max(score, 50); 
   }
 
-  // 6. Persistence Handshake
   if (data.trendScore && Math.abs(data.trendScore - score) < 0.001) {
     return null;
   }
@@ -69,7 +57,6 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 
 /**
  * 🛰️ SCHEDULED TRENDING UPDATE (CRON)
- * Runs every 5 minutes to ensure scores decay even if no new interaction occurs.
  */
 exports.updateScheduledTrendingScores = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
@@ -89,18 +76,10 @@ exports.updateScheduledTrendingScores = onSchedule("every 5 minutes", async (eve
     const completions = data.completions || 0;
 
     const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completions * 20);
-    
     let trendScore = velocity / Math.pow((ageHours + 2), 1.3);
 
-    // Early Boost in schedule as well
-    if (views > 500 && ageHours < 2) {
-      trendScore *= 1.5;
-    }
-    
-    // Viral Promotion in schedule
-    if (views > 300 && (completions / Math.max(views, 1)) > 0.6) {
-      trendScore = Math.max(trendScore, 50);
-    }
+    if (views > 500 && ageHours < 2) trendScore *= 1.5;
+    if (views > 300 && (completions / Math.max(views, 1)) > 0.6) trendScore = Math.max(trendScore, 50);
 
     batch.update(docSnap.ref, {
       trendScore,
@@ -109,11 +88,35 @@ exports.updateScheduledTrendingScores = onSchedule("every 5 minutes", async (eve
   });
 
   await batch.commit();
-  console.log(`Liaison Intelligence: Recalculated trending scores for ${snapshot.size} vibrations.`);
 });
 
 /**
- * 1. MEDIA CLEANUP: Deletes chat media older than 30 days.
+ * #️⃣ HASHTAG INDEXER
+ * Updates the global hashtag registry when a new vibration is created.
+ */
+exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}", async (event) => {
+  const data = event.data.data();
+  const tags = data.tags || [];
+  if (tags.length === 0) return;
+
+  const db = admin.firestore();
+  const batch = db.batch();
+
+  tags.forEach(tag => {
+    const tagRef = db.collection('hashtags').doc(tag.toLowerCase());
+    batch.set(tagRef, {
+      tag: tag.toLowerCase(),
+      postCount: admin.firestore.FieldValue.increment(1),
+      lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+
+  await batch.commit();
+});
+
+/**
+ * 1. MEDIA CLEANUP
  */
 exports.cleanupOldChatMedia = onSchedule("0 0 * * 0", async (event) => {
   const bucket = getStorage().bucket();
@@ -298,7 +301,6 @@ exports.onGroupStrength = onDocumentCreated("groups/{groupId}", async (event) =>
 
 /**
  * 8. THE DYNAMIC AUTH GATEKEEPER
- * Queries the database in real-time to determine campus and role.
  */
 exports.gamHubAuthGate = beforeUserCreated(async (event) => {
   const user = event.data;
@@ -326,7 +328,6 @@ exports.gamHubAuthGate = beforeUserCreated(async (event) => {
       .where("staffDomain", "==", domain).get();
 
   if (!studentSnap.empty) {
-    const campusData = studentSnap.docs[0].data();
     return {
       customClaims: {
         role: "student",
@@ -337,7 +338,6 @@ exports.gamHubAuthGate = beforeUserCreated(async (event) => {
   }
 
   if (!staffSnap.empty) {
-    const campusData = staffSnap.docs[0].data();
     return {
       customClaims: {
         role: "staff",

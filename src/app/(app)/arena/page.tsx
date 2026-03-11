@@ -21,6 +21,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
+import { extractHashtags } from '@/lib/hashtag-utils';
 
 const INITIAL_LIMIT = 100;
 const LOAD_MORE_BATCH = 50;
@@ -109,15 +110,18 @@ export default function ArenaPage() {
                 postData.mediaType = videoUrl.includes('youtube') ? 'youtube' : 'tiktok';
             }
 
-            // 2. Generate Semantic Embedding (Liaison Upgrade)
-            const hashtags = content.match(/#(\w+)/g)?.map(tag => tag.substring(1).toLowerCase()) || [];
+            // 2. HASHTAG ENGINE
+            const hashtags = extractHashtags(content);
+            postData.tags = hashtags;
+
+            // 3. Generate Semantic Embedding
             const embedding = await generatePostEmbedding({
                 content: content,
                 tags: hashtags
             });
             postData.embedding = embedding;
 
-            // 3. Launch to Yard
+            // 4. Launch to Yard
             addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
             toast({ title: 'Vibe Shared in The Arena!' });
             resetInputs();
@@ -162,7 +166,7 @@ export default function ArenaPage() {
                             <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="p-2.5 text-muted-foreground hover:text-amber-500 rounded-full"><Smile size={18}/></button>
                             <input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f){ setFile(f); setPreviewUrl(URL.createObjectURL(f));}}} className="hidden" />
                             <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-muted-foreground hover:text-blue-500 rounded-full"><ImagePlus size={18}/></button>
-                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Semantic Shade incoming..." className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
+                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Semantic Shade incoming... use #tags" className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
                             <Button type="submit" disabled={isLoading} className={cn("p-4 rounded-full shadow-lg h-auto", vibeType === 'shade' ? 'bg-red-600' : 'bg-green-600')}>
                                 {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
                             </Button>
