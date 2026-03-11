@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -6,7 +7,7 @@ import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from '
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer } from './VibePlayerContext';
 import { Switch } from '../ui/switch';
@@ -17,18 +18,18 @@ import { Button } from '../ui/button';
  * CampusPulseFeed Component
  * 
  * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
- * This ensures the candidate pool is diverse, including personalized matches,
- * trending viral content, and new vibrations for exploration.
+ * Now upgraded to support Firestore-level Hashtag filtering.
  */
 export default function CampusPulseFeed({
     activeCampusId,
     searchQuery = '',
     tab = 'all',
+    activeTag,
 }: {
     activeCampusId: string;
-    filterTag?: string;
     searchQuery?: string;
     tab?: 'all' | 'vlogs' | 'people' | 'market';
+    activeTag?: string;
 }) {
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
@@ -48,38 +49,30 @@ export default function CampusPulseFeed({
         
         setIsLoading(true);
         const pulseRef = collection(firestore, 'campus_pulse');
+        const tagToFilter = activeTag || (searchQuery.startsWith('#') ? searchQuery.slice(1).toLowerCase() : null);
         
         try {
-            // Bucket 1: RECENT (National Hub - 200 candidates)
-            const recentQuery = query(
-                pulseRef,
-                orderBy('createdAt', 'desc'),
-                limit(200)
-            );
+            // Bucket 1: RECENT (National Hub)
+            const recentQuery = tagToFilter 
+                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
+                : query(pulseRef, orderBy('createdAt', 'desc'), limit(200));
 
-            // Bucket 2: TRENDING (High Velocity - 150 candidates)
+            // Bucket 2: TRENDING (High Velocity)
             const trendingStatsQuery = query(
                 collection(firestore, 'trending_stats'),
                 orderBy('trendScore', 'desc'),
                 limit(150)
             );
 
-            // Bucket 3: LOCAL CAMPUS (Specific Yard - 100 candidates)
-            const campusQuery = query(
-                pulseRef,
-                where('campusId', '==', activeCampusId),
-                orderBy('createdAt', 'desc'),
-                limit(100)
-            );
+            // Bucket 3: LOCAL CAMPUS
+            const campusQuery = tagToFilter
+                ? query(pulseRef, where('campusId', '==', activeCampusId), where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(100))
+                : query(pulseRef, where('campusId', '==', activeCampusId), orderBy('createdAt', 'desc'), limit(100));
 
-            // Bucket 4: EXPLORATION (New/Random undervibrated posts - 50 candidates)
-            const explorationQuery = query(
-                pulseRef,
-                where('likes', '<', 10), 
-                orderBy('likes', 'asc'),
-                orderBy('createdAt', 'desc'),
-                limit(50)
-            );
+            // Bucket 4: EXPLORATION
+            const explorationQuery = tagToFilter
+                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), limit(50))
+                : query(pulseRef, where('likes', '<', 10), orderBy('likes', 'asc'), orderBy('createdAt', 'desc'), limit(50));
 
             // Liaison Handshake: Parallel retrieval
             const [recentSnap, trendingSnap, campusSnap, explorationSnap] = await Promise.all([
@@ -111,7 +104,11 @@ export default function CampusPulseFeed({
                 const missingSnaps = await Promise.all(missingIds.slice(0, 50).map(id => getDoc(doc(firestore, 'campus_pulse', id))));
                 missingSnaps.forEach(snap => {
                     if (snap.exists()) {
-                        mergedMap.set(snap.id, { id: snap.id, ...snap.data() } as SocialPost);
+                        const postData = { id: snap.id, ...snap.data() } as SocialPost;
+                        // If we are filtering by tag, only add if the post has the tag
+                        if (!tagToFilter || postData.tags?.includes(tagToFilter)) {
+                            mergedMap.set(snap.id, postData);
+                        }
                     }
                 });
             }
@@ -120,7 +117,7 @@ export default function CampusPulseFeed({
             setPosts(finalPool);
             addToQueue(finalPool);
 
-            // Fetch Official SRC Bulletin
+            // Fetch Official SRC Bulletin (No tag filter usually for official news)
             const srcQuery = query(
                 collection(firestore, 'src_posts'),
                 where('campusId', '==', activeCampusId),
@@ -140,7 +137,7 @@ export default function CampusPulseFeed({
 
     useEffect(() => {
         fetchBlendedCandidates();
-    }, [firestore, activeCampusId, user?.id, isTokenReady]);
+    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
@@ -168,13 +165,12 @@ export default function CampusPulseFeed({
 
         let combined = [...mappedSrc, ...posts];
 
-        if (searchQuery.trim()) {
+        if (searchQuery.trim() && !searchQuery.startsWith('#')) {
             const term = searchQuery.toLowerCase().trim();
             combined = combined.filter(post => {
                 const contentMatch = post.content?.toLowerCase().includes(term);
                 const authorMatch = post.authorName?.toLowerCase().includes(term);
-                const tagMatch = post.tags?.some(tag => tag.toLowerCase().includes(term));
-                return contentMatch || authorMatch || tagMatch;
+                return contentMatch || authorMatch;
             });
         }
 
@@ -183,17 +179,29 @@ export default function CampusPulseFeed({
 
     return (
         <div className="space-y-8 pb-20">
+            {activeTag && (
+                <div className="flex items-center gap-3 px-2">
+                    <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg">
+                        <Hash size={24} />
+                    </div>
+                    <div>
+                        <h2 className="text-3xl font-black italic tracking-tighter uppercase text-slate-900 dark:text-white">#{activeTag}</h2>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Hashtag Hub</p>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-blue-500 animate-in slide-in-from-top-4">
                 <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
                         <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">Blended Discovery</h4>
+                        <h4 className="font-black text-sm tracking-tight">{activeTag ? 'Hashtag Vibe Stream' : 'Blended Discovery'}</h4>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Multi-Armed Bandit:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipeline:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> Exploiting + Exploring
+                                <TrendingUp size={10} /> {activeTag ? `Filtering #${activeTag}` : 'Exploiting + Exploring'}
                             </span>
                         </div>
                     </div>

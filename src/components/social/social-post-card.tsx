@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -28,6 +29,7 @@ import {
 } from './VibePlayerContext';
 import { VibeReactionBar } from './VibeReactions';
 import { recordEngagement } from '@/lib/trending-service';
+import { renderWithHashtags } from '@/lib/hashtag-utils';
 
 const getYouTubeId = (url: string) => {
   if (!url) return null;
@@ -523,9 +525,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             )}
           </div>
 
-          <h3 className={cn('font-bold leading-snug text-foreground transition-all duration-300', isActiveVibe ? 'text-xl md:text-2xl' : 'text-lg')}>
-            {post.content}
-          </h3>
+          <div className={cn('font-bold leading-snug text-foreground transition-all duration-300', isActiveVibe ? 'text-xl md:text-2xl' : 'text-lg')}>
+            {renderWithHashtags(post.content)}
+          </div>
 
           {isActiveVibe && (
             <div className="mt-5 animate-in fade-in slide-in-from-bottom-2 duration-300">

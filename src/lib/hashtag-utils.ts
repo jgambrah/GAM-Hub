@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -6,6 +7,8 @@
  */
 
 import { doc, setDoc, increment, serverTimestamp, Firestore } from "firebase/firestore";
+import React from 'react';
+import Link from 'next/link';
 
 /**
  * Extracts hashtags from a given text string.
@@ -28,9 +31,6 @@ export function extractHashtags(text: string): string[] {
 /**
  * Updates the global hashtag index in Firestore.
  * This ensures that hashtags are rankable by popularity across the National Hub.
- * 
- * Note: While a Cloud Function also handles this for global consistency,
- * calling this on the client provides immediate local indexing for the current user.
  */
 export async function updateHashtagIndex(firestore: Firestore, tags: string[]) {
   if (!firestore || !tags || tags.length === 0) return;
@@ -46,4 +46,30 @@ export async function updateHashtagIndex(firestore: Firestore, tags: string[]) {
   });
 
   return Promise.all(promises);
+}
+
+/**
+ * Renders text with clickable hashtags linked to the hashtag feed.
+ */
+export function renderWithHashtags(text: string) {
+  if (!text) return null;
+
+  const parts = text.split(/(#\w+)/g);
+  
+  return parts.map((part, i) => {
+    if (part.startsWith('#')) {
+      const tag = part.slice(1).toLowerCase();
+      return (
+        <Link 
+          key={i} 
+          href={`/hashtag/${tag}`}
+          className="text-blue-500 hover:underline font-black"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </Link>
+      );
+    }
+    return part;
+  });
 }
