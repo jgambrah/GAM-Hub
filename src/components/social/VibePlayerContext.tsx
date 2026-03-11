@@ -6,6 +6,7 @@ import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
+import { useFirebase } from '@/firebase';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
