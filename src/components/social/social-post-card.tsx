@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { SocialPost } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
-  ThumbsUp, MessageCircle, Share2, Youtube, Play,
+  ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
   Image as ImageIcon, FileText, ArrowRight,
 } from 'lucide-react';
@@ -263,7 +263,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       setSkipCountdown(prev => {
         if (prev === null) return null;
         if (prev <= 1) {
-          // playNext() moved out of here to an Effect to prevent "Update while rendering"
           return 0;
         }
         return prev - 1;
@@ -478,7 +477,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover opacity-60" />}
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                     <div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
-                      <Play size={32} fill="white" />
+                      <PlayCircle size={32} fill="white" />
                     </div>
                   </div>
                 </div>
