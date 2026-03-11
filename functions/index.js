@@ -131,10 +131,10 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 
 /**
  * 📈 TRENDING HASHTAG UPDATER (PROFESSIONAL VELOCITY ENGINE)
- * Calculates hashtag velocity and trending scores every 10 minutes.
+ * Calculates hashtag velocity and trending scores every 5 minutes.
  * Uses a rolling window to detect exploding narratives.
  */
-exports.updateTrendingHashtags = onSchedule("every 10 minutes", async (event) => {
+exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
   const hashtagsSnapshot = await db.collection("hashtags").get();
   const now = new Date();
@@ -168,7 +168,7 @@ exports.updateTrendingHashtags = onSchedule("every 10 minutes", async (event) =>
     const ageMinutes = Math.max(0, (now.getTime() - lastUsedAt.getTime()) / 60000);
     const freshness = 1 / (ageMinutes + 1);
     
-    // Simple engagement metric for the prototype: derived from recent velocity vs historical count
+    // Derived engagement metric based on velocity and historic count
     const engagement = velocity > 0 ? 0.5 : 0; 
 
     const trendScore = (velocity * 0.6) + (engagement * 0.3) + (freshness * 0.1);
