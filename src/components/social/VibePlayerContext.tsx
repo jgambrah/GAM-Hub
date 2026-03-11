@@ -75,7 +75,7 @@ function exponentialFreshness(date: Date) {
 }
 
 /**
- * 🏗️ STAGE 1: VECTOR RANKER (THE NET)
+ * 🏗️ PIPELINE STAGE 1: VECTOR RANKER (THE NET)
  */
 export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
   if (!userVector) return posts;
@@ -90,19 +90,25 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
   return ranked.map(r => r.post);
 }
 
+/**
+ * 🏎️ PIPELINE STAGE 2: LOCAL CONTEXT RANKING (THE VIBE)
+ */
 export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
   let score = 0;
-
-  if (current.embedding && candidate.embedding) {
-    const similarity = cosineSimilarity(current.embedding, candidate.embedding);
-    score += similarity * 60;
-  }
 
   const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
   const sharedTags = (candidate.tags || []).filter(t =>
     currentTags.has(t.toLowerCase())
   );
   score += sharedTags.length * 12;
+
+  const currentCat = getMediaCategory(current.mediaType);
+  const candidateCat = getMediaCategory(candidate.mediaType);
+
+  if (currentCat === candidateCat) {
+    score += 8;
+    if (candidate.mediaType === current.mediaType) score += 7;
+  }
 
   if (candidate.campusId === current.campusId) score += 10;
   else if (candidate.campusId === 'all') score += 5;
@@ -130,9 +136,6 @@ export function computeVibeScore(
   return base * 0.6 + personal * 0.4;
 }
 
-/**
- * 🏎️ STAGE 2: LOCAL RANKING ENGINE (THE VIBE)
- */
 export function buildSmartQueue(
   current: SocialPost,
   pool: SocialPost[],
@@ -281,15 +284,20 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
 
+  /**
+   * 🏎️ THE RECOMMENDATION PIPELINE (3 STAGES)
+   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
     const userEmbedding = userEmbeddingRef.current;
     
+    // STAGE 1: Vector Similarity Net (Identify top 200 semantic matches)
     const vectorRanked = userEmbedding 
         ? rankByEmbedding(pool, userEmbedding).slice(0, 200)
         : pool;
 
+    // STAGE 2: Local Vibe Ranking (Identify top 25 context matches)
     const rankedResults = buildSmartQueue(current, vectorRanked, mood, scorer);
     const localRanked = rankedResults.map(r => r.post);
     
@@ -305,6 +313,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(false);
 
     try {
+      // STAGE 3: AI Re-Ranking (The elite pick)
       const eliteCandidates = localRanked.slice(0, 25).map(p => ({
         id: p.id, 
         content: p.content, 
@@ -331,6 +340,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
 
+      // 🚀 TIKTOK PREFETCH ENGINE: Smooth as butter
       if (typeof window !== 'undefined') {
         finalRanked.slice(0, PREFETCH_SIZE).forEach(p => {
           if (getMediaCategory(p.mediaType) === 'video' && p.mediaUrl) {
@@ -445,6 +455,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       if (incoming.length === 0) return prev;
       
       let merged = [...prev, ...incoming];
+      // 🛡️ MEMORY VAULT: Never grow indefinitely
       if (merged.length > MAX_POOL_SIZE) {
         merged = merged.slice(-MAX_POOL_SIZE);
       }

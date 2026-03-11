@@ -13,22 +13,14 @@ import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 
-const INITIAL_LIMIT = 50;
-const LOAD_MORE_BATCH = 50;
-
 /**
  * CampusPulseFeed Component
  * 
  * Implements the "Bucketed Retrieval Strategy" for discoverability at scale.
- * Fetches multiple candidate pools:
- * 1. RECENT: The local yard vibrations.
- * 2. GLOBAL: High-energy national vibes.
- * 3. TRENDING: Viral content detected by the Velocity Engine.
- * 4. SEED: Official Liaison boosts.
+ * This ensures the candidate pool is diverse and relevant without loading the entire DB.
  */
 export default function CampusPulseFeed({
     activeCampusId,
-    filterTag,
     searchQuery = '',
     tab = 'all',
 }: {
@@ -44,11 +36,11 @@ export default function CampusPulseFeed({
     const [posts, setPosts] = useState<SocialPost[]>([]);
     const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     /**
      * 🏗️ THE BUCKETED RETRIEVAL COMMAND
+     * Pipeline: Firestore Retrieval -> Vector Filter -> Local Ranking -> AI Selection
      */
     const fetchBucketedCandidates = async () => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return;
@@ -57,57 +49,49 @@ export default function CampusPulseFeed({
         const pulseRef = collection(firestore, 'campus_pulse');
         
         try {
-            // Bucket 1: RECENT (The local yard)
+            // Bucket 1: RECENT (National Hub - 200 candidates)
             const recentQuery = query(
                 pulseRef,
-                where('campusId', '==', activeCampusId),
                 orderBy('createdAt', 'desc'),
-                limit(limitCount)
+                limit(200)
             );
 
-            // Bucket 2: GLOBAL (The national pulse)
-            const globalQuery = query(
-                pulseRef,
-                where('campusId', '==', 'all'),
-                orderBy('createdAt', 'desc'),
-                limit(30)
-            );
-
-            // Bucket 3: LIAISON SEED (Official high-vibe boosts)
-            const seedQuery = query(
-                pulseRef,
-                where('isLiaisonSeed', '==', true),
-                limit(10)
-            );
-
-            // Bucket 4: TRENDING (The Velocity Engine)
+            // Bucket 2: TRENDING (High Velocity - 150 candidates)
             const trendingStatsQuery = query(
                 collection(firestore, 'trending_stats'),
                 orderBy('trendScore', 'desc'),
-                limit(30)
+                limit(150)
             );
 
-            const [recentSnap, globalSnap, seedSnap, trendingSnap] = await Promise.all([
+            // Bucket 3: LOCAL CAMPUS (Specific Yard - 100 candidates)
+            const campusQuery = query(
+                pulseRef,
+                where('campusId', '==', activeCampusId),
+                orderBy('createdAt', 'desc'),
+                limit(100)
+            );
+
+            // Liaison Handshake: Parallel retrieval for speed
+            const [recentSnap, trendingSnap, campusSnap] = await Promise.all([
                 getDocs(recentQuery),
-                getDocs(globalQuery),
-                getDocs(seedQuery),
-                getDocs(trendingStatsQuery)
+                getDocs(trendingStatsQuery),
+                getDocs(campusQuery)
             ]);
 
             const mergedMap = new Map<string, SocialPost>();
             
-            // Merge all buckets into a unified candidate pool
-            [...seedSnap.docs, ...globalSnap.docs, ...recentSnap.docs].forEach(doc => {
+            // 1. Add direct post data from snaps
+            [...recentSnap.docs, ...campusSnap.docs].forEach(doc => {
                 mergedMap.set(doc.id, { id: doc.id, ...doc.data() } as SocialPost);
             });
 
-            // Handle the Trending IDs specifically by fetching missing post data
+            // 2. Hydrate Trending IDs (those not already in the map)
             const trendingIds = trendingSnap.docs.map(d => d.id);
             const missingIds = trendingIds.filter(id => !mergedMap.has(id));
             
             if (missingIds.length > 0) {
-                // Fetch missing high-velocity posts
-                const missingFetches = missingIds.slice(0, 10).map(id => getDoc(doc(firestore, 'campus_pulse', id)));
+                // Fetch missing high-velocity post data (limited batch for performance)
+                const missingFetches = missingIds.slice(0, 30).map(id => getDoc(doc(firestore, 'campus_pulse', id)));
                 const missingSnaps = await Promise.all(missingFetches);
                 missingSnaps.forEach(snap => {
                     if (snap.exists()) {
@@ -116,14 +100,13 @@ export default function CampusPulseFeed({
                 });
             }
 
-            const finalPool = Array.from(mergedMap.values()).sort((a, b) => 
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
+            const finalPool = Array.from(mergedMap.values());
 
+            // Push to the Vector Pipeline in VibePlayerContext
             setPosts(finalPool);
             addToQueue(finalPool);
 
-            // Fetch Official SRC Bulletin
+            // Fetch Official SRC Bulletin separately for pinning
             const srcQuery = query(
                 collection(firestore, 'src_posts'),
                 where('campusId', '==', activeCampusId),
@@ -134,7 +117,7 @@ export default function CampusPulseFeed({
             setSrcPosts(srcSnap.docs.map(d => ({ id: d.id, ...d.data() } as SrcPost)));
 
         } catch (err) {
-            console.error("Liaison Retrieval Error:", err);
+            console.error("Liaison Bucketed Retrieval Error:", err);
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
@@ -143,16 +126,11 @@ export default function CampusPulseFeed({
 
     useEffect(() => {
         fetchBucketedCandidates();
-    }, [firestore, activeCampusId, user?.id, isTokenReady, limitCount]);
+    }, [firestore, activeCampusId, user?.id, isTokenReady]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
-        setLimitCount(INITIAL_LIMIT);
         fetchBucketedCandidates();
-    };
-
-    const handleLoadMore = () => {
-        setLimitCount(prev => prev + LOAD_MORE_BATCH);
     };
 
     const filteredPosts = useMemo(() => {
@@ -180,10 +158,9 @@ export default function CampusPulseFeed({
             const term = searchQuery.toLowerCase().trim();
             combined = combined.filter(post => {
                 const contentMatch = post.content?.toLowerCase().includes(term);
-                const titleMatch = post.title?.toLowerCase().includes(term);
                 const authorMatch = post.authorName?.toLowerCase().includes(term);
                 const tagMatch = post.tags?.some(tag => tag.toLowerCase().includes(term));
-                return contentMatch || titleMatch || authorMatch || tagMatch;
+                return contentMatch || authorMatch || tagMatch;
             });
         }
 
@@ -198,11 +175,11 @@ export default function CampusPulseFeed({
                         <Zap size={20} className={isContinuous ? "animate-pulse" : ""} fill={isContinuous ? "currentColor" : "none"} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">Vibration Feed</h4>
+                        <h4 className="font-black text-sm tracking-tight">Bucketed Discovery</h4>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Velocity Engine:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipeline:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> Real-Time
+                                <TrendingUp size={10} /> Active
                             </span>
                         </div>
                     </div>
@@ -231,26 +208,8 @@ export default function CampusPulseFeed({
                     <Skeleton className="h-96 rounded-[2.5rem]" />
                 </div>
             ) : (
-                <>
-                    <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
-                    
-                    <div className="flex flex-col items-center gap-4 pt-10">
-                        <Button 
-                            onClick={handleLoadMore} 
-                            disabled={isLoading}
-                            className="bg-slate-900 text-white rounded-[1.5rem] px-10 py-6 h-auto font-black text-sm shadow-xl active:scale-95 transition-all"
-                        >
-                            {isLoading ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" size={18} />}
-                            Expand Discovery Pool
-                        </Button>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Discovery Engine: {posts.length} vibes indexed</p>
-                    </div>
-                </>
+                <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
             )}
         </div>
     );
-}
-
-function Loader2({ className }: { className?: string }) {
-    return <RefreshCcw className={cn("animate-spin", className)} />;
 }
