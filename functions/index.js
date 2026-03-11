@@ -91,8 +91,8 @@ exports.updateScheduledTrendingScores = onSchedule("every 5 minutes", async (eve
 });
 
 /**
- * #️⃣ HASHTAG INDEXER
- * Updates the global hashtag registry when a new vibration is created.
+ * #️⃣ HASHTAG INDEXER & VELOCITY TRACKER
+ * Updates global registry and per-minute statistics when a new vibration is created.
  */
 exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}", async (event) => {
   const data = event.data.data();
@@ -101,14 +101,28 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 
   const db = admin.firestore();
   const batch = db.batch();
+  const minuteBucket = new Date().toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm
 
   tags.forEach(tag => {
-    const tagRef = db.collection('hashtags').doc(tag.toLowerCase());
+    const normalizedTag = tag.toLowerCase();
+    
+    // 1. Update Global Registry
+    const tagRef = db.collection('hashtags').doc(normalizedTag);
     batch.set(tagRef, {
-      tag: tag.toLowerCase(),
+      tag: normalizedTag,
       postCount: admin.firestore.FieldValue.increment(1),
       lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    // 2. Update Velocity Bucket (Time-Series) for Virality Detection
+    const statsRef = db.collection("hashtagStats")
+      .doc(normalizedTag)
+      .collection("minutes")
+      .doc(minuteBucket);
+      
+    batch.set(statsRef, {
+      count: admin.firestore.FieldValue.increment(1)
     }, { merge: true });
   });
 
