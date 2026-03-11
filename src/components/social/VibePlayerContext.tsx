@@ -71,8 +71,8 @@ export function cosineSimilarity(a: number[], b: number[]) {
  * 📉 EXPONENTIAL FRESHNESS DECAY
  */
 function exponentialFreshness(date: Date) {
-  const ageDays = (Date.now() - date.getTime()) / 86400000;
-  return 10 * Math.exp(-ageDays / 3);
+  const ageHours = (Date.now() - date.getTime()) / 3600000;
+  return 10 * Math.exp(-ageHours / 3);
 }
 
 /**
@@ -80,11 +80,10 @@ function exponentialFreshness(date: Date) {
  * Ensures small creators get exposure by artificially boosting newer content.
  */
 export function explorationBoost(post: SocialPost) {
-  const likes = post.likes || 0;
-  // We use likes as a proxy for exposure in the client pool
-  if (likes < 10) return 15;
-  if (likes < 50) return 8;
-  if (likes < 100) return 3;
+  const views = post.likes || 0; // Using likes as a proxy for engagement in the client pool
+  if (views < 50) return 15;
+  if (views < 200) return 8;
+  if (views < 500) return 3;
   return 0;
 }
 
@@ -129,7 +128,7 @@ export function computeBaseScore(current: SocialPost, candidate: SocialPost) {
 
   score += Math.min((candidate.likes || 0) / 5, 15);
 
-  // Apply Bandit Entropy Boost
+  // Apply Bandit Entropy Boost (Testing new content)
   score += explorationBoost(candidate);
 
   if (candidate.createdAt) {
@@ -314,21 +313,21 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const userEmbedding = userEmbeddingRef.current;
     
     // STAGE 1: BLENDED CANDIDATE SELECTION
-    // 70% Semantic lookups, 20% Viral lookups, 10% Exploration lookups
+    // 70% Semantic lookups (Exploitation), 20% Viral hits (Exploitation), 10% Fresh content (Exploration)
     
     const vectorRanked = userEmbedding 
-        ? rankByEmbedding(pool, userEmbedding).slice(0, 140) // Exploitation: User Taste
+        ? rankByEmbedding(pool, userEmbedding).slice(0, 140) 
         : pool.slice(0, 140);
 
     const trendingRanked = pool
         .filter(p => !vectorRanked.some(v => v.id === p.id))
         .sort((a, b) => (b.likes || 0) - (a.likes || 0))
-        .slice(0, 40); // Exploitation: Community Pulse
+        .slice(0, 40);
 
     const explorationPool = pool
         .filter(p => !vectorRanked.some(v => v.id === p.id) && !trendingRanked.some(t => t.id === p.id))
         .sort(() => Math.random() - 0.5)
-        .slice(0, 20); // Exploration: Multi-Armed Bandit Test
+        .slice(0, 20);
 
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
@@ -375,7 +374,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       setQueue([current, ...finalRanked]);
       setUpNext(makeUpNext(finalRanked));
 
-      // 🚀 TikTok Prefetch
+      // 🚀 TikTok Prefetch (Speed Layer)
       if (typeof window !== 'undefined') {
         finalRanked.slice(0, PREFETCH_SIZE).forEach(p => {
           if (getMediaCategory(p.mediaType) === 'video' && p.mediaUrl) {

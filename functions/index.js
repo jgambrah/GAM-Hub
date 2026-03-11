@@ -1,3 +1,4 @@
+
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentUpdated, onDocumentCreated} =
     require("firebase-functions/v2/firestore");
@@ -14,6 +15,7 @@ setGlobalOptions({maxInstances: 10});
 /**
  * 🏎️ REAL-TIME TRENDING ENGINE (REACTIVE)
  * Triggers on any engagement update to recalculate the trendScore immediately.
+ * Now includes the Viral Testing Loop for auto-promotion.
  */
 exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
@@ -37,7 +39,7 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
   const completions = data.completions || 0;
 
   // 4. Compute Engagement Velocity
-  // Weights: views(1), likes(3), comments(5), shares(8), completions(20)
+  // Formula: (views + likes*3 + comments*5 + shares*8 + completions*20)
   const velocity = (views * 1) + (likes * 3) + (comments * 5) + (shares * 8) + (completions * 20);
 
   // 5. Apply Power-Law Time Decay
@@ -46,6 +48,12 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
   // 🚀 VIRAL EARLY BOOST: Early detection for fast-rising posts
   if (views > 500 && ageHours < 2) {
     score *= 1.5;
+  }
+
+  // 🎓 VIRAL TESTING LOOP: Promotion Threshold
+  // If views > 300 and completion rate > 60% -> Force high trend score
+  if (views > 300 && (completions / Math.max(views, 1)) > 0.6) {
+    score = Math.max(score, 50); 
   }
 
   // 6. Persistence Handshake
@@ -87,6 +95,11 @@ exports.updateScheduledTrendingScores = onSchedule("every 5 minutes", async (eve
     // Early Boost in schedule as well
     if (views > 500 && ageHours < 2) {
       trendScore *= 1.5;
+    }
+    
+    // Viral Promotion in schedule
+    if (views > 300 && (completions / Math.max(views, 1)) > 0.6) {
+      trendScore = Math.max(trendScore, 50);
     }
 
     batch.update(docSnap.ref, {

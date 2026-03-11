@@ -1,6 +1,8 @@
+
 'use client';
 
 import { doc, increment, serverTimestamp, setDoc, Firestore } from 'firebase/firestore';
+import type { SocialPost } from './types';
 
 /**
  * 🏎️ THE LIAISON ENGAGEMENT TRACKER
@@ -37,4 +39,20 @@ export function recordEngagement(
   setDoc(ref, data, { merge: true }).catch(err => {
     console.warn("Trending Service: Failed to record engagement", err);
   });
+}
+
+/**
+ * 🎓 VIRAL GRADUATION
+ * Manually promotes a successful vibration into the trending pool.
+ */
+export async function promoteToTrending(firestore: Firestore, post: SocialPost) {
+  if (!firestore || !post.id) return;
+  const ref = doc(firestore, 'trending_stats', post.id);
+  
+  await setDoc(ref, {
+    trendScore: 50, // High base score for promotion
+    manualPromotion: true,
+    updatedAt: serverTimestamp(),
+    createdAt: post.createdAt
+  }, { merge: true });
 }
