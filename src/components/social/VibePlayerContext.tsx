@@ -290,6 +290,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [history, setHistory] = useState<SocialPost[]>([]);
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
+  const [isMiniPlayerVisible, setIsMiniPlayerVisible] = useState(true);
   
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());
   const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
