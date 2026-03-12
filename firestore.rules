@@ -4,74 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // -------------------------------------------------------------------------
-    // 1. NUCLEAR PRIORITY (Absolute Infrastructure & Query Handshakes - TOP)
-    // -------------------------------------------------------------------------
-    
-    // THE CAMPUS PULSE (FLAT ARCHITECTURE)
-    match /campus_pulse/{postId} {
-      allow read, list, get: if request.auth != null;
-
-      allow create: if isAdmin() || (
-        request.auth.token.email_verified == true &&
-        request.resource.data.campusId == request.auth.token.campusId &&
-        request.resource.data.content != null
-      );
-
-      allow update, delete: if isAdmin() || 
-                            request.auth.uid == resource.data.authorId;
-                            
-      match /comments/{id} { allow read, list: if true; allow create: if request.auth != null; }
-      match /likedBy/{id} { allow read: if true; allow write: if request.auth != null; }
-      match /burnedBy/{id} { allow read: if true; allow write: if request.auth != null; }
-      match /comebacks/{id} { allow read, list: if true; allow create: if request.auth != null; }
-    }
-
-    // #️⃣ HASHTAG REGISTRY ACCESS
-    match /hashtags/{tagId} {
-      allow read, list: if request.auth != null;
-      allow write: if request.auth != null; // Allow client-side usage updates
-    }
-
-    match /viral_hashtags/{tagId} {
-      allow read, list: if request.auth != null;
-      allow write: if false; 
-    }
-
-    // 🕸️ HASHTAG GRAPH REGISTRY
-    match /hashtagGraph/{tagId}/edges/{edgeId} {
-      allow read, list: if request.auth != null;
-      allow write: if request.auth != null; // Allow client-side graph updates
-    }
-
-    // 🏎️ TRENDING ENGINE SECURITY
-    match /trending_stats/{postId} {
-      allow read: if true;
-      // Allow incrementing counters for signed-in users
-      allow write: if request.auth != null;
-    }
-
-    match /spotlight/{docId} {
-      allow get, list, read: if request.auth != null;
-      allow write: if isAdmin();
-    }
-
-    match /live_broadcasts/{campusId} {
-      allow get, list, read: if request.auth != null;
-      allow write: if isAdmin() || (request.auth != null && request.auth.token.role == 'src');
-    }
-
-    match /manifestos/{docId} {
-      allow read, list, get: if request.auth != null;
-      allow write: if isAdmin() || (request.auth != null && request.auth.token.isCandidate == true);
-    }
-
-    match /platform_stats/{allPaths=**} {
-      allow read, get, list: if request.auth != null;
-      allow write: if isAdmin();
-    }
-
-    // -------------------------------------------------------------------------
-    // 2. MASTER HELPERS (The Fortress Gate - Poison-Free)
+    // 1. MASTER HELPERS (The Fortress Gate)
     // -------------------------------------------------------------------------
 
     function isSignedIn() { return request.auth != null; }
@@ -86,14 +19,6 @@ service cloud.firestore {
       );
     }
 
-    function isLiaisonAdmin() { return isAdmin(); }
-
-    function isVerifiedMember() {
-      return isAdmin() || (isSignedIn() && request.auth.token.email_verified == true);
-    }
-
-    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
-
     function getUserDocData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -106,23 +31,216 @@ service cloud.firestore {
       return request.auth.token.role != null ? request.auth.token.role : getUserDocData().role;
     }
 
-    match /{document=**} {
-      allow read, write: if isAdmin();
+    // -------------------------------------------------------------------------
+    // 2. CORE IDENTITY & CAMPUSES
+    // -------------------------------------------------------------------------
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || request.auth.uid == userId;
+      
+      match /ai_assistant/{msgId} { allow read, write: if request.auth.uid == userId; }
+    }
+
+    match /campuses/{campusId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // -------------------------------------------------------------------------
-    // 3. OFFICIAL CHANNELS (SRC & REGISTRY)
+    // 3. THE CAMPUS PULSE (FLAT ARCHITECTURE)
+    // -------------------------------------------------------------------------
+    
+    match /campus_pulse/{postId} {
+      allow read, list, get: if isSignedIn();
+
+      allow create: if isAdmin() || (
+        request.auth.token.email_verified == true &&
+        request.resource.data.campusId == getCampus() &&
+        request.resource.data.content != null
+      );
+
+      allow update: if isAdmin() || 
+                    request.auth.uid == resource.data.authorId ||
+                    // Allow engagement updates from any signed-in user
+                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore']));
+      
+      allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
+                            
+      match /comments/{id} { allow read, list: if isSignedIn(); allow create: if isSignedIn(); }
+      match /likedBy/{id} { allow read: if isSignedIn(); allow write: if isSignedIn(); }
+      match /burnedBy/{id} { allow read: if isSignedIn(); allow write: if isSignedIn(); }
+      match /comebacks/{id} { allow read, list: if isSignedIn(); allow create: if isSignedIn(); }
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. MARKETPLACE & COMMERCE
+    // -------------------------------------------------------------------------
+
+    match /products/{productId} {
+      allow read, list: if isSignedIn();
+      allow create: if isAdmin() || getRole() == 'vendor';
+      allow update: if isAdmin() || 
+                    resource.data.vendorId == request.auth.uid ||
+                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'salesCount', 'favoriteCount', 'shareCount', 'trendScore']));
+      allow delete: if isAdmin() || resource.data.vendorId == request.auth.uid;
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.buyerId == request.auth.uid || resource.data.vendorId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || request.query.limit <= 100);
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (isAdmin() || resource.data.buyerId == request.auth.uid || resource.data.vendorId == request.auth.uid);
+    }
+
+    match /market_requests/{requestId} {
+      allow read, list: if isSignedIn() && (
+        isAdmin() || 
+        resource.data.userId == request.auth.uid ||
+        (getRole() == 'vendor' && getCampus() == resource.data.campusId)
+      );
+      allow create: if isSignedIn() && (
+        isAdmin() || 
+        (request.resource.data.userId == request.auth.uid && request.resource.data.campusId == getCampus())
+      );
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+    }
+
+    match /demand_signals/{signalId} {
+      allow read, list: if isSignedIn() && (isAdmin() || (getRole() == 'vendor' && getCampus() == resource.data.campusId));
+      allow write: if isAdmin();
+    }
+
+    match /payout_requests/{requestId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.vendorId == request.auth.uid);
+      allow create: if isSignedIn() && getRole() == 'vendor';
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. INTELLIGENCE & ANALYTICS
+    // -------------------------------------------------------------------------
+
+    match /user_intelligence/{userId} {
+      allow read, write: if isAdmin() || request.auth.uid == userId;
+    }
+
+    match /user_market_profiles/{userId} {
+      allow read, write: if isAdmin() || request.auth.uid == userId;
+    }
+
+    match /knowledge_graph/{nodeId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn(); // System builds graph from user actions
+    }
+
+    match /hashtags/{tagId} {
+      allow read, list: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /hashtagGraph/{tagId}/edges/{edgeId} {
+      allow read, list: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /trending_stats/{postId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /post_velocity/{allPaths=**} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /video_product_clicks/{clickId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. COMMUNITIES & ACADEMICS
+    // -------------------------------------------------------------------------
+
+    match /groups/{groupId} {
+      allow read: if isSignedIn() && (
+        resource.data.isPrivate == false || 
+        request.auth.uid in resource.data.members ||
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        request.auth.uid in resource.data.admins || 
+        isAdmin() ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) && isSignedIn())
+      );
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid in resource.data.admins);
+
+      match /messages/{msgId} { allow read, write: if isSignedIn(); }
+    }
+
+    match /group_requests/{reqId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn();
+    }
+
+    match /study_rooms/{roomId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      
+      match /ai_assistance/{msgId} { allow read, write: if isSignedIn(); }
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. OFFICIAL CHANNELS & ADS
     // -------------------------------------------------------------------------
 
     match /registry_posts/{postId} {
-      allow read, list: if isAdmin() || (
-        isSignedIn() && getCampus() == resource.data.campusId && (
-          resource.data.audience == "all" || resource.data.audience == getRole()
-        )
-      );
-      allow write: if isAdmin() || (getRole() == "management" && getCampus() == request.resource.data.campusId);
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin() || getRole() == 'management';
     }
 
-    // ... [rest of firestore.rules OMITTED for brevity as it hasn't changed beyond the additions above] ...
+    match /src_posts/{postId} {
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin() || getRole() == 'src';
+    }
+
+    match /ad_campaigns/{adId} {
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin();
+      
+      match /impressions/{id} { allow create: if isSignedIn(); }
+      match /clicks/{id} { allow create: if isSignedIn(); }
+    }
+
+    match /manifestos/{docId} {
+      allow read, list: if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && request.auth.token.isCandidate == true);
+      
+      match /endorsements/{id} { allow read: if isSignedIn(); allow write: if isSignedIn(); }
+    }
+
+    match /candidate_applications/{appId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
+    }
+
+    match /live_broadcasts/{campusId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && (getRole() == 'src' || getRole() == 'management'));
+    }
+
+    match /platform_stats/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Global Catch-all
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
   }
 }

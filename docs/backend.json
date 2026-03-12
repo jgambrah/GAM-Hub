@@ -2,47 +2,53 @@
 {
   "entities": {
     "Campus": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Campus",
       "type": "object",
       "description": "Represents a university campus within the GAM Hub platform.",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
+        "acronym": { "type": "string" },
         "domain": { "type": "string" },
+        "studentDomain": { "type": "string" },
+        "staffDomain": { "type": "string" },
         "location": { "type": "string" },
         "primaryColor": { "type": "string" },
         "secondaryColor": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
         "radioName": { "type": "string" },
         "radioStreamUrl": { "type": "string" }
       },
-      "required": ["id", "name", "domain"]
+      "required": ["id", "name"]
     },
     "User": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "User",
       "type": "object",
-      "description": "Represents a user account within the GAM Hub platform.",
+      "description": "Represents a user account (Student, Staff, Vendor, or Admin).",
       "properties": {
         "id": { "type": "string" },
         "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "staff", "vendor", "admin", "src", "management"] },
         "campusId": { "type": "string" },
-        "role": { "type": "string" },
-        "firstName": { "type": "string" },
-        "lastName": { "type": "string" },
-        "fcmToken": { "type": "string", "description": "Device token for push notifications." },
-        "followedVendors": { "type": "array", "items": { "type": "string" } },
-        "qualityScore": { "type": "number", "description": "0-100 reputation score for discovery ranking." }
+        "avatarUrl": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "momoNumber": { "type": "string" },
+        "momoName": { "type": "string" },
+        "lead_credits": { "type": "number", "description": "Balance for professional service inquiries." },
+        "isVerified": { "type": "boolean" },
+        "idVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "approved"] }
       },
-      "required": ["id", "email", "campusId", "role"]
+      "required": ["id", "email", "role"]
     },
     "UserIntelligence": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "UserIntelligence",
       "type": "object",
-      "description": "Unified behavioral profile combining social and commercial signals.",
+      "description": "Unified behavioral brain merging social and commercial signals.",
       "properties": {
-        "interests": { "type": "object", "description": "Map of tags/categories to weight scores." },
+        "id": { "type": "string" },
+        "interests": { "type": "object", "description": "Weighted interest map (tag -> score)." },
         "affinities": {
           "type": "object",
           "properties": {
@@ -57,107 +63,81 @@
             "max": { "type": "number" }
           }
         },
-        "engagementLevel": { "type": "number", "description": "0-1 score of platform activity." },
-        "vibeEmbedding": { "type": "array", "items": { "type": "number" } },
+        "engagementLevel": { "type": "number" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
     "SocialPost": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "SocialPost",
       "type": "object",
-      "description": "Represents a social vibration (post) in the Yard Pulse.",
+      "description": "A vibration shared in the Campus Pulse.",
       "properties": {
         "id": { "type": "string" },
         "authorId": { "type": "string" },
         "content": { "type": "string" },
         "mediaType": { "type": "string", "enum": ["youtube", "tiktok", "image", "text", "video"] },
         "mediaUrl": { "type": "string" },
-        "productTags": { "type": "array", "items": { "type": "string" } },
+        "tags": { "type": "array", "items": { "type": "string" } },
         "campusId": { "type": "string" },
-        "commerceClicks": { "type": "number", "description": "Total clicks driven to tagged products." }
-      },
-      "required": ["authorId", "content", "campusId"]
+        "productTags": { "type": "array", "items": { "type": "string" } },
+        "commerceClicks": { "type": "number" },
+        "trendScore": { "type": "number" }
+      }
     },
-    "KnowledgeGraphNode": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "KnowledgeGraphNode",
-      "description": "Represents a node in the platform's relationship network.",
+    "Product": {
+      "title": "Product",
       "type": "object",
+      "description": "A marketplace listing (Physical or Service).",
       "properties": {
         "id": { "type": "string" },
-        "type": { "type": "string", "enum": ["tag", "category", "creator", "vendor", "location", "product"] },
         "name": { "type": "string" },
-        "connections": { 
-          "type": "object",
-          "description": "Map of target node IDs to weight metadata."
-        },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "type", "name"]
+        "price": { "type": "number" },
+        "category": { "type": "string" },
+        "vendorId": { "type": "string" },
+        "campusId": { "type": "string" },
+        "productType": { "type": "string", "enum": ["physical", "service"] },
+        "isSponsored": { "type": "boolean" },
+        "clicks": { "type": "number" }
+      }
+    },
+    "MarketRequest": {
+      "title": "MarketRequest",
+      "type": "object",
+      "description": "A student demand signal for an item or service.",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "query": { "type": "string" },
+        "category": { "type": "string" },
+        "campusId": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "closed"] }
+      }
     },
     "Order": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Order",
       "type": "object",
-      "description": "A transaction record for a product or service.",
+      "description": "A transaction record in Escrow.",
       "properties": {
         "id": { "type": "string" },
         "buyerId": { "type": "string" },
         "vendorId": { "type": "string" },
-        "productId": { "type": "string" },
         "amount": { "type": "number" },
         "status": { "type": "string" },
-        "affiliateCreatorId": { "type": "string", "description": "ID of the creator who drove this sale." },
+        "affiliateCreatorId": { "type": "string" },
         "commissionRate": { "type": "number" }
       }
     }
   },
   "auth": {
-    "providers": ["password", "anonymous"]
+    "providers": ["password"]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "User",
-          "schema": { "$ref": "#/backend/entities/User" },
-          "description": "User profiles with notification tokens."
-        }
-      },
-      {
-        "path": "/user_intelligence/{userId}",
-        "definition": {
-          "entityName": "UserIntelligence",
-          "schema": { "$ref": "#/backend/entities/UserIntelligence" },
-          "description": "Unified behavioral brain for every citizen."
-        }
-      },
-      {
-        "path": "/campus_pulse/{postId}",
-        "definition": {
-          "entityName": "SocialPost",
-          "schema": { "$ref": "#/backend/entities/SocialPost" },
-          "description": "The unified stream of campus vibrations."
-        }
-      },
-      {
-        "path": "/knowledge_graph/{nodeId}",
-        "definition": {
-          "entityName": "KnowledgeGraphNode",
-          "schema": { "$ref": "#/backend/entities/KnowledgeGraphNode" },
-          "description": "The shared intelligence graph connecting all campus entities."
-        }
-      },
-      {
-        "path": "/orders/{orderId}",
-        "definition": {
-          "entityName": "Order",
-          "schema": { "$ref": "#/backend/entities/Order" },
-          "description": "Marketplace transaction records."
-        }
-      }
-    ]
+    "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
+    "/user_intelligence/{userId}": { "schema": "#/backend/entities/UserIntelligence", "description": "Unified behavioral brain." },
+    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "The national stream of campus vibrations." },
+    "/products/{productId}": { "schema": "#/backend/entities/Product", "description": "Campus marketplace inventory." },
+    "/orders/{orderId}": { "schema": "#/backend/entities/Order", "description": "Escrow transaction records." },
+    "/market_requests/{requestId}": { "schema": "#/backend/entities/MarketRequest", "description": "Direct student demand signals." },
+    "/knowledge_graph/{nodeId}": { "schema": { "title": "KnowledgeGraphNode", "type": "object", "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "connections": { "type": "object" } } }, "description": "Semantic relationship network." }
   }
 }
