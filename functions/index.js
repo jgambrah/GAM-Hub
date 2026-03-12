@@ -34,6 +34,10 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 /**
  * 🏆 CREATOR REPUTATION ENGINE
  * Aggregates performance across all posts to assign a quality score.
+ * 
+ * Metrics:
+ * - Engagement Rate: (Likes + Comments + Shares) / Views
+ * - Completion Rate: Completions / Views
  */
 exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
@@ -50,31 +54,32 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   if (postsSnap.empty) return null;
 
   let totalViews = 0;
-  let totalEngagementCount = 0;
+  let totalInteractions = 0;
   let totalCompletions = 0;
   const count = postsSnap.size;
 
   postsSnap.forEach(d => {
     const p = d.data();
     totalViews += (p.views || 0);
-    totalEngagementCount += (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
+    totalInteractions += (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
     totalCompletions += (p.completions || 0);
   });
 
-  const viewsForRate = Math.max(totalViews, 1);
-  const avgEngagementRate = totalEngagementCount / viewsForRate;
-  const avgCompletionRate = totalCompletions / viewsForRate;
+  const divisor = Math.max(totalViews, 1);
+  const creatorEngagementRate = totalInteractions / divisor;
+  const creatorCompletionRate = totalCompletions / divisor;
 
-  // Scoring formula: (EngagementRate * 300) + (CompletionRate * 40) + Base 40
-  // Target: High quality creators hit 80-100.
-  let qualityScore = 40 + (avgEngagementRate * 300) + (avgCompletionRate * 40);
+  // 🏛️ LIAISON QUALITY FORMULA
+  // Base 40 + (ER * 300) + (CR * 40)
+  // Ensures high-retention, high-interaction creators dominate.
+  let qualityScore = 40 + (creatorEngagementRate * 300) + (creatorCompletionRate * 40);
   qualityScore = Math.min(100, Math.max(10, qualityScore));
 
   const reputation = {
     id: authorId,
     qualityScore,
-    engagementRate: avgEngagementRate,
-    completionRate: avgCompletionRate,
+    engagementRate: creatorEngagementRate,
+    completionRate: creatorCompletionRate,
     postCount: count,
     lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
