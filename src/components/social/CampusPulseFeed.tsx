@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -21,6 +20,7 @@ import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
  * 
  * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
  * Upgraded with Personalized Hybrid Semantic Search (Vector Similarity + Hashtag Matching + Interest Boost).
+ * Now integrates the Trending Feed Boost (+35 points) for high-momentum vibrations.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -195,51 +195,57 @@ export default function CampusPulseFeed({
         let combined = [...mappedSrc, ...posts];
 
         // 🧠 STAGE 2: HYBRID PERSONALIZED RANKING (Semantic + Keyword + Trend + Quality + Interest)
-        if (queryVector || (searchQuery.trim() && !searchQuery.startsWith('#'))) {
-            const userInterests = new Set(getTopInterests(20).map(t => t.toLowerCase()));
-            
-            combined = combined
-                .map(post => {
-                    // 1. Semantic Similarity (0.6 weight)
-                    const similarity = (queryVector && post.embedding) ? cosineSimilarity(queryVector, post.embedding) : 0;
-                    
-                    // 2. Exact Keyword Match (0.2 weight)
-                    const term = searchQuery.toLowerCase().trim();
-                    const queryWords = term.split(/\s+/).filter(w => w.length > 2);
-                    const postTags = new Set([
-                        ...(post.tags || []),
-                        ...(post.aiTags || [])
-                    ].map(t => t.toLowerCase()));
-                    
-                    const tagMatchCount = queryWords.filter(w => postTags.has(w)).length;
-                    const hashtagMatch = Math.min(tagMatchCount / Math.max(queryWords.length, 1), 1);
-                    const contentMatch = post.content?.toLowerCase().includes(term) ? 0.2 : 0;
+        const userInterests = new Set(getTopInterests(20).map(t => t.toLowerCase()));
+        
+        combined = combined
+            .map(post => {
+                // 1. Semantic Similarity (0.6 weight)
+                const similarity = (queryVector && post.embedding) ? cosineSimilarity(queryVector, post.embedding) : 0;
+                
+                // 2. Exact Keyword Match (0.2 weight)
+                const term = searchQuery.toLowerCase().trim();
+                const queryWords = term.split(/\s+/).filter(w => w.length > 2);
+                const postTags = new Set([
+                    ...(post.tags || []),
+                    ...(post.aiTags || [])
+                ].map(t => t.toLowerCase()));
+                
+                const tagMatchCount = queryWords.filter(w => postTags.has(w)).length;
+                const hashtagMatch = Math.min(tagMatchCount / Math.max(queryWords.length, 1), 1);
+                const contentMatch = post.content?.toLowerCase().includes(term) ? 0.2 : 0;
 
-                    // 3. Trending Boost (0.1 weight)
-                    const trendingBoost = post.trendScore ? Math.min(post.trendScore / 100, 1) : 0;
+                // 3. Trending Boost (0.1 weight)
+                let trendingBoost = post.trendScore ? Math.min(post.trendScore / 100, 1) : 0;
+                
+                // 🏎️ VIRAL SPREAD INTEGRATION: Apply the +35 point boost for high momentum
+                if (post.trendScore && post.trendScore > 30) {
+                    trendingBoost += 0.35; 
+                }
 
-                    // 4. Creator Quality (0.1 weight)
-                    const creatorScore = post.authorQualityScore ? post.authorQualityScore / 100 : 0.5;
+                // 4. Creator Quality (0.1 weight)
+                const creatorScore = post.authorQualityScore ? post.authorQualityScore / 100 : 0.5;
 
-                    // 🎯 5. PERSONALIZATION BOOST (0.15 weight)
-                    let personalizationBoost = 0;
-                    const matchesInterest = Array.from(postTags).some(t => userInterests.has(t));
-                    if (matchesInterest) {
-                        personalizationBoost = 0.15;
-                    }
+                // 🎯 5. PERSONALIZATION BOOST (0.15 weight)
+                let personalizationBoost = 0;
+                const matchesInterest = Array.from(postTags).some(t => userInterests.has(t));
+                if (matchesInterest) {
+                    personalizationBoost = 0.15;
+                }
 
-                    // Compute Professional Hybrid Personalized Score
-                    const finalScore = (similarity * 0.6) + (Math.max(hashtagMatch, contentMatch) * 0.2) + (trendingBoost * 0.1) + (creatorScore * 0.1) + personalizationBoost;
+                // Compute Professional Hybrid Personalized Score
+                const finalScore = (similarity * 0.6) + (Math.max(hashtagMatch, contentMatch) * 0.2) + (trendingBoost * 0.1) + (creatorScore * 0.1) + personalizationBoost;
 
-                    return { ...post, searchScore: finalScore, matchesInterest };
-                })
-                .filter(post => {
-                    if (queryVector) return (post as any).searchScore > 0.25;
-                    const term = searchQuery.toLowerCase().trim();
-                    return post.content?.toLowerCase().includes(term) || post.authorName?.toLowerCase().includes(term) || (post as any).searchScore > 0.3;
-                })
-                .sort((a, b) => (b as any).searchScore - (a as any).searchScore);
-        }
+                return { ...post, searchScore: finalScore, matchesInterest };
+            })
+            .filter(post => {
+                // If not searching, keep all posts but they are sorted by the ranking logic above
+                if (!searchQuery.trim()) return true;
+                
+                if (queryVector) return (post as any).searchScore > 0.25;
+                const term = searchQuery.toLowerCase().trim();
+                return post.content?.toLowerCase().includes(term) || post.authorName?.toLowerCase().includes(term) || (post as any).searchScore > 0.3;
+            })
+            .sort((a, b) => (b as any).searchScore - (a as any).searchScore);
 
         return combined;
     }, [posts, srcPosts, searchQuery, queryVector, getTopInterests]);

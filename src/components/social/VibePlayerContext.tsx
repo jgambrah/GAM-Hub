@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -147,8 +146,15 @@ export function computeVibeScore(
   const relatedMatches = candidateTags.filter(t => relatedTags.has(t));
   score += relatedMatches.length * 5;
 
-  if (candidateTags.some(t => viralTags.has(t))) score += 25;
-  else if (candidateTags.some(t => trendingTags.has(t))) score += 12;
+  // 🏎️ TRENDING FEED BOOST
+  // Professional platforms prioritize viral velocity to ensure rapid spread
+  if (candidate.trendScore && candidate.trendScore > 30) {
+    score += 35; // Significant boost for high-momentum vibrations
+  } else if (candidateTags.some(t => viralTags.has(t))) {
+    score += 25;
+  } else if (candidateTags.some(t => trendingTags.has(t))) {
+    score += 12;
+  }
 
   // 5. BEHAVIORAL & REPUTATION SIGNALS
   score += getPersonalScore(candidate) * 0.5;
