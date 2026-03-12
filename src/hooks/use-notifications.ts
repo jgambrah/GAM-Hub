@@ -2,15 +2,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useFirebase } from '@/firebase';
+import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { saveFcmToken } from '@/lib/market-intelligence';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { collection, query, where, orderBy, limit, getDocs, doc } from 'firebase/firestore';
 
 /**
  * useNotifications Hook
  * --------------------
  * Orchestrates device token registration and foreground message handling.
+ * Now expanded with Analytics Tracking for Open/Click events.
  */
 export function useNotifications() {
   const { firestore, firebaseApp } = useFirebase();
@@ -26,7 +28,9 @@ export function useNotifications() {
       return;
     }
 
-    setPermission(Notification.permission);
+    if (Notification.permission !== 'granted') {
+        setPermission(Notification.permission);
+    }
 
     const registerToken = async () => {
       try {
@@ -39,7 +43,7 @@ export function useNotifications() {
         if (status === 'granted') {
           // Get FCM Token
           const token = await getToken(messaging, {
-            vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY // Ensure this is in your .env
+            vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY
           });
 
           if (token && token !== user.fcmToken) {
@@ -54,11 +58,30 @@ export function useNotifications() {
 
     registerToken();
 
-    // Listener for foreground notifications
+    // 📈 ANALYTICS: Listener for foreground notifications
     const messaging = getMessaging(firebaseApp);
-    const unsubscribe = onMessage(messaging, (payload) => {
+    const unsubscribe = onMessage(messaging, async (payload) => {
       console.log('🔔 Liaison: Foreground Vibe Received:', payload);
-      // In a real app, we'd trigger a custom toast here
+      
+      // LOG OPEN EVENT: Since the user is active in the app when this fires
+      if (payload.data?.productId) {
+          try {
+              const q = query(
+                  collection(firestore, 'notifications'),
+                  where('userId', '==', user.id),
+                  where('relatedProductId', '==', payload.data.productId),
+                  orderBy('sentAt', 'desc'),
+                  limit(1)
+              );
+              const snap = await getDocs(q);
+              if (!snap.empty) {
+                  const notifRef = doc(firestore, 'notifications', snap.docs[0].id);
+                  updateDocumentNonBlocking(notifRef, { opened: true, clicked: true });
+              }
+          } catch (e) {
+              console.warn("Analytics Sync Failed:", e);
+          }
+      }
     });
 
     return () => unsubscribe();

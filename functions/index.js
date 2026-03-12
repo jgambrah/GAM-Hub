@@ -8,7 +8,7 @@ admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🛰️ LIAISON NOTIFICATION SERVICE: Throttling & Delivery
+ * 🛰️ LIAISON NOTIFICATION SERVICE: Throttling & Delivery with Analytics
  * Rule: Max 3 notifications per day, min 2 hours between.
  */
 async function checkThrottlingAndNotify(userId, payload, db) {
@@ -57,12 +57,18 @@ async function checkThrottlingAndNotify(userId, payload, db) {
       dailyCount: (prefs.dailyCount || 0) + 1
     }, { merge: true });
 
+    // 📈 NOTIFICATION ANALYTICS SUITE
+    // Initialize opened/clicked/purchased as false for ROI tracking
     batch.add(db.collection("notifications"), {
       userId,
       title: payload.notification.title,
       body: payload.notification.body,
       type: payload.data?.type || "system",
-      sentAt: now.toISOString()
+      sentAt: now.toISOString(),
+      opened: false,
+      clicked: false,
+      purchased: false,
+      relatedProductId: payload.data?.productId || null
     });
 
     return batch.commit();
@@ -210,10 +216,11 @@ exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event)
 });
 
 /**
- * 🧠 DAILY SMART RECOMMENDATIONS SCHEDULER
- * Runs at 9:00 AM daily. Sends one high-value pick to every active user.
+ * 🧠 SMART TIMING: DAILY RECOMMENDATIONS SCHEDULER
+ * Best Windows: 8:00 AM (Morning Pick), 1:00 PM (Midday Break), 9:00 PM (Night Shopping)
+ * This specific task runs at 8:00 AM daily.
  */
-exports.sendDailyRecommendations = onSchedule("0 9 * * *", async (event) => {
+exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
   const db = admin.firestore();
   
   try {
@@ -259,7 +266,7 @@ exports.sendDailyRecommendations = onSchedule("0 9 * * *", async (event) => {
       await checkThrottlingAndNotify(userId, {
         notification: {
           title: "🧠 Morning Pick for You",
-          body: `Based on your vibe, you'll love ${topPick.name}!`
+          body: `Since you like ${topCategory}, you'll love ${topPick.name}!`
         },
         data: { productId: topPick.id, type: "daily_recommendation" }
       }, db);

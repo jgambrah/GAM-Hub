@@ -167,6 +167,19 @@ export type SocialPost = {
   authorQualityScore?: number; 
 };
 
+export type Notification = {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  type: string;
+  sentAt: string;
+  opened?: boolean;
+  clicked?: boolean;
+  purchased?: boolean;
+  relatedProductId?: string;
+};
+
 export type Order = {
   id: string;
   productId: string;

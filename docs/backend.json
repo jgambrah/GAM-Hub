@@ -119,13 +119,17 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Notification",
       "type": "object",
-      "description": "Audit record of a sent push notification.",
+      "description": "Audit record of a sent push notification with analytics tracking.",
       "properties": {
         "userId": { "type": "string" },
         "title": { "type": "string" },
         "body": { "type": "string" },
         "type": { "type": "string" },
-        "sentAt": { "type": "string", "format": "date-time" }
+        "sentAt": { "type": "string", "format": "date-time" },
+        "opened": { "type": "boolean" },
+        "clicked": { "type": "boolean" },
+        "purchased": { "type": "boolean" },
+        "relatedProductId": { "type": "string" }
       }
     }
   },
@@ -179,7 +183,7 @@
         "definition": {
           "entityName": "Notification",
           "schema": { "$ref": "#/backend/entities/Notification" },
-          "description": "Audit log of sent notifications."
+          "description": "Audit log of sent notifications with ROI tracking."
         }
       }
     ]
