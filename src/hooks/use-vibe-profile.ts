@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useCallback, useEffect, useState, useRef } from 'react';
@@ -190,18 +189,27 @@ export function useVibeProfile() {
     if (!isLoaded) return 0;
     let score = 0;
 
-    // Historical persistent weights
+    // 1. HISTORICAL PERSISTENT WEIGHTS
     for (const tag of (post.tags || []).map(t => t.toLowerCase())) {
       score += (profile.tagWeights[tag] ?? 0) * 0.6;
-      // SESSION BOOST: Weight recent session interests much higher
-      score += (sessionProfile.tagWeights[tag] ?? 0) * 2.5;
     }
-    
     if (post.authorId) {
       score += (profile.authorWeights[post.authorId] ?? 0) * 0.5;
-      score += (sessionProfile.authorWeights[post.authorId] ?? 0) * 2.0;
     }
     
+    // 2. SESSION BOOST: Hyper-responsive short-term memory
+    // Applied based on computeSessionBoost.ts logic
+    for (const tag of (post.tags || []).map(t => t.toLowerCase())) {
+      if (sessionProfile.tagWeights[tag]) {
+        score += sessionProfile.tagWeights[tag] * 2;
+      }
+    }
+    
+    if (post.authorId && sessionProfile.authorWeights[post.authorId]) {
+      score += sessionProfile.authorWeights[post.authorId] * 3;
+    }
+
+    // 3. CATEGORY & CAMPUS CONTEXT
     if (post.mediaType) {
       score += (profile.typeWeights[post.mediaType] ?? 0) * 0.3;
     }
