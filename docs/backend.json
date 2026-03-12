@@ -42,6 +42,7 @@
       "properties": {
         "viewedCategories": { "type": "object" },
         "purchasedCategories": { "type": "object" },
+        "intentCategories": { "type": "object" },
         "favoriteVendors": { "type": "object" },
         "pricePreference": {
           "type": "object",
@@ -52,23 +53,6 @@
         },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
-    },
-    "CreatorReputation": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "CreatorReputation",
-      "type": "object",
-      "description": "Represents the quality and reputation score of a content creator.",
-      "properties": {
-        "id": { "type": "string" },
-        "qualityScore": { "type": "number" },
-        "engagementRate": { "type": "number" },
-        "completionRate": { "type": "number" },
-        "postCount": { "type": "number" },
-        "violationScore": { "type": "number" },
-        "tier": { "type": "string", "enum": ["elite", "trusted", "rising", "new"] },
-        "lastUpdatedAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "qualityScore", "lastUpdatedAt"]
     },
     "Product": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -89,31 +73,6 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
-    },
-    "CampusPulse": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "CampusPulse",
-      "type": "object",
-      "description": "Represents a unified social post in the flat campus_pulse collection.",
-      "properties": {
-        "id": { "type": "string" },
-        "campusId": { "type": "string" },
-        "authorId": { "type": "string" },
-        "content": { "type": "string" },
-        "mediaType": { "type": "string" },
-        "mediaUrl": { "type": "string" },
-        "isArenaEntry": { "type": "boolean" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "aiTags": { "type": "array", "items": { "type": "string" } },
-        "aiTopics": { "type": "array", "items": { "type": "string" } },
-        "mood": { "type": "string" },
-        "musicGenre": { "type": "string" },
-        "detectedObjects": { "type": "array", "items": { "type": "string" } },
-        "transcript": { "type": "string" },
-        "embedding": { "type": "array", "items": { "type": "number" } },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "campusId", "authorId", "content", "createdAt"]
     }
   },
   "auth": {
@@ -130,14 +89,6 @@
         }
       },
       {
-        "path": "/users/{userId}",
-        "definition": {
-          "entityName": "User",
-          "schema": { "$ref": "#/backend/entities/User" },
-          "description": "Stores user profiles."
-        }
-      },
-      {
         "path": "/user_market_profiles/{userId}",
         "definition": {
           "entityName": "MarketProfile",
@@ -146,19 +97,11 @@
         }
       },
       {
-        "path": "/creator_reputation/{creatorId}",
+        "path": "/product_velocity/{productId}/minutes/{minuteId}",
         "definition": {
-          "entityName": "CreatorReputation",
-          "schema": { "$ref": "#/backend/entities/CreatorReputation" },
-          "description": "Stores quality scores for content creators."
-        }
-      },
-      {
-        "path": "/campus_pulse/{pulseId}",
-        "definition": {
-          "entityName": "CampusPulse",
-          "schema": { "$ref": "#/backend/entities/CampusPulse" },
-          "description": "Unified social post feed with AI-driven discovery metadata."
+          "entityName": "ProductVelocity",
+          "schema": { "type": "object", "properties": { "views": { "type": "number" }, "intents": { "type": "number" } } },
+          "description": "Time-series commercial velocity tracking."
         }
       },
       {

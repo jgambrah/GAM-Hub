@@ -1,67 +1,40 @@
+
 'use client';
 import * as React from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useView } from '@/context/ViewContext';
 import ProductCard from '@/components/products/product-card';
 import { AddProductDialog } from '@/components/products/add-product-dialog';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, DocumentData, Query } from 'firebase/firestore';
-import type { Product } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCampusView } from '@/hooks/use-campus-view';
 import SponsoredMajorAd from '@/components/market/SponsoredMajorAd';
+import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
+import { Sparkles, ShoppingBag, Zap } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
 export default function ProductsPage() {
-  const { user, isUserLoading, isAdmin, isTokenReady } = useAuth();
+  const { user, isUserLoading, isAdmin } = useAuth();
   const { viewMode } = useView();
-  const { firestore } = useFirebase();
   const { viewAsCampus } = useCampusView();
 
-  const productsQuery = useMemoFirebase(() => {
-    // ✅ QUERY GUARD: Wait for token readiness to prevent permission poisoning
-    if (!firestore || !isTokenReady) return null;
+  // 🏎️ Use the new Ranking Engine for personalized discovery
+  const { products: rankedProducts, isLoading: isRanking, hasProfile } = useMarketRecommendations();
 
-    const activeCampusId = isAdmin ? viewAsCampus?.id : user?.campusId;
-    if (!activeCampusId) return null;
-
-    const productsRef = collection(firestore, 'products');
-    let q: Query<DocumentData>;
-
-    if (viewMode === 'student' || viewMode === 'staff') {
-      q = query(
-        productsRef,
-        where('campusId', '==', activeCampusId),
-        where('targetAudience', 'in', ['all', viewMode]),
-        orderBy('createdAt', 'desc')
-      );
-    } else {
-      q = query(
-        productsRef,
-        where('campusId', '==', activeCampusId),
-        orderBy('createdAt', 'desc')
-      );
-    }
-    
-    return q;
-  }, [firestore, user, isAdmin, viewAsCampus, viewMode, isTokenReady]);
-
-  const { data: allCampusProducts, isLoading: isLoadingProducts } = useCollection<Product>(productsQuery);
-  
   const campusProducts = React.useMemo(() => {
-    if (!allCampusProducts) return [];
-    if (viewMode === 'vendor' || isAdmin) return allCampusProducts;
+    if (!rankedProducts) return [];
+    if (viewMode === 'vendor' || isAdmin) return rankedProducts;
     
-    return allCampusProducts.filter(p => {
+    // Safety Filter: Ensure services are hidden if vendor is out of fuel
+    return rankedProducts.filter(p => {
         if (p.productType === 'service') {
             return p.has_fuel !== false;
         }
         return true;
     });
-  }, [allCampusProducts, viewMode, isAdmin]);
+  }, [rankedProducts, viewMode, isAdmin]);
 
-  const isLoading = isUserLoading || isLoadingProducts;
+  const isLoading = isUserLoading || isRanking;
   
   const getEmptyStateMessage = () => {
     if (isAdmin) {
@@ -73,37 +46,56 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-headline text-3xl font-bold tracking-tight">Marketplace</h1>
+    <div className="space-y-8 pb-20">
+      <div className="flex items-center justify-between px-2">
+        <div className="space-y-1">
+            <h1 className="font-headline text-4xl font-black tracking-tight text-foreground italic uppercase">Marketplace</h1>
+            <p className="text-xs text-muted-foreground font-bold uppercase tracking-[0.2em]">Verified Campus Commerce</p>
+        </div>
         {viewMode === 'vendor' && <AddProductDialog />}
       </div>
 
       {viewMode === 'student' && <SponsoredMajorAd userMajor={user?.major} />}
 
+      {/* INTELLIGENCE STATUS BAR */}
+      {hasProfile && !isLoading && (
+          <div className="px-4 animate-in slide-in-from-top-2 duration-500">
+              <div className="bg-blue-50 dark:bg-blue-900/20 px-6 py-3 rounded-[1.5rem] border border-blue-100 dark:border-blue-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200/50"><Sparkles size={14} /></div>
+                      <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Personalized Intelligence Active</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <Zap size={12} className="text-amber-500 fill-amber-500" />
+                      <span className="text-[9px] font-bold text-slate-400 uppercase">Synced with Vibe Profile</span>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {isLoading ? (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
+          {[...Array(8)].map((_, i) => (
             <div key={i} className="space-y-3">
-              <Skeleton className="h-48 w-full rounded-lg"/>
-              <div className="space-y-2">
+              <Skeleton className="h-48 w-full rounded-[2.5rem]"/>
+              <div className="space-y-2 px-4">
                 <Skeleton className="h-6 w-3/4" />
                 <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-1/2" />
               </div>
             </div>
           ))}
         </div>
       ) : campusProducts && campusProducts.length > 0 ? (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 px-2">
           {campusProducts.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/30 py-24 text-center">
-            <h2 className="text-xl font-semibold tracking-tight">No products found</h2>
-            <p className="text-sm text-muted-foreground">
+        <div className="flex flex-col items-center justify-center rounded-[3rem] border-4 border-dashed border-muted-foreground/10 py-32 text-center bg-muted/5">
+            <ShoppingBag className="mx-auto text-muted-foreground/20 mb-6" size={64} />
+            <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">No products found</h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto italic font-medium">
               {getEmptyStateMessage()}
             </p>
         </div>

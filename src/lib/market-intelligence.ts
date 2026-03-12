@@ -4,16 +4,16 @@
 /**
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
- * Shared signals allow video discovery to influence product recommendations.
+ * Upgraded with Dual-Write Velocity Tracking for real-time trending detection.
  */
 
-import { doc, increment, setDoc, Firestore, getDoc } from 'firebase/firestore';
+import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp } from 'firebase/firestore';
 import type { Product } from './types';
 
 /**
  * recordMarketSignal
  * ------------------
- * Logs a behavioral event to the user's market profile.
+ * Logs a behavioral event to the user's market profile and the product's velocity bucket.
  * Handles category counters, vendor affinity, and price range preferences.
  */
 export async function recordMarketSignal(
@@ -25,43 +25,62 @@ export async function recordMarketSignal(
   if (!firestore || !userId || !product) return;
 
   const profileRef = doc(firestore, 'user_market_profiles', userId);
+  const statsRef = doc(firestore, 'products', product.id);
   
-  // 1. Prepare incremental updates based on signal intensity
-  const updates: any = {
-    updatedAt: new Date().toISOString(),
+  // 🕒 MINUTE BUCKET LOGIC: Detects velocity within a 60-second window
+  const minuteBucket = new Date().toISOString().slice(0, 16); 
+  const velocityRef = doc(firestore, 'product_velocity', product.id, 'minutes', minuteBucket);
+
+  // 1. Update Market Profile
+  const profileUpdates: any = {
+    updatedAt: serverTimestamp(),
   };
 
+  const velocityUpdates: any = {};
+
   if (signal === 'view') {
-    // Light Signal: User is browsing
-    updates[`viewedCategories.${product.category}`] = increment(1);
+    profileUpdates[`viewedCategories.${product.category}`] = increment(1);
+    velocityUpdates.views = increment(1);
   } else if (signal === 'intent') {
-    // Medium Signal: User clicked 'Buy Now' or 'Apply'
-    updates[`intentCategories.${product.category}`] = increment(1);
-    updates[`favoriteVendors.${product.vendorId}`] = increment(1);
+    profileUpdates[`intentCategories.${product.category}`] = increment(1);
+    profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
+    velocityUpdates.intents = increment(1);
   } else if (signal === 'purchase') {
-    // Strong Signal: Order completed/Handshake successful
-    updates[`purchasedCategories.${product.category}`] = increment(1);
-    updates[`favoriteVendors.${product.vendorId}`] = increment(1);
+    profileUpdates[`purchasedCategories.${product.category}`] = increment(1);
+    profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
+    velocityUpdates.purchases = increment(1);
   }
 
-  // 2. Price Preference Balancing
-  // We perform a light read-then-write to update the min/max range.
-  try {
-    const snap = await getDoc(profileRef);
-    const data = snap.data() || {};
-    const currentPrefs = data.pricePreference || { min: product.price, max: product.price };
-    
-    // We only update if the new product is outside the current interest range
-    updates.pricePreference = {
-      min: Math.min(currentPrefs.min, product.price),
-      max: Math.max(currentPrefs.max, product.price)
-    };
+  // Non-blocking write to Profile
+  setDoc(profileRef, profileUpdates, { merge: true }).catch(() => {});
 
-    // Use non-blocking pattern for the final write
-    setDoc(profileRef, updates, { merge: true }).catch(err => {
-        console.warn("Market Intel: Final write failed", err);
-    });
-  } catch (err) {
-    console.warn("Liaison Market Intel: Profile sync interrupted.", err);
+  // Non-blocking write to Velocity Bucket
+  setDoc(velocityRef, velocityUpdates, { merge: true }).catch(() => {});
+
+  // Update Aggregate Stats on the Product itself
+  const aggregateUpdates: any = {};
+  if (signal === 'view') aggregateUpdates.viewCount = increment(1);
+  if (signal === 'purchase') aggregateUpdates.salesCount = increment(1);
+  
+  if (Object.keys(aggregateUpdates).length > 0) {
+    setDoc(statsRef, aggregateUpdates, { merge: true }).catch(() => {});
+  }
+
+  // 2. Price Preference Balancing (Async context)
+  if (signal === 'view' || signal === 'intent') {
+    try {
+      const snap = await getDoc(profileRef);
+      const data = snap.data() || {};
+      const currentPrefs = data.pricePreference || { min: product.price, max: product.price };
+      
+      const newPrefs = {
+        min: Math.min(currentPrefs.min, product.price),
+        max: Math.max(currentPrefs.max, product.price)
+      };
+
+      setDoc(profileRef, { pricePreference: newPrefs }, { merge: true }).catch(() => {});
+    } catch (err) {
+      console.warn("Market Intel: Price sync interrupted.");
+    }
   }
 }
