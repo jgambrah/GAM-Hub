@@ -9,8 +9,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useCampusView } from '@/hooks/use-campus-view';
 import SponsoredMajorAd from '@/components/market/SponsoredMajorAd';
 import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
-import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot, Trophy } from 'lucide-react';
+import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot, Trophy, Mic, MicOff, Volume2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +20,65 @@ export default function ProductsPage() {
   const { user, isUserLoading, isAdmin } = useAuth();
   const { viewMode } = useView();
   const { viewAsCampus } = useCampusView();
+  const { toast } = useToast();
+  
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [isListening, setIsListening] = React.useState(false);
 
   // 🏎️ Rank Engine with AI Intent Parsing & Result Explanation
   const { products: rankedProducts, isLoading: isRanking, isParsing, hasProfile, intent, isExplaining } = useMarketRecommendations(searchQuery);
+
+  // 🎙️ VOICE SHOPPING PROTOCOL
+  const startVoiceSearch = () => {
+    if (typeof window === 'undefined') return;
+    
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Voice Search Unsupported', 
+        description: 'Your browser does not support speech recognition. Please try Chrome or Safari.' 
+      });
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-GH'; // Tune for Ghanaian accent
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setSearchQuery(transcript);
+      toast({
+        title: "Voice Captured",
+        description: `Searching for: "${transcript}"`,
+      });
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech Recognition Error:", event.error);
+      setIsListening(false);
+      if (event.error === 'not-allowed') {
+        toast({ variant: 'destructive', title: 'Mic Access Denied', description: 'Please enable microphone permissions in your browser settings.' });
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (e) {
+      setIsListening(false);
+    }
+  };
 
   const campusProducts = React.useMemo(() => {
     if (!rankedProducts) return [];
@@ -55,23 +112,50 @@ export default function ProductsPage() {
             <p className="text-xs text-muted-foreground font-bold uppercase tracking-[0.2em]">Verified Campus Commerce</p>
         </div>
         
-        {/* AI SEARCH BAR */}
+        {/* AI SEARCH BAR + VOICE COMMAND */}
         <div className="relative w-full max-w-md group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" size={18} />
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                {isListening ? (
+                    <div className="relative flex items-center justify-center">
+                        <div className="absolute h-8 w-8 bg-red-500/20 rounded-full animate-ping" />
+                        <Mic className="text-red-600 animate-pulse" size={18} />
+                    </div>
+                ) : (
+                    <Search className="text-slate-400 group-focus-within:text-primary transition-colors" size={18} />
+                )}
+            </div>
+            
             <Input 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Ask Liaison Assistant..."
-                className="pl-12 pr-10 h-14 rounded-2xl bg-white border-2 border-slate-100 shadow-sm focus:ring-2 focus:ring-primary focus:border-transparent transition-all font-bold"
+                placeholder={isListening ? "Listening to the Yard..." : "Ask Liaison Assistant..."}
+                className={cn(
+                    "pl-12 pr-24 h-14 rounded-2xl bg-white border-2 border-slate-100 shadow-sm focus:ring-2 focus:ring-primary focus:border-transparent transition-all font-bold",
+                    isListening && "border-red-200 ring-2 ring-red-100 bg-red-50/10"
+                )}
             />
-            {searchQuery && (
+            
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {searchQuery && (
+                    <button 
+                        onClick={() => setSearchQuery('')}
+                        className="p-2 hover:bg-muted rounded-xl transition-colors text-slate-400"
+                    >
+                        <X size={16} />
+                    </button>
+                )}
                 <button 
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 hover:bg-muted rounded-full transition-colors"
+                    onClick={startVoiceSearch}
+                    disabled={isListening}
+                    className={cn(
+                        "p-2.5 rounded-xl transition-all active:scale-90 shadow-sm",
+                        isListening ? "bg-red-600 text-white shadow-red-200" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    )}
+                    title="Voice Shopping"
                 >
-                    <X size={14} />
+                    {isListening ? <Loader2 className="animate-spin" size={18} /> : <Mic size={18} />}
                 </button>
-            )}
+            </div>
         </div>
 
         {viewMode === 'vendor' && <AddProductDialog />}
@@ -107,12 +191,20 @@ export default function ProductsPage() {
 
       <div className="px-2">
         {intent && searchQuery && !isLoading && (
-            <div className="mb-6 animate-in fade-in slide-in-from-left-4 duration-500">
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2 italic tracking-tight">
-                    <Trophy className="text-amber-500" size={24} /> 
-                    Top Picks For {intent.intent?.toUpperCase() || intent.category?.toUpperCase() || 'You'}
-                </h3>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 ml-8">AI Assisted Recommendation</p>
+            <div className="mb-8 animate-in fade-in slide-in-from-left-4 duration-500">
+                <div className="flex items-center gap-4">
+                    <div className="p-4 bg-amber-500 rounded-[1.5rem] shadow-xl shadow-amber-200/50 text-slate-950">
+                        <Trophy size={28} />
+                    </div>
+                    <div>
+                        <h3 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2 italic tracking-tighter uppercase leading-none">
+                            Top Picks For {intent.intent?.toUpperCase() || intent.category?.toUpperCase() || 'You'}
+                        </h3>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
+                            <Sparkles size={12} className="text-indigo-500" /> AI-Orchestrated Match Protocol
+                        </p>
+                    </div>
+                </div>
             </div>
         )}
 
