@@ -9,18 +9,20 @@ import { computeMarketScore } from '@/lib/market-scoring';
 import { enforceMarketDiversity } from '@/lib/market-diversity';
 import { useAuth } from './use-auth';
 import { parseMarketIntent } from '@/ai/flows/market-intent-parser';
+import { expandInterests } from '@/lib/knowledge-graph';
 
 /**
  * useMarketRecommendations Hook
  * ----------------------------
  * The primary discovery engine for the marketplace.
- * Synchronizes with the Unified User Intelligence brain.
+ * Synchronizes with the Unified User Intelligence brain + Knowledge Graph.
  */
 export function useMarketRecommendations(searchQuery: string = '') {
   const { firestore } = useFirebase();
   const { user, isTokenReady } = useAuth();
   
   const [parsedIntent, setParsedIntent] = useState<MarketIntent | null>(null);
+  const [expandedInterests, setExpandedInterests] = useState<Record<string, number>>({});
   const [isParsing, setIsParsing] = useState(false);
   const [isExplaining, setIsExplaining] = useState(false);
 
@@ -31,7 +33,21 @@ export function useMarketRecommendations(searchQuery: string = '') {
   }, [firestore, user?.id]);
   const { data: unifiedIntelligence, isLoading: isLoadingProfile } = useDoc<UserIntelligence>(intelRef);
 
-  // 2. RETRIEVAL (Broad Candidate Fetch)
+  // 2. GRAPH EXPANSION: Discover related commerce topics
+  useEffect(() => {
+    if (!firestore || !unifiedIntelligence?.interests) return;
+
+    const topDirect = Object.entries(unifiedIntelligence.interests)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 10)
+        .map(([id]) => id);
+    
+    expandInterests(firestore, topDirect)
+        .then(setExpandedInterests)
+        .catch(err => console.warn("Market Graph expansion drifted:", err));
+  }, [firestore, unifiedIntelligence?.interests]);
+
+  // 3. RETRIEVAL (Broad Candidate Fetch)
   const candidatesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     return query(
@@ -44,21 +60,26 @@ export function useMarketRecommendations(searchQuery: string = '') {
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 3. 🏎️ HYBRID PERSONALIZED RANKING
+  // 4. 🏎️ HYBRID PERSONALIZED RANKING (Knowledge Graph Enhanced)
   const processed = useMemo(() => {
     if (!candidates) return { ranked: [], trending: [], deals: [], topRated: [] };
     
-    // Sort for the primary feed using the 3x Unified Interest multiplier
     const scored = candidates
       .map(product => ({
         product,
-        score: computeMarketScore(product, unifiedIntelligence || null, user, searchQuery, parsedIntent)
+        score: computeMarketScore(
+            product, 
+            unifiedIntelligence || null, 
+            user, 
+            searchQuery, 
+            parsedIntent,
+            expandedInterests
+        )
       }))
       .sort((a, b) => b.score - a.score);
 
     const ranked = enforceMarketDiversity(scored.map(r => r.product));
 
-    // Specialized Discovery Segments
     const trending = candidates
       .filter(p => (p.trendScore || 0) > 5)
       .sort((a, b) => (b.trendScore || 0) - (a.trendScore || 0))
@@ -79,9 +100,9 @@ export function useMarketRecommendations(searchQuery: string = '') {
       .slice(0, 10);
 
     return { ranked, trending, deals, topRated };
-  }, [candidates, unifiedIntelligence, user, searchQuery, parsedIntent]);
+  }, [candidates, unifiedIntelligence, user, searchQuery, parsedIntent, expandedInterests]);
 
-  // 4. AI INTENT PARSING (On query change)
+  // 5. AI INTENT PARSING
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.length < 3) {
         setParsedIntent(null);

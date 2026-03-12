@@ -12,28 +12,22 @@ import type { UserIntelligence, MarketplaceSignal, VibeSignal, SocialPost, Produ
 import { recordEdge } from './knowledge-graph';
 
 // LIAISON INTELLIGENCE WEIGHTS
-// Maps signals to their holistic engagement value
 const SIGNAL_VALUES: Record<MarketplaceSignal | VibeSignal, number> = {
-  // Social Vibrations
   'watch': 1,
   'like': 3,
   'comment': 5,
   'share': 8,
   'reaction': 2,
-  'skip': -4, // Negative signal for irrelevance
-  
-  // Commercial Trade
+  'skip': -4, 
   'view': 3,
   'click': 6,
   'intent': 10,
   'favorite': 12,
-  'purchase': 25, // Strongest possible intent signal
+  'purchase': 25, 
 };
 
 /**
  * updateVideoInterest
- * -------------------
- * Updates user interests based on video engagement.
  */
 export async function updateVideoInterest(
   firestore: Firestore,
@@ -50,13 +44,11 @@ export async function updateVideoInterest(
     updates[`interests.${tag.toLowerCase()}`] = increment(1);
   });
 
-  // 🕸️ GRAPH HANDSHAKE: Strengthen relationship between tags found in this video
-  if (tags.length >= 2) {
-      for (let i = 0; i < Math.min(tags.length, 3); i++) {
-          for (let j = i + 1; j < Math.min(tags.length, 4); j++) {
-              recordEdge(firestore, tags[i].toLowerCase(), tags[j].toLowerCase(), 'tag');
-          }
-      }
+  // 🕸️ GRAPH HANDSHAKE: Strengthen relationship between tags and creator
+  if (tags.length >= 1) {
+      tags.slice(0, 5).forEach(tag => {
+          recordEdge(firestore, { id: tag.toLowerCase(), type: 'tag' }, { id: post.authorId, type: 'creator' }, 1);
+      });
   }
 
   return setDoc(ref, updates, { merge: true }).catch(() => {});
@@ -64,8 +56,6 @@ export async function updateVideoInterest(
 
 /**
  * updateMarketInterest
- * --------------------
- * Updates user interests based on marketplace behavior.
  */
 export async function updateMarketInterest(
   firestore: Firestore,
@@ -90,11 +80,15 @@ export async function updateMarketInterest(
       const tagId = tag.toLowerCase();
       updates[`interests.${tagId}`] = increment(2 * multiplier);
       // 🕸️ GRAPH HANDSHAKE: Link category to its tags
-      recordEdge(firestore, categoryId, tagId, 'category', 2);
+      recordEdge(firestore, { id: categoryId, type: 'category' }, { id: tagId, type: 'tag' }, 2);
     });
   }
 
-  // 3. Update Price preference
+  // 3. 🕸️ GRAPH HANDSHAKE: Link category to vendor
+  // This powers "Suggested Vendors" based on category interests
+  recordEdge(firestore, { id: categoryId, type: 'category' }, { id: product.vendorId, type: 'vendor' }, 2 * multiplier);
+
+  // 4. Update Price preference
   if (product.price) {
       const min = product.price * 0.7;
       const max = product.price * 1.5;

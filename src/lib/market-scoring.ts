@@ -25,7 +25,7 @@ export function computeMarketScore(
   user: User | null,
   searchQuery: string = '',
   parsedIntent?: MarketIntent | null,
-  expandedInterests: Record<string, number> = {} // New: Expanded Graph interests
+  expandedInterests: Record<string, number> = {} 
 ) {
   let score = 0;
 
@@ -46,6 +46,11 @@ export function computeMarketScore(
     // 🎯 Direct Match (3x Weight)
     const catWeight = unifiedIntelligence.interests[productCategory] || 0;
     score += catWeight * 3.0; 
+
+    // 🕸️ Graph Expansion Match (1.5x Weight)
+    // Surface categories 'related' to your interests
+    const expandedCatWeight = expandedInterests[productCategory] || 0;
+    score += expandedCatWeight * 1.5;
 
     // Match product tags
     if (product.tags) {
