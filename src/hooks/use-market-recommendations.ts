@@ -3,17 +3,18 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, orderBy, limit, doc, CollectionReference, Query, DocumentData } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, doc, Query, DocumentData } from 'firebase/firestore';
 import type { Product, MarketProfile, MarketIntent } from '@/lib/types';
 import { useVibeProfile } from './use-vibe-profile';
 import { computeMarketScore } from '@/lib/market-scoring';
 import { enforceMarketDiversity } from '@/lib/market-diversity';
 import { useAuth } from './use-auth';
 import { parseMarketIntent } from '@/ai/flows/market-intent-parser';
+import { generateRecommendationReason } from '@/ai/flows/explain-recommendation';
 
 /**
- * useMarketRecommendations Hook
- * ----------------------------
+ * useMarketRecommendations Hook (The AI Shopping Assistant API)
+ * -----------------------------------------------------------
  * The definitive Marketplace Feed Builder.
  * 
  * Pipeline:
@@ -21,6 +22,7 @@ import { parseMarketIntent } from '@/ai/flows/market-intent-parser';
  * 2. BUCKETED RETRIEVAL: Pull candidates from current campus using parsed intent filters.
  * 3. MULTI-SIGNAL RANKING: Intent + Vibe + Trust + Deal + Semantic Tags.
  * 4. DIVERSITY FILTER: Vendor & Category balance.
+ * 5. AI EXPLANATION: Step 4 - Explain top matches to build trust.
  */
 export function useMarketRecommendations(searchQuery: string = '') {
   const { firestore } = useFirebase();
@@ -29,6 +31,8 @@ export function useMarketRecommendations(searchQuery: string = '') {
   
   const [parsedIntent, setParsedIntent] = useState<MarketIntent | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [rankedProducts, setRankedProducts] = useState<Product[]>([]);
+  const [isExplaining, setIsExplaining] = useState(false);
 
   // 🧠 STAGE 0: AI INTENT PARSING (The Shopping Assistant)
   useEffect(() => {
@@ -37,7 +41,6 @@ export function useMarketRecommendations(searchQuery: string = '') {
         return;
     }
 
-    // Only invoke AI for complex sentences (more than 2 words)
     const isComplex = searchQuery.trim().split(/\s+/).length > 2;
     if (!isComplex) {
         setParsedIntent(null);
@@ -54,7 +57,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
         } finally {
             setIsParsing(false);
         }
-    }, 600); // Debounce to save tokens and prevent jitter
+    }, 600);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -66,30 +69,25 @@ export function useMarketRecommendations(searchQuery: string = '') {
   }, [firestore, user?.id]);
   const { data: marketProfile, isLoading: isLoadingProfile } = useDoc<MarketProfile>(marketProfileRef);
 
-  // 2. STAGE 1: INTENT-AWARE CANDIDATE RETRIEVAL (Step 2)
+  // 2. STAGE 1: INTENT-AWARE RETRIEVAL
   const candidatesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     
     let ref: Query<DocumentData> = collection(firestore, 'products');
-
-    // Filter by Campus (Mandatory)
     ref = query(ref, where('campusId', '==', user.campusId));
 
-    // Step 2: Use parsed intent to narrow retrieval
     if (parsedIntent?.category) {
-        // Broad Category Filter
         ref = query(ref, where('category', '==', parsedIntent.category));
     }
 
-    // We order by creation to get fresh vibes, limiting to 300 candidates for local ranking
     return query(ref, orderBy('createdAt', 'desc'), limit(300));
   }, [firestore, user?.campusId, isTokenReady, parsedIntent?.category]);
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 3. STAGE 2 & 3: PERSONALIZED RANKING & DIVERSITY (Step 3)
-  const rankedProducts = useMemo(() => {
-    if (!candidates) return [];
+  // 3. STAGE 2, 3 & 4: RANKING, DIVERSITY, AND EXPLANATION
+  useEffect(() => {
+    if (!candidates) return;
     
     const scored = [...candidates]
       .map(product => ({
@@ -98,21 +96,56 @@ export function useMarketRecommendations(searchQuery: string = '') {
       }))
       .sort((a, b) => b.score - a.score);
 
-    // If searching, only show relevant matches
     let finalRankedPool = scored;
     if (searchQuery.trim()) {
-        // High confidence threshold for search results
         finalRankedPool = scored.filter(r => r.score > 5); 
     }
 
     const sortedProducts = finalRankedPool.map(r => r.product);
-    return enforceMarketDiversity(sortedProducts);
-  }, [candidates, marketProfile, vibeProfile, user, searchQuery, parsedIntent]);
+    const diverse = enforceMarketDiversity(sortedProducts);
+    
+    // 🧠 STAGE 4: AI RESULT EXPLANATION (Only for Top 3 to prevent latency)
+    const runExplainer = async () => {
+        if (searchQuery.trim() && diverse.length > 0 && !isParsing) {
+            setIsExplaining(true);
+            try {
+                const top3 = diverse.slice(0, 3);
+                const explained = await Promise.all(top3.map(async (p) => {
+                    try {
+                        const res = await generateRecommendationReason({
+                            productName: p.name,
+                            productPrice: p.price,
+                            productRating: p.rating || 5,
+                            userQuery: searchQuery
+                        });
+                        return { ...p, aiReason: res.reasons };
+                    } catch (e) {
+                        return p;
+                    }
+                }));
+                
+                setRankedProducts([
+                    ...explained,
+                    ...diverse.slice(3)
+                ]);
+            } catch (err) {
+                setRankedProducts(diverse);
+            } finally {
+                setIsExplaining(false);
+            }
+        } else {
+            setRankedProducts(diverse);
+        }
+    };
+
+    runExplainer();
+  }, [candidates, marketProfile, vibeProfile, user, searchQuery, parsedIntent, isParsing]);
 
   return {
     products: rankedProducts,
-    isLoading: isLoadingCandidates || isLoadingProfile || !isVibeLoaded,
+    isLoading: isLoadingCandidates || isLoadingProfile || !isVibeLoaded || isParsing,
     isParsing,
+    isExplaining,
     hasProfile: !!marketProfile || !!vibeProfile,
     intent: parsedIntent
   };

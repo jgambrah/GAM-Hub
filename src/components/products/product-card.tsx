@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -111,6 +112,23 @@ export default function ProductCard({ product, className }: ProductCardProps) {
             </div>
             <CardTitle className="mb-2 text-lg font-semibold font-headline line-clamp-1">{product.name}</CardTitle>
             <p className="text-sm text-muted-foreground line-clamp-2">{product.description}</p>
+
+            {/* AI RESULT EXPLANATION PANEL */}
+            {product.aiReason && product.aiReason.length > 0 && (
+                <div className="mt-4 p-3 bg-indigo-50 dark:bg-indigo-950/30 rounded-2xl border border-indigo-100 dark:border-indigo-900 animate-in fade-in slide-in-from-top-2 duration-500">
+                    <p className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-[0.2em] mb-2 flex items-center gap-1.5">
+                        <Sparkles size={10} fill="currentColor" /> Why this matches
+                    </p>
+                    <ul className="space-y-1.5">
+                        {product.aiReason.map((reason, i) => (
+                            <li key={i} className="text-[10px] text-slate-600 dark:text-slate-300 flex items-start gap-2 font-medium leading-tight italic">
+                                <div className="w-1 h-1 rounded-full bg-indigo-400 mt-1.5 flex-shrink-0" />
+                                {reason}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
         </CardContent>
         <CardFooter className="flex items-center justify-between p-4 pt-0">
             {isService ? (

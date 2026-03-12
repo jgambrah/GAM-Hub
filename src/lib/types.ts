@@ -157,6 +157,8 @@ export type Product = {
   vendorDeliveryRate?: number;
   vendorSalesCount?: number;
   vendorResponseTime?: number;
+  // AI ASSISTANT LAYER
+  aiReason?: string[]; // Step 4: AI Result Explanation
 };
 
 export type AdCampaign = {

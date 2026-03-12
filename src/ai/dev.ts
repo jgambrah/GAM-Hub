@@ -13,3 +13,4 @@ import '@/ai/flows/generate-semantic-hashtags.ts';
 import '@/ai/flows/analyze-vibe-content.ts';
 import '@/ai/flows/generate-query-embedding.ts';
 import '@/ai/flows/market-intent-parser.ts';
+import '@/ai/flows/explain-recommendation.ts';
