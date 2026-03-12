@@ -111,6 +111,7 @@ export type MarketRequest = {
   tags: string[];
   condition: string;
   campusId: string;
+  location?: string;
   createdAt: any;
   status: 'open' | 'fulfilled' | 'expired';
   matchCount?: number;
@@ -122,6 +123,7 @@ export type DemandSignal = {
   campusId: string;
   demandCount: number;
   lastUpdated: any;
+  category?: string;
 };
 
 export type Product = {

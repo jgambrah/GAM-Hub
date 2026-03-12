@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirestore } from '@/firebase';
-import { Loader2, Megaphone, Sparkles, Send, ShoppingBag, BadgeCheck } from 'lucide-react';
+import { Loader2, Megaphone, Sparkles, Send, MapPin, BadgeCheck } from 'lucide-react';
 import { createMarketRequest } from '@/lib/market-intelligence';
 import { parseDemandRequest, type DemandOutput } from '@/ai/flows/parse-demand-request';
 import { Badge } from '../ui/badge';
@@ -29,6 +29,7 @@ const requestSchema = z.object({
   query: z.string().min(3, 'Please describe what you are looking for.'),
   category: z.string().min(2, 'Select a category so vendors can find you.'),
   condition: z.enum(['new', 'used', 'any']),
+  location: z.string().min(2, 'Specify your Hall or Faculty for delivery vibes.'),
 });
 
 type RequestFormValues = z.infer<typeof requestSchema>;
@@ -39,13 +40,6 @@ interface RequestItemDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/**
- * RequestItemDialog Component
- * 
- * Part of the Supply-Demand Engine.
- * Allows students to broadcast their needs to vendors when supply is missing.
- * Upgraded with parseDemandRequest AI intelligence.
- */
 export default function RequestItemDialog({ initialQuery, open, onOpenChange }: RequestItemDialogProps) {
   const { user } = useAuth();
   const firestore = useFirestore();
@@ -60,11 +54,11 @@ export default function RequestItemDialog({ initialQuery, open, onOpenChange }: 
     defaultValues: {
       query: initialQuery || '',
       category: 'General',
-      condition: 'any'
+      condition: 'any',
+      location: ''
     },
   });
 
-  // 🧠 AI DEMAND PARSER: Extract intent as user types
   React.useEffect(() => {
     const currentQuery = form.watch('query');
     if (open && currentQuery && currentQuery.length > 8) {
@@ -73,8 +67,6 @@ export default function RequestItemDialog({ initialQuery, open, onOpenChange }: 
             try {
                 const intent = await parseDemandRequest({ query: currentQuery });
                 setAiMetadata(intent);
-                
-                // Pre-fill form with AI findings
                 form.setValue('category', intent.category.charAt(0).toUpperCase() + intent.category.slice(1));
                 form.setValue('condition', intent.condition);
             } catch (e) {
@@ -82,7 +74,7 @@ export default function RequestItemDialog({ initialQuery, open, onOpenChange }: 
             } finally {
                 setIsAiParsing(false);
             }
-        }, 1000); // Debounce AI call
+        }, 1000);
         return () => clearTimeout(timer);
     }
   }, [open, form.watch('query'), form]);
@@ -101,7 +93,8 @@ export default function RequestItemDialog({ initialQuery, open, onOpenChange }: 
             {
                 category: data.category.toLowerCase(),
                 tags: aiMetadata?.tags || [],
-                condition: data.condition
+                condition: data.condition,
+                location: data.location
             }
         );
 
@@ -140,7 +133,7 @@ export default function RequestItemDialog({ initialQuery, open, onOpenChange }: 
                 <div className="space-y-1">
                     <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed font-black uppercase">Liaison AI Intelligence</p>
                     <p className="text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed font-medium italic">
-                        The Brain will automatically tag your request so the right vendors can find you instantly.
+                        The Brain will automatically tag your request so vendors find you.
                     </p>
                 </div>
             </div>
@@ -152,11 +145,7 @@ export default function RequestItemDialog({ initialQuery, open, onOpenChange }: 
                             <FormLabel className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Describe Your Need</FormLabel>
                             <FormControl>
                                 <div className="relative">
-                                    <Input 
-                                        placeholder="e.g. used scientific calculator" 
-                                        className="h-14 rounded-2xl border-none bg-slate-50 dark:bg-muted font-bold text-lg shadow-inner pr-12" 
-                                        {...field} 
-                                    />
+                                    <Input placeholder="e.g. used scientific calculator" className="h-14 rounded-2xl border-none bg-slate-50 dark:bg-muted font-bold text-lg shadow-inner pr-12" {...field} />
                                     <div className="absolute right-4 top-1/2 -translate-y-1/2">
                                         {isAiParsing ? <Loader2 className="animate-spin text-primary" size={18} /> : aiMetadata && <BadgeCheck className="text-emerald-500" size={18} />}
                                     </div>
@@ -215,6 +204,19 @@ export default function RequestItemDialog({ initialQuery, open, onOpenChange }: 
                             </FormItem>
                         )}/>
                     </div>
+
+                    <FormField control={form.control} name="location" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Your Yard Spot (Hall/Faculty)</FormLabel>
+                            <FormControl>
+                                <div className="relative">
+                                    <Input placeholder="e.g. Republic Hall" className="h-14 rounded-2xl border-none bg-slate-50 dark:bg-muted font-bold shadow-inner pl-12" {...field} />
+                                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                </div>
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}/>
 
                     <Button 
                         type="submit" 

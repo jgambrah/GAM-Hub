@@ -139,7 +139,7 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
 });
 
 /**
- * 🔔 SMART NOTIFICATION ENGINE: Vendor New Post Alert
+ * 🔔 SMART NOTIFICATION ENGINE: Vendor New Post Alert & Request Matching
  */
 exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async (event) => {
   const product = event.data.data();
@@ -147,23 +147,44 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
   const db = admin.firestore();
 
   try {
+    // 1. Follower Notification
     const followersSnap = await db.collection("users")
       .where("followedVendors", "array-contains", vendorId)
       .get();
 
-    if (followersSnap.empty) return null;
     const uids = followersSnap.docs.map(doc => doc.id);
+    if (uids.length > 0) {
+        await sendSmartMulticast(uids, {
+            notification: {
+                title: "📦 New Arrival!",
+                body: `${product.vendorName} just listed a new vibe: ${product.name}`
+            },
+            data: { productId: event.params.productId, type: "vendor_new_post" }
+        }, db);
+    }
 
-    return sendSmartMulticast(uids, {
-      notification: {
-        title: "📦 New Arrival!",
-        body: `${product.vendorName} just listed a new vibe: ${product.name}`
-      },
-      data: { productId: event.params.productId, type: "vendor_new_post" }
-    }, db);
+    // 🤝 2. Request Matching: Find students looking for this category
+    const requestsSnap = await db.collection("market_requests")
+      .where("campusId", "==", product.campusId)
+      .where("category", "==", product.category.toLowerCase())
+      .where("status", "==", "open")
+      .get();
+
+    if (!requestsSnap.empty) {
+        const requestingUserIds = requestsSnap.docs.map(doc => doc.data().userId);
+        await sendSmartMulticast(requestingUserIds, {
+            notification: {
+                title: "📦 Item Available!",
+                body: `Good news! ${product.name} just arrived in the Yard. You recently requested this!`
+            },
+            data: { productId: event.params.productId, type: "request_match" }
+        }, db);
+    }
+
+    return null;
 
   } catch (err) {
-    console.error("Vendor Update Notification Error:", err);
+    console.error("Product Creation Intelligence Error:", err);
     return null;
   }
 });

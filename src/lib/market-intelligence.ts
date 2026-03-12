@@ -70,7 +70,7 @@ export async function createMarketRequest(
   userName: string,
   queryText: string,
   campusId: string,
-  aiMetadata: { category: string; tags: string[]; condition: string }
+  aiMetadata: { category: string; tags: string[]; condition: string; location?: string }
 ) {
   const ref = collection(firestore, "market_requests");
   const requestData: Omit<MarketRequest, 'id'> = {
@@ -81,6 +81,7 @@ export async function createMarketRequest(
     tags: aiMetadata.tags || [],
     condition: aiMetadata.condition || 'any',
     campusId,
+    location: aiMetadata.location || 'Yard General',
     createdAt: serverTimestamp(),
     status: 'open',
     matchCount: 0

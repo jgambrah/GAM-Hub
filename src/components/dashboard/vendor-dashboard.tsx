@@ -9,6 +9,7 @@ import { Skeleton } from '../ui/skeleton';
 import { VendorOnboardingForm } from '../auth/vendor-onboarding-form';
 import VendorWallet from './vendor-wallet';
 import DemandFeed from '../vendor/DemandFeed';
+import SourcingHeatmap from '../vendor/SourcingHeatmap';
 
 export default function VendorDashboard() {
   const { user } = useAuth();
@@ -42,6 +43,16 @@ export default function VendorDashboard() {
         <VendorWallet vendorData={user} />
         
         <div className="grid grid-cols-1 gap-10">
+            {/* 📍 GEOGRAPHIC DEMAND INTELLIGENCE */}
+            <section className="space-y-4">
+                <div className="px-2">
+                    <h2 className="text-2xl font-black text-foreground tracking-tight">Sourcing Map</h2>
+                    <p className="text-sm text-muted-foreground font-medium italic">High-density hotspots across the Yard</p>
+                </div>
+                <SourcingHeatmap campusId={user.campusId} />
+            </section>
+
+            {/* 📊 CATEGORICAL DEMAND INTELLIGENCE */}
             <div className="space-y-4">
                 <div className="px-2">
                     <h2 className="text-2xl font-black text-foreground tracking-tight">Market Intelligence</h2>

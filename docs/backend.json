@@ -161,6 +161,7 @@
         "tags": { "type": "array", "items": { "type": "string" } },
         "condition": { "type": "string" },
         "campusId": { "type": "string" },
+        "location": { "type": "string", "description": "Specific Hall or Block where demand exists." },
         "createdAt": { "type": "string", "format": "date-time" },
         "status": { "type": "string", "enum": ["open", "fulfilled", "expired"] },
         "matchCount": { "type": "number" }
