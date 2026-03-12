@@ -17,10 +17,10 @@ import { useAuth } from './use-auth';
  * Pipeline:
  * 1. BUCKETED RETRIEVAL: Pull 300 candidates from current campus.
  * 2. PROFILE MATCHING: Load user's market intent and vibe profiles.
- * 3. MULTI-SIGNAL RANKING: Apply scoring logic (Intent + Vibe + Momentum).
+ * 3. MULTI-SIGNAL RANKING: Apply scoring logic (Intent + Vibe + Search + Campus Intel).
  * 4. DIVERSITY FILTER: Final pass to ensure category & vendor balance.
  */
-export function useMarketRecommendations() {
+export function useMarketRecommendations(searchQuery: string = '') {
   const { firestore } = useFirebase();
   const { user, isTokenReady } = useAuth();
   const { profile: vibeProfile, isLoaded: isVibeLoaded } = useVibeProfile();
@@ -36,7 +36,7 @@ export function useMarketRecommendations() {
   const candidatesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     
-    // Fetch broad set of high-potential candidates
+    // Fetch broad set of high-potential candidates for the current campus
     return query(
       collection(firestore, 'products'),
       where('campusId', '==', user.campusId),
@@ -50,24 +50,31 @@ export function useMarketRecommendations() {
   // 3. STAGE 2 & 3: PERSONALIZED RANKING & DIVERSITY (Local Pass)
   const rankedProducts = useMemo(() => {
     if (!candidates) return [];
-    if (!marketProfile && !vibeProfile) return candidates;
-
+    
     // A. Local Multi-Signal Scoring (Stage 2)
+    // We include Search Query and the full User object for campus intelligence
     const scored = [...candidates]
       .map(product => ({
         product,
-        score: computeMarketScore(product, marketProfile, vibeProfile)
+        score: computeMarketScore(product, marketProfile || null, vibeProfile, user, searchQuery)
       }))
-      .sort((a, b) => b.score - a.score)
-      .map(r => r.product);
+      .sort((a, b) => b.score - a.score);
+
+    // If searching, we filter more strictly by score or presence of search term
+    let filtered = scored;
+    if (searchQuery.trim()) {
+        filtered = scored.filter(r => r.score > 5); // Minimum relevance threshold for search
+    }
+
+    const finalRanked = filtered.map(r => r.product);
 
     // B. Diversity Protocol (Stage 3: Balance Vendors and Categories)
-    return enforceMarketDiversity(scored);
-  }, [candidates, marketProfile, vibeProfile]);
+    return enforceMarketDiversity(finalRanked);
+  }, [candidates, marketProfile, vibeProfile, user, searchQuery]);
 
   return {
     products: rankedProducts,
     isLoading: isLoadingCandidates || isLoadingProfile || !isVibeLoaded,
-    hasProfile: !!marketProfile
+    hasProfile: !!marketProfile || !!vibeProfile
   };
 }
