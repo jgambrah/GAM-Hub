@@ -1,3 +1,4 @@
+
 import { config } from 'dotenv';
 config();
 
@@ -9,3 +10,4 @@ import '@/ai/flows/ai-tutor-flow.ts';
 import '@/ai/flows/campus-guide-flow.ts';
 import '@/ai/flows/academic-vibe-summary-flow.ts';
 import '@/ai/flows/generate-semantic-hashtags.ts';
+import '@/ai/flows/analyze-vibe-content.ts';

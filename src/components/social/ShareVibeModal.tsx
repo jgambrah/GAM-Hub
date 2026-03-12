@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useRef } from 'react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
@@ -17,12 +18,13 @@ import { Switch } from '@/components/ui/switch';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/hashtag-utils';
 import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
+import { analyzeVibeContent } from '@/ai/flows/analyze-vibe-content';
 
 /**
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Now with AI Semantic Hashtags, Graph Relationships, and Analytics indexing.
+ * Now with full AI Content Understanding (Multi-modal).
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -99,27 +101,13 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
       const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
 
-      // A. AI SEMANTIC UPGRADE: Generate Tags
-      const manualTags = extractHashtags(content);
-      let aiTags: string[] = [];
-      try {
-        const aiResult = await generateSemanticHashtags({ 
-          content: content || "", 
-          campusAcronym: targetCampusAcronym 
-        });
-        aiTags = aiResult.tags;
-      } catch (e) {
-        console.warn("Liaison AI: Semantic tagging failed, falling back to manual.");
-      }
-
-      const finalHashtags = Array.from(new Set([...manualTags, ...aiTags])).slice(0, 10);
-
-      // B. Multimedia Upload
+      // A. Multimedia Upload
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(fileRef, file);
+        await uploadBytes(fileRef, imageFile);
         imageUrl = await getDownloadURL(fileRef);
+        mediaUrl = imageUrl;
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
         const fileRef = ref(storage, `social_videos/${auth.currentUser.uid}/${Date.now()}_${videoFile.name}`);
@@ -129,11 +117,10 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaType = externalUrl.includes('youtube.com') || externalUrl.includes('youtu.be') ? 'youtube' : 'tiktok';
         mediaUrl = externalUrl;
       }
-      
-      // C. Generate Semantic Embedding (Now includes AI tags!)
-      const embedding = await generatePostEmbedding({ content: content || "", tags: finalHashtags });
 
-      const postData = {
+      // B. BASE POST CREATION
+      const manualTags = extractHashtags(content);
+      const postData: any = {
         authorId: auth.currentUser.uid,
         authorName: userProfile.name || "Campus Member",
         authorAvatarUrl: userProfile.avatarUrl ?? "",
@@ -143,8 +130,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaType: mediaType,
         imageUrl: imageUrl,
         mediaUrl: mediaUrl,
-        tags: finalHashtags,
-        embedding: embedding,
+        tags: manualTags,
         likes: 0,
         commentCount: 0,
         type: 'regular',
@@ -153,15 +139,43 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         createdAt: new Date().toISOString(),
       };
 
-      await addDoc(collection(firestore, 'campus_pulse'), postData);
+      const docRef = await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // D. Update Global Hashtag Index & Graph Relationships
-      if (finalHashtags.length > 0) {
-        await updateHashtagIndex(firestore, finalHashtags);
-        if (finalHashtags.length >= 2) {
-            await updateHashtagGraph(firestore, finalHashtags);
-        }
-      }
+      // C. ASYNC AI UNDERSTANDING PIPELINE (Non-blocking)
+      const runAiAnalysis = async () => {
+          try {
+              // 1. AI Content understanding (Multi-modal)
+              const aiResult = await analyzeVibeContent({
+                  mediaUrl: mediaUrl || '',
+                  caption: content,
+                  mediaType: mediaType as any
+              });
+
+              // 2. Semantic Embedding
+              const finalTags = Array.from(new Set([...manualTags, ...aiResult.aiTags])).slice(0, 15);
+              const embedding = await generatePostEmbedding({ content: content || "", tags: finalTags });
+
+              // 3. Update post with AI intelligence
+              await updateDoc(doc(firestore, 'campus_pulse', docRef.id), {
+                  aiTags: aiResult.aiTags,
+                  aiTopics: aiResult.aiTopics,
+                  mood: aiResult.mood,
+                  musicGenre: aiResult.musicGenre,
+                  detectedObjects: aiResult.detectedObjects,
+                  embedding: embedding
+              });
+
+              // 4. Update Hashtag Indexes
+              if (finalTags.length > 0) {
+                  await updateHashtagIndex(firestore, finalTags);
+                  if (finalTags.length >= 2) await updateHashtagGraph(firestore, finalTags);
+              }
+          } catch (e) {
+              console.error("Liaison AI Pipeline Error:", e);
+          }
+      };
+
+      runAiAnalysis(); // Trigger background processing
       
       toast({ title: isGlobal ? 'Global Vibe Broadcasted!' : 'Vibe Shared!' });
       onClose();
@@ -208,7 +222,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                   </div>
                   <div>
                     <p className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest leading-none">Global Hub Seeding</p>
-                    <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-tight">Semantic visibility across ALL campuses.</p>
+                    <p className="text-[10px] font-bold text-slate-500 mt-1.5 leading-tight">AI understanding across ALL campuses.</p>
                   </div>
                 </div>
                 <Switch checked={isGlobal} onCheckedChange={setIsGlobal} className="data-[state=checked]:bg-amber-500" />
@@ -217,12 +231,12 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
             <div className="space-y-2">
                 <textarea 
-                    placeholder="What's the frequency, Citizen? 😊 Liaison AI will automatically tag your vibe." 
+                    placeholder="What's the frequency, Citizen? 😊 Liaison AI will automatically analyze your media." 
                     className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
                     value={content}
                     onChange={(e) => setContent(e.target.value)} 
                 />
-                <p className="text-[9px] text-muted-foreground px-4 italic">Liaison AI semantic tagging active. 🤖✨</p>
+                <p className="text-[9px] text-muted-foreground px-4 italic">Multi-modal AI Pipeline active. 🤖🎬</p>
             </div>
             
             {preview && (
@@ -290,7 +304,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 )}
             >
               {loading ? <Loader2 className="animate-spin" /> : <Send size={20}/>}
-              {isGlobal ? 'Semantic Seed to Yard' : 'Broadcast to Yard'}
+              {isGlobal ? 'Analyze & Seed to Yard' : 'Analyze & Broadcast'}
             </button>
           </form>
         </div>

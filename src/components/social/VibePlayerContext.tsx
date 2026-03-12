@@ -82,9 +82,8 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 }
 
 /**
- * 🏗️ MASTER DISCOVERY EQUATION (Enterprise Level)
- * Final Ranking Equation:
- * score = tagSimilarity + graphExpansion + explorationBoost + viralHashtagBoost + creatorQualityBoost + freshnessBoost
+ * 🏗️ MASTER DISCOVERY EQUATION (AI Augmented)
+ * Now incorporates aiTags and aiTopics for higher-fidelity matching.
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -97,37 +96,50 @@ export function computeVibeScore(
 ) {
   let score = 0;
 
-  // 1. Tag Similarity (Content)
-  const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
-  const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
+  // 1. Tag Similarity (Content + AI Content understanding)
+  const currentTags = new Set([
+    ...(current.tags || []),
+    ...(current.aiTags || [])
+  ].map(t => t.toLowerCase()));
+  
+  const candidateTags = [
+    ...(candidate.tags || []),
+    ...(candidate.aiTags || [])
+  ].map(t => t.toLowerCase());
+
+  const sharedTags = candidateTags.filter(t => currentTags.has(t));
   score += sharedTags.length * 10;
 
-  // 2. Graph Expansion (Topic Discovery)
-  const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
+  // 2. AI Topic Match
+  const currentTopics = new Set((current.aiTopics || []).map(t => t.toLowerCase()));
+  const matchingTopics = (candidate.aiTopics || []).filter(t => currentTopics.has(t.toLowerCase()));
+  score += matchingTopics.length * 15; // Topics weighted higher as they represent broader intent
+
+  // 3. Graph Expansion (Topic Discovery)
   const relatedMatches = candidateTags.filter(t => relatedTags.has(t));
   score += relatedMatches.length * 5;
 
-  // 3. Interest Graph Match (Profile)
+  // 4. Interest Graph Match (Profile)
   score += getPersonalScore(candidate) * 0.3;
 
-  // 4. Exploration Boost (Diversity)
+  // 5. Exploration Boost (Diversity)
   score += explorationBoost(candidate);
 
-  // 5. Viral Hashtag Boost (Velocity)
+  // 6. Viral Hashtag Boost (Velocity)
   if (candidateTags.some(t => viralTags.has(t))) score += 25;
   else if (candidateTags.some(t => trendingTags.has(t))) score += 12;
 
-  // 6. Creator Quality Boost (Reputation)
+  // 7. Creator Quality Boost (Reputation)
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
   score += (repData.qualityScore || 50) * 0.5;
 
-  // 7. Freshness Boost (Recency)
+  // 8. Freshness Boost (Recency)
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
     score += exponentialFreshness(date);
   }
 
-  // 8. Security Penalty (Spam Control)
+  // 9. Security Penalty (Spam Control)
   if ((repData.violationScore || 0) > 3) score -= 50;
 
   return score;
@@ -159,6 +171,13 @@ function buildReason(current: SocialPost, candidate: SocialPost, getPersonalScor
   if (userEmbedding && candidate.embedding && cosineSimilarity(userEmbedding, candidate.embedding) > 0.88) parts.push('Personal Taste');
   const shared = (candidate.tags || []).filter(t => (current.tags || []).includes(t));
   if (shared.length > 0 && parts.length < 2) parts.push(`#${shared[0]}`);
+  
+  // AI Topic Reason
+  if (parts.length < 2 && candidate.aiTopics && current.aiTopics) {
+    const sharedTopic = candidate.aiTopics.find(t => current.aiTopics?.includes(t));
+    if (sharedTopic) parts.push(sharedTopic);
+  }
+
   const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
   if (parts.length < 2 && candidateTags.some(t => relatedTags.has(t))) parts.push(`Related: #${candidateTags.find(t => relatedTags.has(t))}`);
   if (parts.length < 2 && getPersonalScore(candidate) > 15) parts.push('Based on history');

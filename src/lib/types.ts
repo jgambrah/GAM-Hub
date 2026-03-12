@@ -145,8 +145,8 @@ export type AdCampaign = {
   clicks: number;
   adType: 'feed_image' | 'feed_video' | 'vibe_slot';
   paystackReference?: string;
-  paidAt?: any;
-  createdAt: any;
+  paidAt?:          any;
+  createdAt:        any;
   rejectionReason?: string;
 };
 
@@ -169,6 +169,11 @@ export type SocialPost = {
   likes: number;
   commentCount: number;
   tags?: string[];
+  aiTags?: string[]; // NEW: AI-detected hashtags
+  aiTopics?: string[]; // NEW: AI-detected broad topics
+  mood?: string; // NEW: Emotional vibe
+  musicGenre?: string; // NEW: Detected background music
+  detectedObjects?: string[]; // NEW: Key visual objects
   embedding?: number[]; // SEMANTIC VECTOR
   originalVideoPath?: string;
   mediaStatus?: 'processing' | 'ready' | 'error';
@@ -201,6 +206,10 @@ export type ArenaPost = {
   comebackCount?: number;
   mediaUrl?: string;
   mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
+  tags?: string[];
+  aiTags?: string[];
+  aiTopics?: string[];
+  mood?: string;
   embedding?: number[]; // SEMANTIC VECTOR
   status?: 'active' | 'blocked';
   moderationNote?: string;

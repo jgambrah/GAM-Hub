@@ -76,7 +76,14 @@
         "authorId": { "type": "string" },
         "content": { "type": "string" },
         "mediaType": { "type": "string" },
+        "mediaUrl": { "type": "string" },
         "isArenaEntry": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "aiTags": { "type": "array", "items": { "type": "string" }, "description": "Auto-detected hashtags from AI analysis." },
+        "aiTopics": { "type": "array", "items": { "type": "string" }, "description": "Broad categories like music, sports, study." },
+        "mood": { "type": "string", "description": "The emotional tone of the post." },
+        "musicGenre": { "type": "string", "description": "Detected music genre if applicable." },
+        "detectedObjects": { "type": "array", "items": { "type": "string" }, "description": "Visual objects detected in media." },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "authorId", "content", "createdAt"]
@@ -116,7 +123,7 @@
         "definition": {
           "entityName": "CampusPulse",
           "schema": { "$ref": "#/backend/entities/CampusPulse" },
-          "description": "Unified social post feed."
+          "description": "Unified social post feed with AI-driven discovery metadata."
         }
       }
     ]
