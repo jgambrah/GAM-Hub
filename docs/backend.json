@@ -95,6 +95,16 @@
         "lastUpdated": { "type": "string", "format": "date-time" }
       },
       "required": ["productId", "campusId"]
+    },
+    "MarketLeaderboard": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "MarketLeaderboard",
+      "type": "object",
+      "description": "Pre-computed global or campus-specific trending product list.",
+      "properties": {
+        "productIds": { "type": "array", "items": { "type": "string" } },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -132,6 +142,14 @@
           "entityName": "ProductTrend",
           "schema": { "$ref": "#/backend/entities/ProductTrend" },
           "description": "Aggregate trending signals for products."
+        }
+      },
+      {
+        "path": "/market_leaderboard/{leaderboardId}",
+        "definition": {
+          "entityName": "MarketLeaderboard",
+          "schema": { "$ref": "#/backend/entities/MarketLeaderboard" },
+          "description": "Pre-computed discovery results for instant loading."
         }
       },
       {

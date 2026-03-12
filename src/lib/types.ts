@@ -81,6 +81,13 @@ export type ProductTrend = {
   lastUpdated: any;
 };
 
+export type MarketLeaderboard = {
+  id: string;
+  productIds: string[];
+  lastUpdated: any;
+  type: 'global_trending' | 'campus_trending';
+};
+
 export type ProductCoPurchase = {
   id: string;
   productA: string;

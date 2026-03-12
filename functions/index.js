@@ -13,9 +13,68 @@ admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🛒 PRODUCT TRENDING ENGINE (V2)
- * Implements the Weighted Score Formula + 24-hour Exponential Decay.
- * WEIGHTS: view=1, cart=4, purchase=8, share=3
+ * 🛒 PRODUCT TRENDING LEADERBOARD SCHEDULER
+ * Recomputes the Top 20 hottest products across the Yard every 10 minutes.
+ * Ensures the frontend can load instant trending results from a single doc.
+ */
+exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event) => {
+  const db = admin.firestore();
+  const now = new Date();
+
+  try {
+    // 1. Fetch all product trends
+    const trendsSnap = await db.collection("product_trends").get();
+    if (trendsSnap.empty) return null;
+
+    const scoredProducts = [];
+
+    trendsSnap.forEach((doc) => {
+      const data = doc.data();
+      
+      // Compute Weighted Score: view=1, cart=4, purchase=8, share=3
+      const rawScore = 
+        (data.viewCount || 0) * 1 +
+        (data.cartCount || 0) * 4 +
+        (data.purchaseCount || 0) * 8 +
+        (data.shareCount || 0) * 3;
+
+      // Apply Exponential Time Decay (24-hour half-life)
+      const lastUpdated = data.lastUpdated?.toDate ? data.lastUpdated.toDate() : now;
+      const hoursSinceUpdate = (now - lastUpdated) / 3600000;
+      const decayFactor = Math.exp(-hoursSinceUpdate / 24);
+      
+      const finalScore = rawScore * decayFactor;
+
+      if (finalScore > 0) {
+        scoredProducts.push({
+          productId: doc.id,
+          score: finalScore
+        });
+      }
+    });
+
+    // 2. Rank and Slice
+    const topProducts = scoredProducts
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20)
+      .map(p => p.productId);
+
+    // 3. Persist to Global Leaderboard
+    return db.collection("market_leaderboard").doc("trending").set({
+      productIds: topProducts,
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      type: "global_trending"
+    });
+
+  } catch (err) {
+    console.error("Liaison Leaderboard Re-compute Error:", err);
+    return null;
+  }
+});
+
+/**
+ * 🛒 PRODUCT TRENDING ENGINE (V2) - Reactive Sync
+ * Updates individual product scores when their trends change.
  */
 exports.calculateProductTrendingScore = onDocumentUpdated("product_trends/{productId}", async (event) => {
   const data = event.data.after.data();
@@ -23,25 +82,19 @@ exports.calculateProductTrendingScore = onDocumentUpdated("product_trends/{produ
   const productId = event.params.productId;
 
   try {
-    // 1. COMPUTE WEIGHTED RAW SCORE
-    // trendScore = (viewCount * 1) + (cartCount * 4) + (purchaseCount * 8) + (shareCount * 3)
     const rawScore = 
       (data.viewCount || 0) * 1 +
       (data.cartCount || 0) * 4 +
       (data.purchaseCount || 0) * 8 +
       (data.shareCount || 0) * 3;
 
-    // 2. APPLY TIME DECAY (24-hour window)
     const now = new Date();
     const lastUpdated = data.lastUpdated?.toDate ? data.lastUpdated.toDate() : now;
     const hoursSinceUpdate = (now - lastUpdated) / 3600000;
     
-    // decayFactor = Math.exp(-hours / 24)
     const decayFactor = Math.exp(-hoursSinceUpdate / 24);
     const finalTrendScore = rawScore * decayFactor;
 
-    // 3. PUSH TO PRODUCT DOCUMENT FOR RANKING
-    // We only update if the score delta is significant to save ops
     const productRef = db.collection("products").doc(productId);
     const productSnap = await productRef.get();
     
