@@ -98,7 +98,7 @@ export default function CampusPulseFeed({
                 getDocs(recentQuery),
                 getDocs(trendingStatsQuery),
                 getDocs(campusQuery),
-                getDocs(explorationSnap || explorationQuery)
+                getDocs(explorationQuery)
             ]);
 
             const trendingDocs = trendingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
