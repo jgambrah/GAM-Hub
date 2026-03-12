@@ -114,6 +114,10 @@ export function computeBaseScore(
   return score;
 }
 
+/**
+ * 🏆 ELITE QUALITY RANKER
+ * Combines semantic, personal, and creator reputation signals.
+ */
 export function computeVibeScore(
   current: SocialPost, 
   candidate: SocialPost, 
@@ -121,22 +125,27 @@ export function computeVibeScore(
   viralTags: Set<string>, 
   trendingTags: Set<string>, 
   relatedTags: Set<string>,
-  creatorReputation: Record<string, number> = {}
+  creatorReputation: Record<string, any> = {}
 ) {
   const base = computeBaseScore(current, candidate, viralTags, trendingTags, relatedTags);
   const personal = getPersonalScore(candidate);
   
-  // ELITE UPGRADE: Factor in Creator Reputation (Quality Score)
-  const creatorQuality = creatorReputation[candidate.authorId] || 50;
-  const reputationBoost = (creatorQuality / 100) * 20; // Max +20 points for high quality
+  // 🏛️ CREATOR REPUTATION SIGNAL
+  const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
+  
+  // 🚀 QUALITY BOOST: score += creatorQualityScore * 0.5
+  const qualityBoost = (repData.qualityScore || 50) * 0.5; 
 
-  return base * 0.5 + personal * 0.3 + reputationBoost;
+  // 🛡️ SPAM CONTROL: if(creator.violationScore > 3){ score -= 50 }
+  const violationPenalty = (repData.violationScore || 0) > 3 ? -50 : 0;
+
+  return (base * 0.5) + (personal * 0.3) + qualityBoost + violationPenalty;
 }
 
 export function buildSmartQueue(
   current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
   viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set(),
-  creatorReputation: Record<string, number> = {}
+  creatorReputation: Record<string, any> = {}
 ) {
   const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
@@ -200,7 +209,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [isMiniPlayerVisible, setIsMiniPlayerVisible] = useState(true);
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());
   const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
-  const [creatorReputation, setCreatorReputation] = useState<Record<string, number>>({});
+  const [creatorReputation, setCreatorReputation] = useState<Record<string, any>>({});
   const { profile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -246,8 +255,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       limit(200)
     );
     const unsubRep = onSnapshot(q, (snap) => {
-      const map: Record<string, number> = {};
-      snap.docs.forEach(d => { map[d.id] = d.data().qualityScore; });
+      const map: Record<string, any> = {};
+      snap.docs.forEach(d => { 
+        const data = d.data();
+        map[d.id] = {
+          qualityScore: data.qualityScore || 50,
+          violationScore: data.violationScore || 0
+        }; 
+      });
       setCreatorReputation(map);
     });
     return () => unsubRep();
