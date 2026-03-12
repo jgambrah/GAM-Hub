@@ -16,7 +16,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
   
   const [parsedIntent, setParsedIntent] = useState<MarketIntent | null>(null);
   const [isParsing, setIsParsing] = useState(false);
-  const [rankedProducts, setRankedProducts] = useState<Product[]>([]);
+  const [isExplaining, setIsExplaining] = useState(false);
 
   // 1. LOAD UNIFIED BRAIN
   const intelRef = useMemoFirebase(() => {
@@ -28,31 +28,84 @@ export function useMarketRecommendations(searchQuery: string = '') {
   // 2. RETRIEVAL
   const candidatesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
-    let ref: Query<DocumentData> = collection(firestore, 'products');
-    ref = query(ref, where('campusId', '==', user.campusId));
-    return query(ref, orderBy('createdAt', 'desc'), limit(200));
+    return query(
+      collection(firestore, 'products'), 
+      where('campusId', '==', user.campusId),
+      orderBy('createdAt', 'desc'), 
+      limit(200)
+    );
   }, [firestore, user?.campusId, isTokenReady]);
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 3. RANKING & DIVERSITY
-  useEffect(() => {
-    if (!candidates) return;
+  // 3. RANKING, SEGMENTATION & DIVERSITY
+  const processed = useMemo(() => {
+    if (!candidates) return { ranked: [], trending: [], deals: [], topRated: [] };
     
+    // Sort for the primary feed
     const scored = candidates
       .map(product => ({
         product,
-        score: computeMarketScore(product, unifiedIntelligence, user, searchQuery, parsedIntent)
+        score: computeMarketScore(product, unifiedIntelligence || null, user, searchQuery, parsedIntent)
       }))
       .sort((a, b) => b.score - a.score);
 
-    const sortedProducts = scored.map(r => r.product);
-    setRankedProducts(enforceMarketDiversity(sortedProducts));
+    const ranked = enforceMarketDiversity(scored.map(r => r.product));
+
+    // Specialized Discovery Segments (for isBrowsing mode)
+    const trending = candidates
+      .filter(p => (p.trendScore || 0) > 5)
+      .sort((a, b) => (b.trendScore || 0) - (a.trendScore || 0))
+      .slice(0, 10);
+
+    const deals = candidates
+      .filter(p => p.averagePrice && p.price < p.averagePrice * 0.9)
+      .sort((a, b) => {
+          const savingsA = (a.averagePrice || 0) - a.price;
+          const savingsB = (b.averagePrice || 0) - b.price;
+          return savingsB - savingsA;
+      })
+      .slice(0, 10);
+
+    const topRated = candidates
+      .filter(p => (p.rating || 0) >= 4.5)
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      .slice(0, 10);
+
+    return { ranked, trending, deals, topRated };
   }, [candidates, unifiedIntelligence, user, searchQuery, parsedIntent]);
 
+  // 4. AI INTENT PARSING (On query change)
+  useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.length < 3) {
+        setParsedIntent(null);
+        return;
+    }
+
+    const timer = setTimeout(async () => {
+        setIsParsing(true);
+        try {
+            const intent = await parseMarketIntent({ query: searchQuery });
+            setParsedIntent(intent);
+        } catch (e) {
+            console.warn("Liaison AI Parser busy...");
+        } finally {
+            setIsParsing(false);
+        }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   return {
-    products: rankedProducts,
+    products: processed.ranked,
+    trending: processed.trending,
+    deals: processed.deals,
+    topRated: processed.topRated,
     isLoading: isLoadingCandidates || isLoadingProfile || isParsing,
+    isParsing,
+    isExplaining,
+    hasProfile: !!unifiedIntelligence,
     intent: parsedIntent
   };
 }
