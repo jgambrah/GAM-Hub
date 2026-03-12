@@ -30,7 +30,7 @@
         "role": { "type": "string" },
         "firstName": { "type": "string" },
         "lastName": { "type": "string" },
-        "qualityScore": { "type": "number", "description": "Global reputation score derived from engagement metrics." }
+        "qualityScore": { "type": "number", "description": "0-100 reputation score for discovery ranking." }
       },
       "required": ["id", "email", "campusId", "role"]
     },
@@ -46,6 +46,7 @@
         "completionRate": { "type": "number" },
         "postCount": { "type": "number" },
         "violationScore": { "type": "number" },
+        "tier": { "type": "string", "enum": ["elite", "trusted", "rising", "new"] },
         "lastUpdatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "qualityScore", "lastUpdatedAt"]

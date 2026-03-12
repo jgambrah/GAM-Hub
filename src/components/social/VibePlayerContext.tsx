@@ -81,42 +81,10 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
     .map(r => r.post);
 }
 
-export function computeBaseScore(
-  current: SocialPost, 
-  candidate: SocialPost, 
-  viralTags: Set<string> = new Set(),
-  trendingTags: Set<string> = new Set(),
-  relatedGraphTags: Set<string> = new Set() 
-) {
-  let score = 0;
-  const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
-  const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
-  score += sharedTags.length * 10;
-  
-  const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
-  const relatedMatches = candidateTags.filter(t => relatedGraphTags.has(t));
-  score += relatedMatches.length * 5;
-  
-  if (candidateTags.some(t => viralTags.has(t))) score += 25;
-  else if (candidateTags.some(t => trendingTags.has(t))) score += 12;
-
-  const currentCat = getMediaCategory(current.mediaType);
-  const candidateCat = getMediaCategory(candidate.mediaType);
-  if (currentCat === candidateCat) score += 8;
-
-  if (candidate.campusId === current.campusId) score += 10;
-  score += explorationBoost(candidate);
-
-  if (candidate.createdAt) {
-    const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
-    score += exponentialFreshness(date);
-  }
-  return score;
-}
-
 /**
- * 🏆 ELITE QUALITY RANKER
- * Combines semantic, personal, and creator reputation signals.
+ * 🏗️ MASTER DISCOVERY EQUATION (Enterprise Level)
+ * Final Ranking Equation:
+ * score = tagSimilarity + graphExpansion + explorationBoost + viralHashtagBoost + creatorQualityBoost + freshnessBoost
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -127,19 +95,42 @@ export function computeVibeScore(
   relatedTags: Set<string>,
   creatorReputation: Record<string, any> = {}
 ) {
-  const base = computeBaseScore(current, candidate, viralTags, trendingTags, relatedTags);
-  const personal = getPersonalScore(candidate);
-  
-  // 🏛️ CREATOR REPUTATION SIGNAL
+  let score = 0;
+
+  // 1. Tag Similarity (Content)
+  const currentTags = new Set((current.tags || []).map(t => t.toLowerCase()));
+  const sharedTags = (candidate.tags || []).filter(t => currentTags.has(t.toLowerCase()));
+  score += sharedTags.length * 10;
+
+  // 2. Graph Expansion (Topic Discovery)
+  const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
+  const relatedMatches = candidateTags.filter(t => relatedTags.has(t));
+  score += relatedMatches.length * 5;
+
+  // 3. Interest Graph Match (Profile)
+  score += getPersonalScore(candidate) * 0.3;
+
+  // 4. Exploration Boost (Diversity)
+  score += explorationBoost(candidate);
+
+  // 5. Viral Hashtag Boost (Velocity)
+  if (candidateTags.some(t => viralTags.has(t))) score += 25;
+  else if (candidateTags.some(t => trendingTags.has(t))) score += 12;
+
+  // 6. Creator Quality Boost (Reputation)
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
-  
-  // 🚀 QUALITY BOOST: score += creatorQualityScore * 0.5
-  const qualityBoost = (repData.qualityScore || 50) * 0.5; 
+  score += (repData.qualityScore || 50) * 0.5;
 
-  // 🛡️ SPAM CONTROL: if(creator.violationScore > 3){ score -= 50 }
-  const violationPenalty = (repData.violationScore || 0) > 3 ? -50 : 0;
+  // 7. Freshness Boost (Recency)
+  if (candidate.createdAt) {
+    const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
+    score += exponentialFreshness(date);
+  }
 
-  return (base * 0.5) + (personal * 0.3) + qualityBoost + violationPenalty;
+  // 8. Security Penalty (Spam Control)
+  if ((repData.violationScore || 0) > 3) score -= 50;
+
+  return score;
 }
 
 export function buildSmartQueue(
@@ -248,7 +239,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         setViralTags(viral); setTrendingTags(trending);
     });
 
-    // Load top creators to boost their content in the discovery engine
     const q = query(
       collection(firestore, 'creator_reputation'), 
       orderBy('qualityScore', 'desc'), 

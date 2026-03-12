@@ -29,7 +29,9 @@ export type User = {
   trial_leads_count?: number; // Free trial leads for service providers
   rating?: number;
   reviewCount?: number;
-  qualityScore?: number; // Added for Creator Reputation
+  qualityScore?: number; // Added for Creator Reputation (0-100)
+  creatorTier?: 'elite' | 'trusted' | 'rising' | 'new'; // Reputation Category
+  violationScore?: number; // Spam counter
   fcmToken?: string;
   candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   candidatePosition?: string;
@@ -54,6 +56,7 @@ export type CreatorReputation = {
   completionRate: number;
   postCount: number;
   violationScore: number;
+  tier: 'elite' | 'trusted' | 'rising' | 'new';
   lastUpdatedAt: any;
 };
 
@@ -262,7 +265,7 @@ export type Order = {
   receivedAt?: string;
   liaisonDecision?: 'refund' | 'payout';
   resolvedAt?: string;
-  payoutStatus?: 'pending' | 'paid';
+  payoutStatus?: 'pending' | 'payout_complete';
   payoutBatchId?: string;
   momoTransactionId?: string;
   paymentConfirmedAt?: string;

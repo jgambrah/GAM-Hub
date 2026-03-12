@@ -23,7 +23,11 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
   const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
   const ageHours = (new Date() - createdAt) / 3600000;
   const velocity = (data.views || 0) + (data.likes || 0) * 3 + (data.comments || 0) * 5 + (data.shares || 0) * 8 + (data.completions || 0) * 20;
-  let score = velocity / Math.pow((ageHours + 2), 1.3);
+  
+  // 📉 EXPONENTIAL TREND DECAY (12hr half-life)
+  const decay = Math.exp(-ageHours / 12);
+  let score = (velocity / Math.pow((ageHours + 2), 1.3)) * decay;
+  
   if (data.views > 500 && ageHours < 2) score *= 1.5;
   if (data.views > 300 && ((data.completions || 0) / Math.max(data.views, 1)) > 0.6) score = Math.max(score, 50); 
 
@@ -32,11 +36,8 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 });
 
 /**
- * 🏆 CREATOR REPUTATION ENGINE (PROFESSIONAL UPGRADE)
- * Aggregates performance across all posts to assign a quality score.
- * 
- * Formula:
- * (engagementRate * 40) + (completionRate * 50) + (consistencyBonus * 10) - (violations * 20)
+ * 🏆 CREATOR REPUTATION & TIER ENGINE
+ * Aggregates performance across all posts to assign a 0-100 tier score.
  */
 exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
@@ -68,21 +69,26 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   const engagementRate = totalInteractions / divisor;
   const completionRate = totalCompletions / divisor;
 
-  // 🏛️ LIAISON QUALITY FORMULA
-  // We scale engagementRate by 200 and completionRate by 100 
-  // to translate typically low decimals (e.g. 0.1 ER, 0.4 CR) 
-  // into a meaningful 0-100 range.
+  // 🏛️ LIAISON QUALITY FORMULA (0-100)
+  // Normalization: interaction rates are typically low (e.g. 0.1), so we scale.
   const consistencyBonus = count > 5 ? 10 : 0;
   const violationPenalty = (data.violations || 0) * 20;
 
   let qualityScore = (engagementRate * 200) + (completionRate * 100) + consistencyBonus - violationPenalty;
   
-  // Final clamp to ensure elite professional range
-  qualityScore = Math.min(100, Math.max(10, Math.round(qualityScore)));
+  // Final clamp
+  qualityScore = Math.min(100, Math.max(0, Math.round(qualityScore)));
+
+  // TIER CLASSIFICATION
+  let tier = 'new';
+  if (qualityScore >= 80) tier = 'elite';
+  else if (qualityScore >= 50) tier = 'trusted';
+  else if (qualityScore >= 20) tier = 'rising';
 
   const reputation = {
     id: authorId,
     qualityScore,
+    tier,
     engagementRate,
     completionRate,
     postCount: count,
@@ -92,12 +98,11 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   await db.collection("creator_reputation").doc(authorId).set(reputation, { merge: true });
   
   // Denormalize to user doc for high-performance ranking in the UI
-  return db.collection("users").doc(authorId).set({ qualityScore }, { merge: true });
+  return db.collection("users").doc(authorId).set({ qualityScore, creatorTier: tier }, { merge: true });
 });
 
 /**
  * #️⃣ HASHTAG INDEXER & VELOCITY TRACKER
- * Updates time-series buckets whenever a post is created.
  */
 exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}", async (event) => {
   const data = event.data.data();
@@ -105,7 +110,6 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
   const db = admin.firestore();
   const batch = db.batch();
 
-  // 1. Initialize trending stats for the new post (anchored to author)
   const statsRef = db.collection('trending_stats').doc(event.params.postId);
   batch.set(statsRef, {
     authorId: data.authorId,
@@ -114,7 +118,6 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
     trendScore: 0
   }, { merge: true });
 
-  // 2. Hashtag Indexing
   if (tags.length > 0) {
     const minuteBucket = new Date().toISOString().slice(0, 16);
     tags.forEach(tag => {
@@ -137,7 +140,6 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 
 /**
  * 📈 TRENDING HASHTAG UPDATER
- * Recalculates velocity and detects viral clusters every 5 minutes.
  */
 exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
@@ -154,13 +156,17 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
     const statsSnap = await db.collection("hashtagStats").doc(tag).collection("minutes").where("__name__", ">=", startTime).get();
     const totalNewPosts = statsSnap.docs.reduce((acc, d) => acc + (d.data().count || 0), 0);
     const velocity = totalNewPosts / lookbackMins;
+    
     const lastUsedAt = data.lastUsedAt?.toDate ? data.lastUsedAt.toDate() : now;
     const ageHours = Math.max(0, (now - lastUsedAt) / 3600000);
+    
+    // 📉 Formula: (Velocity * 0.6 + EngagementRate * 0.3 + Freshness * 0.1) * Decay
     const decay = Math.exp(-ageHours / 12);
     const trendScore = (velocity * 0.6 + (velocity > 0 ? 0.3 : 0) + (1 / (ageHours * 60 + 1)) * 0.1) * decay;
 
     batch.update(docSnap.ref, { trendScore, velocity, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-    if (trendScore > 10) trendingPool.push({ tag, score: trendScore, ref: docSnap.ref });
+    
+    if (trendScore > 15) trendingPool.push({ tag, score: trendScore, ref: docSnap.ref });
     if (trendScore > 30) batch.set(db.collection("viral_hashtags").doc(tag), { tag, trendScore, detectedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   });
 
