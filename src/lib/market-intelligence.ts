@@ -4,22 +4,26 @@
 /**
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
- * Upgraded with Co-Purchase Correlation and Price History.
+ * Upgraded with Weighted Trending Signals and Correlation Graph.
  */
 
-import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc } from 'firebase/firestore';
+import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import type { Product, Order } from './types';
+
+export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
 
 /**
  * recordMarketSignal
  * ------------------
  * Logs a behavioral event to the user's market profile and the product's velocity bucket.
+ * Implements the professional weight system:
+ * view=1, favorite=2, share=3, intent=4, purchase=8
  */
 export async function recordMarketSignal(
   firestore: Firestore,
   userId: string,
   product: Product,
-  signal: 'view' | 'intent' | 'purchase'
+  signal: CommercialSignal
 ) {
   if (!firestore || !userId || !product) return;
 
@@ -30,45 +34,55 @@ export async function recordMarketSignal(
   const minuteBucket = new Date().toISOString().slice(0, 16); 
   const velocityRef = doc(firestore, 'product_velocity', product.id, 'minutes', minuteBucket);
 
-  // 1. Update Market Profile
+  // 1. Update Market Profile (For personalization)
   const profileUpdates: any = {
     updatedAt: serverTimestamp(),
   };
 
   const velocityUpdates: any = {};
+  const productAggregates: any = {};
 
-  if (signal === 'view') {
-    profileUpdates[`viewedCategories.${product.category}`] = increment(1);
-    velocityUpdates.views = increment(1);
-  } else if (signal === 'intent') {
-    profileUpdates[`intentCategories.${product.category}`] = increment(1);
-    profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
-    velocityUpdates.intents = increment(1);
-  } else if (signal === 'purchase') {
-    profileUpdates[`purchasedCategories.${product.category}`] = increment(1);
-    profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
-    velocityUpdates.purchases = increment(1);
-    
-    // 🔥 LIAISON UPGRADE: Update Co-Purchase Graph
-    updateCoPurchaseCorrelation(firestore, userId, product.id);
+  // WEIGHT ASSIGNMENT
+  switch (signal) {
+    case 'view':
+      profileUpdates[`viewedCategories.${product.category}`] = increment(1);
+      velocityUpdates.views = increment(1);
+      productAggregates.viewCount = increment(1);
+      break;
+    case 'favorite':
+      profileUpdates.favoriteProducts = arrayUnion(product.id);
+      velocityUpdates.favorites = increment(1);
+      productAggregates.favoriteCount = increment(1);
+      break;
+    case 'share':
+      velocityUpdates.shares = increment(1);
+      productAggregates.shareCount = increment(1);
+      break;
+    case 'intent':
+      profileUpdates[`intentCategories.${product.category}`] = increment(1);
+      profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
+      velocityUpdates.intents = increment(1);
+      break;
+    case 'purchase':
+      profileUpdates[`purchasedCategories.${product.category}`] = increment(1);
+      profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
+      velocityUpdates.purchases = increment(1);
+      productAggregates.salesCount = increment(1);
+      
+      // 🔥 LIAISON UPGRADE: Update Co-Purchase Graph
+      updateCoPurchaseCorrelation(firestore, userId, product.id);
+      break;
   }
 
-  // Non-blocking write to Profile
+  // 🛰️ BATCHED NON-BLOCKING HANDSHAKE
   setDoc(profileRef, profileUpdates, { merge: true }).catch(() => {});
-
-  // Non-blocking write to Velocity Bucket
   setDoc(velocityRef, velocityUpdates, { merge: true }).catch(() => {});
-
-  // Update Aggregate Stats on the Product itself
-  const aggregateUpdates: any = {};
-  if (signal === 'view') aggregateUpdates.viewCount = increment(1);
-  if (signal === 'purchase') aggregateUpdates.salesCount = increment(1);
   
-  if (Object.keys(aggregateUpdates).length > 0) {
-    setDoc(statsRef, aggregateUpdates, { merge: true }).catch(() => {});
+  if (Object.keys(productAggregates).length > 0) {
+    setDoc(statsRef, productAggregates, { merge: true }).catch(() => {});
   }
 
-  // 2. Price Preference Balancing (Async context)
+  // 💰 Price Preference Balancing (Async context)
   if (signal === 'view' || signal === 'intent') {
     try {
       const snap = await getDoc(profileRef);
@@ -76,8 +90,8 @@ export async function recordMarketSignal(
       const currentPrefs = data.pricePreference || { min: product.price, max: product.price };
       
       const newPrefs = {
-        min: Math.min(currentPrefs.min, product.price),
-        max: Math.max(currentPrefs.max, product.price)
+        min: Math.min(currentPrefs.min || product.price, product.price),
+        max: Math.max(currentPrefs.max || product.price, product.price)
       };
 
       setDoc(profileRef, { pricePreference: newPrefs }, { merge: true }).catch(() => {});
@@ -85,6 +99,29 @@ export async function recordMarketSignal(
       console.warn("Market Intel: Price sync interrupted.");
     }
   }
+}
+
+/**
+ * toggleFavoriteProduct
+ * --------------------
+ * High-performance favorite toggler.
+ */
+export async function toggleFavoriteProduct(firestore: Firestore, userId: string, product: Product, isFavorited: boolean) {
+    const profileRef = doc(firestore, 'user_market_profiles', userId);
+    const productRef = doc(firestore, 'products', product.id);
+
+    try {
+        if (isFavorited) {
+            // Unfavorite
+            await setDoc(profileRef, { favoriteProducts: arrayRemove(product.id) }, { merge: true });
+            await setDoc(productRef, { favoriteCount: increment(-1) }, { merge: true });
+        } else {
+            // Favorite
+            await recordMarketSignal(firestore, userId, product, 'favorite');
+        }
+    } catch (e) {
+        console.error("Favorite toggle failed:", e);
+    }
 }
 
 /**
@@ -157,7 +194,6 @@ export async function getRelatedProducts(firestore: Firestore, productId: string
 
     try {
         // Check both sides of the pair (productA OR productB)
-        // Since we standardized the ID, we need two queries or a complex index.
         const qA = query(
             collection(firestore, 'product_co_purchases'),
             where('productA', '==', productId),

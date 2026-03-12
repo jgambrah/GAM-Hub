@@ -8,13 +8,16 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { ShoppingCart, Wrench, Landmark, Video, Sparkles, Play } from 'lucide-react';
+import { ShoppingCart, Wrench, Landmark, Video, Sparkles, Play, Heart, Share2, TrendingUp, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { useView } from '@/context/ViewContext';
 import { OrderConfirmationDialog } from '../orders/OrderConfirmationDialog';
 import { VendorProductDialog } from '../vendor/VendorProductDialog';
-
+import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
+import { doc } from 'firebase/firestore';
+import { recordMarketSignal, toggleFavoriteProduct } from '@/lib/market-intelligence';
+import type { MarketProfile } from '@/lib/types';
 
 type ProductCardProps = {
   product: Product;
@@ -25,15 +28,28 @@ export default function ProductCard({ product, className }: ProductCardProps) {
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
   const { viewMode } = useView();
+  const { firestore } = useFirebase();
+  
   const [isOrderDialogOpen, setIsOrderDialogOpen] = React.useState(false);
   const [isVendorDialogOpen, setIsVendorDialogOpen] = React.useState(false);
+  const [isSyncingFavorite, setIsSyncingFavorite] = React.useState(false);
 
+  // FETCH: Market Profile to check if favorited
+  const marketProfileRef = useMemoFirebase(() => {
+    if (!firestore || !user?.id) return null;
+    return doc(firestore, 'user_market_profiles', user.id);
+  }, [firestore, user?.id]);
+  const { data: profile } = useDoc<MarketProfile>(marketProfileRef);
+
+  const isFavorited = profile?.favoriteProducts?.includes(product.id) || false;
   const hasVideo = !!(product.videoUrl || product.nativeVideoUrl);
+  const isTrending = product.trendScore && product.trendScore > 10;
 
   // Allow ownership if the user is the vendor OR if the Liaison is in Vendor ViewMode
   const isOwner = (user?.role === 'vendor' && user.id === product.vendorId) || (isAdmin && viewMode === 'vendor');
 
-  const handleCardActionClick = () => {
+  const handleCardActionClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!user) {
         toast({
             variant: 'destructive',
@@ -49,11 +65,53 @@ export default function ProductCard({ product, className }: ProductCardProps) {
     }
   }
 
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user || !firestore) return;
+    setIsSyncingFavorite(true);
+    try {
+        await toggleFavoriteProduct(firestore, user.id, product, isFavorited);
+        toast({
+            title: isFavorited ? "Removed from Favorites" : "Added to Favorites!",
+            description: isFavorited ? "The product is no longer in your yard list." : "This signal helps the Yard understand your tastes.",
+        });
+    } finally {
+        setIsSyncingFavorite(false);
+    }
+  };
+
+  const handleShare = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!firestore || !user) return;
+    recordMarketSignal(firestore, user.id, product, 'share');
+    
+    if (navigator.share) {
+        navigator.share({
+            title: product.name,
+            text: `Check out this vibe on GAM Hub: ${product.name}`,
+            url: window.location.href + `/products/${product.id}`
+        });
+    } else {
+        navigator.clipboard.writeText(window.location.origin + `/products/${product.id}`);
+        toast({ title: "Link Copied!", description: "Share the vibe with your group." });
+    }
+  };
+
   const isService = product.productType === 'service';
 
   return (
     <>
-        <Card className={cn("flex flex-col overflow-hidden transition-all hover:shadow-xl group", className)}>
+        <Card className={cn("flex flex-col overflow-hidden transition-all hover:shadow-xl group relative", className)}>
+        
+        {/* TRENDING OVERLAY */}
+        {isTrending && (
+            <div className="absolute top-3 left-3 z-30 animate-in zoom-in duration-500">
+                <div className="bg-red-600 text-white px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5 border-2 border-white dark:border-slate-900">
+                    <TrendingUp size={10} className="animate-pulse" /> TRENDING
+                </div>
+            </div>
+        )}
+
         <CardHeader className="p-0">
             <div className="relative aspect-[3/2] w-full bg-muted">
             <Image
@@ -65,33 +123,52 @@ export default function ProductCard({ product, className }: ProductCardProps) {
                 data-ai-hint={product.imageHint}
             />
             {product.stock === 0 && !isService && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
                     <Badge variant="destructive">OUT OF STOCK</Badge>
                 </div>
             )}
             
             {hasVideo && (
-                <>
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/30 transition-all">
-                        <div className="p-4 bg-white/20 backdrop-blur-md rounded-full border border-white/30 text-white shadow-2xl group-hover:scale-110 transition-transform duration-300">
-                            <Play fill="currentColor" size={28} className="ml-1" />
-                        </div>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/10 group-hover:bg-black/30 transition-all z-10 pointer-events-none">
+                    <div className="p-4 bg-white/20 backdrop-blur-md rounded-full border border-white/30 text-white shadow-2xl group-hover:scale-110 transition-transform duration-300">
+                        <Play fill="currentColor" size={28} className="ml-1" />
                     </div>
-                    <div className="absolute bottom-3 left-3 z-10">
-                        <Badge className="bg-black/60 text-white border-white/20 backdrop-blur-md font-black text-[8px] tracking-widest px-2 py-0.5 flex items-center gap-1">
-                            <Video size={10} fill="white" /> VIDEO
-                        </Badge>
-                    </div>
-                </>
-            )}
-
-            {isService && (
-                <div className="absolute top-4 left-4 z-10">
-                    <Badge className="bg-blue-600 text-white border-none font-black text-[10px] tracking-widest px-3 py-1">VERIFIED SERVICE</Badge>
                 </div>
             )}
+
+            {/* ACTION BUTTONS (FAVORITE / SHARE) */}
+            <div className="absolute top-3 right-3 z-20 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0 duration-300">
+                <button 
+                    onClick={handleToggleFavorite}
+                    disabled={isSyncingFavorite}
+                    className={cn(
+                        "p-3 rounded-2xl shadow-xl transition-all active:scale-90 border-2",
+                        isFavorited ? "bg-red-500 border-red-400 text-white" : "bg-white/80 backdrop-blur-md border-white/20 text-slate-900"
+                    )}
+                >
+                    {isSyncingFavorite ? <Loader2 size={18} className="animate-spin" /> : <Heart size={18} fill={isFavorited ? "currentColor" : "none"} />}
+                </button>
+                <button 
+                    onClick={handleShare}
+                    className="p-3 bg-white/80 backdrop-blur-md border-2 border-white/20 rounded-2xl shadow-xl text-slate-900 transition-all active:scale-90"
+                >
+                    <Share2 size={18} />
+                </button>
+            </div>
+
+            <div className="absolute bottom-3 left-3 z-10 flex items-center gap-2">
+                {hasVideo && (
+                    <Badge className="bg-black/60 text-white border-white/20 backdrop-blur-md font-black text-[8px] tracking-widest px-2 py-0.5 flex items-center gap-1">
+                        <Video size={10} fill="white" /> VIDEO
+                    </Badge>
+                )}
+                {isService && (
+                    <Badge className="bg-blue-600 text-white border-none font-black text-[8px] tracking-widest px-2 py-0.5">SERVICE</Badge>
+                )}
+            </div>
             </div>
         </CardHeader>
+        
         <CardContent className="flex-1 p-4">
             <div className="flex items-center gap-2 mb-2">
                 {!isService ? (

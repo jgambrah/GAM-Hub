@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { Product } from "./types";
@@ -8,10 +9,7 @@ import type { Product } from "./types";
  * Final stage filtering to prevent marketplace feeds from becoming repetitive.
  * Enforces a "Variety Protocol" across vendors and categories.
  * 
- * Rules:
- * - Max 2 products per vendor in the initial window.
- * - Max 3 products per category in the initial window.
- * - Prevents streaks of the same category (e.g. 10 phones in a row).
+ * Upgraded to factor in Trending Boost while maintaining variety.
  */
 export function enforceMarketDiversity(products: Product[], limit = 40): Product[] {
   if (!products || products.length === 0) return [];
@@ -22,7 +20,7 @@ export function enforceMarketDiversity(products: Product[], limit = 40): Product
   const vendorCount = new Map<string, number>();
   const categoryCount = new Map<string, number>();
 
-  // professional Diversity Thresholds
+  // Professional Diversity Thresholds
   const MAX_PER_VENDOR = 2;
   const MAX_PER_CATEGORY = 3;
 
@@ -35,7 +33,12 @@ export function enforceMarketDiversity(products: Product[], limit = 40): Product
       const vCount = vendorCount.get(p.vendorId) || 0;
       const cCount = categoryCount.get(p.category) || 0;
 
-      if (vCount < MAX_PER_VENDOR && cCount < MAX_PER_CATEGORY) {
+      // Rule: Trending products (trendScore > 20) can bypass one vendor limit 
+      // but still respect category limits to prevent mono-category feeds.
+      const isUltraTrending = (p.trendScore || 0) > 20;
+      const effectiveMaxVendor = isUltraTrending ? MAX_PER_VENDOR + 1 : MAX_PER_VENDOR;
+
+      if (vCount < effectiveMaxVendor && cCount < MAX_PER_CATEGORY) {
         bestIdx = i;
         break;
       }

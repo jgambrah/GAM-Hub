@@ -5,17 +5,18 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useDoc, useFirebase, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
-import type { Product } from '@/lib/types';
+import type { Product, MarketProfile } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Youtube, AlertTriangle, MapPin } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Youtube, AlertTriangle, MapPin, Heart, Share2, TrendingUp, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import ReactPlayer from 'react-player';
 import YouTube from 'react-youtube';
 import { OrderConfirmationDialog } from '@/components/orders/OrderConfirmationDialog';
 import { useAuth } from '@/hooks/use-auth';
-import { recordMarketSignal } from '@/lib/market-intelligence';
+import { recordMarketSignal, toggleFavoriteProduct } from '@/lib/market-intelligence';
 import RelatedProducts from '@/components/market/RelatedProducts';
+import { cn } from '@/lib/utils';
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;
@@ -30,8 +31,10 @@ export default function ProductDetailPage() {
   const { firestore } = useFirebase();
   const { user } = useAuth();
   const id = params.id as string;
+  
   const [isOrderDialogOpen, setIsOrderDialogOpen] = React.useState(false);
   const [isRestricted, setIsRestricted] = useState(false);
+  const [isSyncingFavorite, setIsSyncingFavorite] = useState(false);
 
   const productRef = useMemoFirebase(() => {
     if (!firestore || !id) return null;
@@ -39,6 +42,15 @@ export default function ProductDetailPage() {
   }, [firestore, id]);
 
   const { data: product, isLoading } = useDoc<Product>(productRef);
+
+  // FETCH: Market Profile to check if favorited
+  const marketProfileRef = useMemoFirebase(() => {
+    if (!firestore || !user?.id) return null;
+    return doc(firestore, 'user_market_profiles', user.id);
+  }, [firestore, user?.id]);
+  const { data: profile } = useDoc<MarketProfile>(marketProfileRef);
+
+  const isFavorited = profile?.favoriteProducts?.includes(id) || false;
 
   // 🛒 MARKET INTELLIGENCE: Record product view once loaded
   useEffect(() => {
@@ -48,6 +60,31 @@ export default function ProductDetailPage() {
   }, [product, user?.id, firestore]);
 
   const youtubeId = useMemo(() => product ? getYouTubeId(product.videoUrl || '') : null, [product]);
+
+  const handleToggleFavorite = async () => {
+    if (!user || !firestore || !product) return;
+    setIsSyncingFavorite(true);
+    try {
+        await toggleFavoriteProduct(firestore, user.id, product, isFavorited);
+    } finally {
+        setIsSyncingFavorite(false);
+    }
+  };
+
+  const handleShare = () => {
+    if (!firestore || !user || !product) return;
+    recordMarketSignal(firestore, user.id, product, 'share');
+    
+    if (navigator.share) {
+        navigator.share({
+            title: product.name,
+            text: `Check out this vibe on GAM Hub: ${product.name}`,
+            url: window.location.href
+        });
+    } else {
+        navigator.clipboard.writeText(window.location.href);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -80,12 +117,37 @@ export default function ProductDetailPage() {
 
   const isService = product.productType === 'service';
   const hasVideo = !!(product.videoUrl || product.nativeVideoUrl);
+  const isTrending = product.trendScore && product.trendScore > 10;
 
   return (
     <div className="max-w-6xl mx-auto p-4 md:p-8 pb-24">
-      <Button variant="ghost" onClick={() => router.back()} className="mb-8 rounded-xl font-bold text-slate-500 hover:text-slate-900 transition-colors">
-        <ChevronLeft className="mr-2 h-4 w-4" /> Back to Market
-      </Button>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <Button variant="ghost" onClick={() => router.back()} className="rounded-xl font-bold text-slate-500 hover:text-slate-900 transition-colors">
+            <ChevronLeft className="mr-2 h-4 w-4" /> Back to Market
+        </Button>
+        
+        <div className="flex items-center gap-3 w-full md:w-auto">
+            <Button 
+                variant="outline" 
+                onClick={handleToggleFavorite}
+                disabled={isSyncingFavorite}
+                className={cn(
+                    "flex-1 md:flex-none rounded-2xl font-black text-xs uppercase tracking-widest px-6 h-12 transition-all",
+                    isFavorited ? "bg-red-50 border-red-200 text-red-600 shadow-inner" : "hover:border-red-200 hover:text-red-600"
+                )}
+            >
+                {isSyncingFavorite ? <Loader2 size={16} className="animate-spin mr-2" /> : <Heart size={16} className={cn("mr-2", isFavorited && "fill-current")} />}
+                {isFavorited ? 'Favorited' : 'Save Vibe'}
+            </Button>
+            <Button 
+                variant="outline" 
+                onClick={handleShare}
+                className="flex-1 md:flex-none rounded-2xl font-black text-xs uppercase tracking-widest px-6 h-12 transition-all"
+            >
+                <Share2 size={16} className="mr-2" /> Share
+            </Button>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
         <div className="space-y-8">
@@ -98,9 +160,11 @@ export default function ProductDetailPage() {
               priority
               data-ai-hint={product.imageHint}
             />
-            {isService && (
-                <div className="absolute top-8 left-8 z-10">
-                    <div className="bg-blue-600 text-white font-black text-xs tracking-widest px-5 py-2.5 rounded-2xl shadow-2xl border-2 border-white/20 backdrop-blur-sm uppercase">VERIFIED SERVICE</div>
+            {isTrending && (
+                <div className="absolute top-8 left-8 z-10 animate-in zoom-in duration-500">
+                    <div className="bg-red-600 text-white font-black text-[10px] tracking-[0.2em] px-5 py-2.5 rounded-2xl shadow-2xl border-2 border-white/20 backdrop-blur-sm uppercase flex items-center gap-2">
+                        <TrendingUp size={14} className="animate-pulse" /> TRENDING NOW
+                    </div>
                 </div>
             )}
           </div>

@@ -16,7 +16,7 @@
         "radioName": { "type": "string" },
         "radioStreamUrl": { "type": "string" }
       },
-      "required": ["id", "name", "domain", "createdAt"]
+      "required": ["id", "name", "domain"]
     },
     "User": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -44,6 +44,7 @@
         "purchasedCategories": { "type": "object" },
         "intentCategories": { "type": "object" },
         "favoriteVendors": { "type": "object" },
+        "favoriteProducts": { "type": "array", "items": { "type": "string" } },
         "pricePreference": {
           "type": "object",
           "properties": {
@@ -70,21 +71,14 @@
         "tags": { "type": "array", "items": { "type": "string" } },
         "salesCount": { "type": "number" },
         "viewCount": { "type": "number" },
+        "favoriteCount": { "type": "number" },
+        "shareCount": { "type": "number" },
         "rating": { "type": "number" },
         "trendScore": { "type": "number" },
         "recentSales": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
-    },
-    "ProductPriceHistory": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "ProductPriceHistory",
-      "type": "object",
-      "properties": {
-        "price": { "type": "number" },
-        "timestamp": { "type": "string", "format": "date-time" }
-      }
     }
   },
   "auth": {
@@ -117,11 +111,11 @@
         }
       },
       {
-        "path": "/products/{productId}/product_price_history/{historyId}",
+        "path": "/product_velocity/{productId}/minutes/{minuteId}",
         "definition": {
-          "entityName": "ProductPriceHistory",
-          "schema": { "$ref": "#/backend/entities/ProductPriceHistory" },
-          "description": "Historical price points for AI deal detection."
+          "entityName": "ProductVelocity",
+          "schema": { "type": "object" },
+          "description": "Time-series commercial signals for trending detection."
         }
       }
     ]

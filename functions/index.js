@@ -89,7 +89,8 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 
 /**
  * 🛒 PRODUCT TRENDING ENGINE
- * Monitors commercial velocity to surface hot campus items.
+ * Monitors weighted commercial velocity to surface hot campus items.
+ * WEIGHTS: view=1, favorite=2, share=3, intent=4, purchase=8
  */
 exports.calculateProductTrendingScore = onDocumentUpdated("products/{productId}", async (event) => {
   const data = event.data.after.data();
@@ -97,8 +98,11 @@ exports.calculateProductTrendingScore = onDocumentUpdated("products/{productId}"
   const db = admin.firestore();
   const productId = event.params.productId;
 
-  // Optimization: Only run if counts changed
-  const hasChanged = data.viewCount !== oldData.viewCount || data.salesCount !== oldData.salesCount;
+  // Optimization: Only run if trending counts changed
+  const hasChanged = [
+    "viewCount", "favoriteCount", "shareCount", "salesCount"
+  ].some(k => data[k] !== oldData[k]);
+  
   if (!hasChanged) return null;
 
   try {
@@ -110,23 +114,32 @@ exports.calculateProductTrendingScore = onDocumentUpdated("products/{productId}"
       .where("__name__", ">=", startTime)
       .get();
 
-    let recentVelocity = 0;
-    let recentSales = 0;
+    let weightedRecentVelocity = 0;
     velocitySnap.forEach((doc) => {
       const v = doc.data();
-      recentVelocity += (v.views || 0) + (v.intents || 0) * 5;
-      recentSales += (v.purchases || 0);
+      // WEIGHTS APPLIED: view=1, favorite=2, share=3, intent=4, purchase=8
+      weightedRecentVelocity += (v.views || 0) * 1;
+      weightedRecentVelocity += (v.favorites || 0) * 2;
+      weightedRecentVelocity += (v.shares || 0) * 3;
+      weightedRecentVelocity += (v.intents || 0) * 4;
+      weightedRecentVelocity += (v.purchases || 0) * 8;
     });
 
-    // Score combines view velocity and immediate sales momentum
-    const velocity = recentVelocity / lookbackMins;
-    const score = (velocity * 2.0) + (recentSales * 10.0);
+    // Score combines velocity and a baseline popularity boost
+    const velocity = weightedRecentVelocity / lookbackMins;
+    
+    // DECAY LOGIC: Trending items must be fresh
+    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+    const ageHours = (new Date() - createdAt) / 3600000;
+    const halfLife = 48; // 2-day decay for products
+    const decay = Math.exp(-ageHours / halfLife);
+    
+    const score = velocity * decay;
 
     if (data.trendScore && Math.abs(data.trendScore - score) < 0.01) return null;
 
     return event.data.after.ref.update({ 
       trendScore: score,
-      recentSales: recentSales,
       updatedAt: admin.firestore.FieldValue.serverTimestamp() 
     });
   } catch (err) {
@@ -260,13 +273,13 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
       const tagRef = db.collection("hashtags").doc(normalizedTag);
       batch.set(tagRef, {
         tag: normalizedTag,
-        postCount: admin.firestore.FieldValue.increment(1),
+        postCount: admin.FieldValue.increment(1),
         lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
 
       const statsRef = db.collection("hashtagStats").doc(normalizedTag).collection("minutes").doc(minuteBucket);
-      batch.set(statsRef, { count: admin.firestore.FieldValue.increment(1) }, { merge: true });
+      batch.set(statsRef, { count: admin.FieldValue.increment(1) }, { merge: true });
     });
   }
 

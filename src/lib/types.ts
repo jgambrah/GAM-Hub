@@ -55,6 +55,7 @@ export type MarketProfile = {
   purchasedCategories: Record<string, number>;
   intentCategories: Record<string, number>;
   favoriteVendors: Record<string, number>;
+  favoriteProducts?: string[]; // IDs of products favorited
   pricePreference: {
     min: number;
     max: number;
@@ -130,6 +131,8 @@ export type Product = {
   tags?: string[]; // For recommendation matching
   salesCount?: number; // Popularity signal
   viewCount?: number; // Popularity signal
+  favoriteCount?: number; // Trending signal
+  shareCount?: number; // Trending signal
   rating?: number; // Trust signal
   trendScore?: number; // Real-time commercial velocity
   recentSales?: number; // For trending boost
