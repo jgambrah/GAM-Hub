@@ -15,6 +15,7 @@ export async function generateQueryEmbedding(query: string): Promise<number[] | 
   if (!query || query.trim().length < 2) return null;
 
   try {
+    // Liaison Brain: Generate high-dimensional vector using text-embedding-004
     const embedding = await ai.embed({
       model: 'googleai/text-embedding-004',
       content: query.trim(),

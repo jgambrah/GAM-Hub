@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -7,7 +6,7 @@ import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from '
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash, Search as SearchIcon } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash, Search as SearchIcon, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer, cosineSimilarity } from './VibePlayerContext';
 import { Switch } from '../ui/switch';
@@ -40,6 +39,7 @@ export default function CampusPulseFeed({
     const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isEmbedding, setIsEmbedding] = useState(false);
     const [queryVector, setQueryVector] = useState<number[] | null>(null);
 
     /**
@@ -56,8 +56,10 @@ export default function CampusPulseFeed({
         try {
             // 🧠 SEMANTIC PASS: Generate embedding for search queries (not tags)
             if (searchQuery.trim() && !searchQuery.startsWith('#')) {
+                setIsEmbedding(true);
                 const vector = await generateQueryEmbedding(searchQuery);
                 setQueryVector(vector);
+                setIsEmbedding(false);
             } else {
                 setQueryVector(null);
             }
@@ -84,7 +86,7 @@ export default function CampusPulseFeed({
                 ? query(pulseRef, where('tags', 'array-contains', tagToFilter), limit(50))
                 : query(pulseRef, where('likes', '<', 10), orderBy('likes', 'asc'), orderBy('createdAt', 'desc'), limit(50));
 
-            // Liaison Handshake: Parallel retrieval
+            // Liaison Handshake: Parallel retrieval (FIXED REFERENCE ERROR)
             const [recentSnap, trendingSnap, campusSnap, explorationSnap] = await Promise.all([
                 getDocs(recentQuery),
                 getDocs(trendingStatsQuery),
@@ -107,10 +109,10 @@ export default function CampusPulseFeed({
             addDocsToMap(explorationSnap);
 
             // Hydrate Trending IDs
-            const trendingIds = trendingSnap.docs.map(d => d.id);
-            const missingIds = trendingIds.filter(id => !mergedMap.has(id));
+            const trendingIds = trendingSnap.docs.map((d: any) => d.id);
+            const missingIds = trendingIds.filter((id: string) => !mergedMap.has(id));
             if (missingIds.length > 0) {
-                const missingSnaps = await Promise.all(missingIds.slice(0, 50).map(id => getDoc(doc(firestore, 'campus_pulse', id))));
+                const missingSnaps = await Promise.all(missingIds.slice(0, 50).map((id: string) => getDoc(doc(firestore, 'campus_pulse', id))));
                 missingSnaps.forEach(snap => {
                     if (snap.exists()) {
                         const postData = { id: snap.id, ...snap.data() } as SocialPost;
@@ -140,6 +142,7 @@ export default function CampusPulseFeed({
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
+            setIsEmbedding(false);
         }
     };
 
@@ -225,7 +228,7 @@ export default function CampusPulseFeed({
                             </h3>
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Zap size={10} className="text-indigo-500 fill-indigo-500" /> 
-                                {queryVector ? 'Semantic Search Engine Active' : 'Keyword Discovery Active'}
+                                {queryVector ? 'Semantic Search Engine Active' : isEmbedding ? 'Understanding meaning...' : 'Keyword Discovery Active'}
                             </p>
                         </div>
                     </div>
