@@ -199,17 +199,33 @@ export function buildSmartQueue(
   // Sort by base score
   scored.sort((a, b) => b.score - a.score);
 
-  // Second pass: Apply greedy diversity with cluster penalties
+  // Second pass: Apply greedy diversity with cluster penalties & Creator Rotation
   const finalRanked = [];
   const candidates = [...scored];
   const seenClusters = new Map<string, number>();
+  const lastCreatorPositions = new Map<string, number>();
+  
+  const MIN_CREATOR_GAP = 4;
 
   while (candidates.length > 0 && finalRanked.length < 50) {
+      const currentIndex = finalRanked.length;
+      
       // Re-score top candidates based on what's already selected
-      const window = candidates.slice(0, 10).map(c => {
+      const window = candidates.slice(0, 15).map(c => {
           const cluster = (c.post.tags?.[0] || 'none').toLowerCase();
-          const freq = seenClusters.get(cluster) || 0;
-          return { ...c, diverseScore: c.score - (freq * 5) }; // Cluster Penalty
+          const creatorId = c.post.authorId;
+          
+          const clusterFreq = seenClusters.get(cluster) || 0;
+          const lastPos = lastCreatorPositions.get(creatorId);
+          
+          let diverseScore = c.score - (clusterFreq * 5); // Cluster Penalty
+          
+          // CRITICAL: Creator Rotation Penalty
+          if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) {
+              diverseScore -= 40; // Heavy penalty for bunching creators
+          }
+          
+          return { ...c, diverseScore };
       });
 
       window.sort((a, b) => b.diverseScore - a.diverseScore);
@@ -217,9 +233,10 @@ export function buildSmartQueue(
       
       finalRanked.push(best);
       
-      // Update cluster frequency
+      // Update trackers
       const cluster = (best.post.tags?.[0] || 'none').toLowerCase();
       seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1);
+      lastCreatorPositions.set(best.post.authorId, currentIndex);
 
       // Remove from candidates
       const idx = candidates.findIndex(c => c.post.id === best.post.id);
@@ -371,16 +388,17 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         } catch (e) { console.warn("Graph lookup failed"); }
     }
     
+    // 🛰️ STAGE 1: BUCKETED RETRIEVAL (70/20/10 Ratio Logic)
     const vectorRanked = userEmbedding ? rankByEmbedding(pool, userEmbedding).slice(0, 140) : pool.slice(0, 140);
     const trendingRanked = pool.filter(p => !vectorRanked.some(v => v.id === p.id)).sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 40);
     const explorationPool = pool.filter(p => !vectorRanked.some(v => v.id === p.id) && !trendingRanked.some(t => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 20);
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
-    // 🎨 STAGE 1: DIVERSE RANKING (Cluster Penalties)
+    // 🎨 STAGE 2: DIVERSE RANKING (Cluster Penalties & Creator Rotation)
     const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags, reputations);
     
-    // 🎨 STAGE 2: FINAL DIVERSITY PASS (Hard Constraints)
-    const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 25);
+    // 🎨 STAGE 3: FINAL DIVERSITY PASS (Hard Constraints & Exploration Injection)
+    const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 30);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
