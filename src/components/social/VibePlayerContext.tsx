@@ -1,9 +1,7 @@
-
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import type { SocialPost } from '@/lib/types';
-import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile, type SignalType } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
@@ -83,8 +81,10 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 }
 
 /**
- * 🏗️ MASTER DISCOVERY EQUATION
- * score = tagSimilarity + interestMatch + creatorQuality + viralBoost + aiTopicMatch + moodMatch + freshness
+ * computeVibeScore
+ * ---------------
+ * The multi-signal discovery equation.
+ * Combined: content match + semantic similarity + mood + trends + personal behavioral score.
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -148,9 +148,9 @@ export function computeVibeScore(
     score += 25;
   }
 
-  // 5. BEHAVIORAL & REPUTATION SIGNALS
-  // This now includes session-specific real-time adaptations via useVibeProfile
-  score += getPersonalScore(candidate) * 0.5;
+  // 🎯 5. BEHAVIORAL SIGNALS (PERSONALIZATION)
+  // This score includes session bursts and pivots calculated in useVibeProfile
+  score += getPersonalScore(candidate);
   score += explorationBoost(candidate);
 
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
@@ -166,7 +166,9 @@ export function computeVibeScore(
 }
 
 /**
- * 🎨 SMART QUEUE BUILDER WITH DIVERSITY-AWARE SCORING
+ * buildSmartQueue
+ * ---------------
+ * Re-scores candidates and builds a diversity-aware narrative thread.
  */
 export function buildSmartQueue(
   current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
@@ -185,7 +187,6 @@ export function buildSmartQueue(
   const finalRanked = [];
   const candidates = [...scored];
   
-  // Trackers for greedy selection
   const seenClusters = new Map<string, number>();
   const creatorSessionCount = new Map<string, number>();
   const lastCreatorPositions = new Map<string, number>();
@@ -203,13 +204,12 @@ export function buildSmartQueue(
           const creatorFreq = creatorSessionCount.get(creatorId) || 0;
           const lastPos = lastCreatorPositions.get(creatorId);
           
-          // 🛡️ DIVERSITY-AWARE SCORING: Apply penalties for repetition
           let diverseScore = c.score;
-          diverseScore -= (clusterFreq * 6); // Topic Penalty
-          diverseScore -= (creatorFreq * 8); // Session Creator Penalty
+          diverseScore -= (clusterFreq * 6); 
+          diverseScore -= (creatorFreq * 8); 
           
           if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) {
-              diverseScore -= 40; // Heavy Gap Penalty
+              diverseScore -= 40; 
           }
           
           return { ...c, diverseScore };
@@ -220,7 +220,6 @@ export function buildSmartQueue(
       
       finalRanked.push(best);
       
-      // Update trackers
       const cluster = (best.post.tags?.[0] || 'none').toLowerCase();
       seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1);
       creatorSessionCount.set(best.post.authorId, (creatorSessionCount.get(best.post.authorId) || 0) + 1);
@@ -337,7 +336,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         } catch (e) { console.warn("Graph lookup failed"); }
     }
     
-    // 🏗️ ELITE PIPELINE: Bucketed Retrieval -> Diverse Ranking -> Final Diversity Pass
     const vectorRanked = userEmbeddingRef.current ? rankByEmbedding(pool, userEmbeddingRef.current).slice(0, 140) : pool.slice(0, 140);
     const trendingRanked = pool.filter(p => !vectorRanked.some(v => v.id === p.id)).sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 40);
     const explorationPool = pool.filter(p => !vectorRanked.some(v => v.id === p.id) && !trendingRanked.some(t => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 20);
@@ -345,7 +343,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
     const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags, reputations);
     
-    // 🎨 FINAL DIVERSITY PASS (Hard Constraints & Rotation)
     const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 30);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
@@ -360,10 +357,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(false);
   }, [firestore]);
 
-  // 🔄 REBUILD TRIGGER: Re-evaluate queue when session signals occur
+  // 🚀 REBUILD TRIGGER: Re-evaluate queue when session signals or pivots occur
   useEffect(() => {
     if (activePost && allPosts.length > 0) {
-        // Debounce slightly to allow sessionProfile to settle
         const timer = setTimeout(() => {
             rebuildQueue(activePost, allPosts, activeMood);
         }, 500);

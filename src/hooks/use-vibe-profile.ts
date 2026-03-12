@@ -20,6 +20,7 @@ export interface VibeProfile {
 export interface SessionProfile {
   tagWeights:    Record<string, number>;
   authorWeights: Record<string, number>;
+  pivotTag:      string | null; // THE ACTIVE SESSION PIVOT
 }
 
 export const EMPTY_PROFILE: VibeProfile = {
@@ -32,6 +33,7 @@ export const EMPTY_PROFILE: VibeProfile = {
 export const EMPTY_SESSION: SessionProfile = {
   tagWeights:    {},
   authorWeights: {},
+  pivotTag:      null,
 };
 
 export type SignalType = 'like' | 'unlike' | 'reaction' | 'play' | 'watched_to_end' | 'skip';
@@ -64,6 +66,12 @@ function applyWeights(
   return updated;
 }
 
+/**
+ * useVibeProfile Hook
+ * -------------------
+ * Manages the User's persistent taste profile and short-term session behavior.
+ * Implements Rapid Interest Shift Detection (Pivoting).
+ */
 export function useVibeProfile() {
   const { firestore } = useFirebase();
   const { user } = useAuth();
@@ -73,7 +81,6 @@ export function useVibeProfile() {
   const [isLoaded, setIsLoaded] = useState(false);
   const signalCountRef = useRef(0);
   
-  // Track current profile in a ref to use in async side effects without closure staleness
   const currentProfileRef = useRef<VibeProfile>(EMPTY_PROFILE);
   useEffect(() => {
     currentProfileRef.current = profile;
@@ -101,10 +108,9 @@ export function useVibeProfile() {
   }, [firestore, user?.id]);
 
   const getTopInterests = useCallback((n = 8): string[] => {
-    // Combine session and persistent for "Top Interests"
     const combinedTags = { ...profile.tagWeights };
     Object.entries(sessionProfile.tagWeights).forEach(([tag, weight]) => {
-        combinedTags[tag] = (combinedTags[tag] || 0) + weight * 2; // Weight session higher
+        combinedTags[tag] = (combinedTags[tag] || 0) + weight * 2.5; 
     });
 
     return Object.entries(combinedTags)
@@ -125,11 +131,26 @@ export function useVibeProfile() {
     signalCountRef.current += 1;
     const shouldRefreshEmbedding = signalCountRef.current % 5 === 0;
 
-    // 1. UPDATE SESSION PROFILE (IMMEDIATE)
-    setSessionProfile(prev => ({
-        tagWeights: applyWeights(prev.tagWeights, tags, w.tag),
-        authorWeights: applyWeights(prev.authorWeights, authors, w.author),
-    }));
+    // 🏎️ 1. UPDATE SESSION PROFILE (IMMEDIATE)
+    setSessionProfile(prev => {
+        const nextWeights = applyWeights(prev.tagWeights, tags, w.tag);
+        
+        // 🎯 RAPID INTEREST SHIFT DETECTION (PIVOT)
+        // If a specific tag has exploded in the session (> 4 points), mark it as pivot
+        let pivot = prev.pivotTag;
+        for (const tag of tags) {
+            if (nextWeights[tag] >= 4) {
+                pivot = tag;
+                break;
+            }
+        }
+
+        return {
+            tagWeights: nextWeights,
+            authorWeights: applyWeights(prev.authorWeights, authors, w.author),
+            pivotTag: pivot
+        };
+    });
 
     // 2. UPDATE PERSISTENT PROFILE OPTIMISTICALLY
     setProfile(prev => {
@@ -143,7 +164,7 @@ export function useVibeProfile() {
       return next;
     });
 
-    // 3. TRIGGER ASYNC PERSISTENCE (OUTSIDE SETTER)
+    // 3. TRIGGER ASYNC PERSISTENCE
     const performUpdate = async () => {
       const prev = currentProfileRef.current;
       const next: VibeProfile = {
@@ -185,12 +206,19 @@ export function useVibeProfile() {
 
   }, [firestore, user?.id, currentProfileRef]);
 
+  /**
+   * getPersonalScore
+   * ----------------
+   * Computes high-fidelity personalized score combining history, session, and pivots.
+   */
   const getPersonalScore = useCallback((post: SocialPost): number => {
     if (!isLoaded) return 0;
     let score = 0;
 
+    const postTags = (post.tags || []).map(t => t.toLowerCase());
+
     // 1. HISTORICAL PERSISTENT WEIGHTS
-    for (const tag of (post.tags || []).map(t => t.toLowerCase())) {
+    for (const tag of postTags) {
       score += (profile.tagWeights[tag] ?? 0) * 0.6;
     }
     if (post.authorId) {
@@ -198,18 +226,22 @@ export function useVibeProfile() {
     }
     
     // 2. SESSION BOOST: Hyper-responsive short-term memory
-    // Applied based on computeSessionBoost.ts logic
-    for (const tag of (post.tags || []).map(t => t.toLowerCase())) {
+    for (const tag of postTags) {
       if (sessionProfile.tagWeights[tag]) {
-        score += sessionProfile.tagWeights[tag] * 2;
+        score += sessionProfile.tagWeights[tag] * 2.5; // AGGRESSIVE BOOST
       }
     }
     
     if (post.authorId && sessionProfile.authorWeights[post.authorId]) {
-      score += sessionProfile.authorWeights[post.authorId] * 3;
+      score += sessionProfile.authorWeights[post.authorId] * 3.5;
     }
 
-    // 3. CATEGORY & CAMPUS CONTEXT
+    // 🎯 3. RAPID PIVOT BOOST (THE 5X MULTIPLIER)
+    if (sessionProfile.pivotTag && postTags.includes(sessionProfile.pivotTag)) {
+        score += 50; 
+    }
+
+    // 4. CATEGORY & CAMPUS CONTEXT
     if (post.mediaType) {
       score += (profile.typeWeights[post.mediaType] ?? 0) * 0.3;
     }
