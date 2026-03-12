@@ -10,6 +10,7 @@ import { useVibePlayer } from './VibePlayerContext';
 import { useVibeAds, AD_INTERVAL } from '@/hooks/use-vibe-ads';
 import { cn } from '@/lib/utils';
 import { Sparkles } from 'lucide-react';
+import { enforceDiversity } from '@/lib/diversity-engine';
 
 interface VibeFeedProps {
   posts: SocialPost[];
@@ -30,14 +31,14 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
     if (posts.length > 0) addToQueue(posts);
   }, [posts.length, addToQueue]);
 
-  // Sort feed by personal taste profile on app open
-  const sortedPosts = useMemo(
-    () => sortFeedByProfile(posts),
-    [posts, isProfileLoaded, sortFeedByProfile]
-  );
-
   // Build the interleaved feed: post, post, post, post, post, AD, post, post...
   const feedItems = useMemo(() => {
+    // 1. RANK: Sort by personal profile
+    const ranked = isProfileLoaded ? sortFeedByProfile(posts) : [...posts];
+    
+    // 2. DIVERSIFY: Enforce creator and topic balance
+    const diverse = enforceDiversity(ranked);
+
     const items: Array<
       | { type: 'post'; post: SocialPost; key: string }
       | { type: 'ad'; slotIndex: number; key: string }
@@ -45,24 +46,24 @@ export default function VibeFeed({ posts, className }: VibeFeedProps) {
 
     let adSlotCount = 0;
 
-    sortedPosts.forEach((post, i) => {
+    diverse.forEach((post, i) => {
       items.push({ type: 'post', post, key: post.id });
 
       // After every AD_INTERVAL posts, inject an ad slot
-      if ((i + 1) % AD_INTERVAL === 0 && i < sortedPosts.length - 1) {
+      if ((i + 1) % AD_INTERVAL === 0 && i < diverse.length - 1) {
         items.push({ type: 'ad', slotIndex: adSlotCount, key: `ad-slot-${adSlotCount}` });
         adSlotCount++;
       }
     });
 
     return items;
-  }, [sortedPosts]);
+  }, [posts, isProfileLoaded, sortFeedByProfile]);
 
   // ── THEATER PRIORITY: Extract the active post to stay at the top ──
   const activePostItem = useMemo(() => {
     if (!activePostId) return null;
-    return sortedPosts.find(p => p.id === activePostId);
-  }, [activePostId, sortedPosts]);
+    return posts.find(p => p.id === activePostId);
+  }, [activePostId, posts]);
 
   // Filter out the active post from the discovery grid list
   const discoveryItems = useMemo(() => {

@@ -9,6 +9,7 @@ import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
 import { collection, query, orderBy, limit, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { getRelatedHashtags } from '@/lib/hashtag-utils';
+import { enforceDiversity } from '@/lib/diversity-engine';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -147,9 +148,8 @@ export function computeVibeScore(
   score += relatedMatches.length * 5;
 
   // 🏎️ TRENDING FEED BOOST
-  // Professional platforms prioritize viral velocity to ensure rapid spread
   if (candidate.trendScore && candidate.trendScore > 30) {
-    score += 35; // Significant boost for high-momentum vibrations
+    score += 35; 
   } else if (candidateTags.some(t => viralTags.has(t))) {
     score += 25;
   } else if (candidateTags.some(t => trendingTags.has(t))) {
@@ -344,7 +344,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
     const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags, reputations);
-    const finalPoolForNext = rankedResults.map(r => r.post).slice(0, 25);
+    
+    // 🎨 FINAL STAGE: ENFORCE DIVERSITY
+    const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 25);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
@@ -353,19 +355,19 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         reason: buildReason(current, p, scorer, userEmbedding, relatedTags),
       }));
 
-    setQueue([current, ...finalPoolForNext]);
-    setUpNext(makeUpNext(finalPoolForNext));
+    setQueue([current, ...diversePool]);
+    setUpNext(makeUpNext(diversePool));
     setIsLoadingQueue(false);
 
     try {
       const recommendation = await getRecommendedVibes({
         currentPostContent: current.content,
         userInterests: getTopInterests(10),
-        availablePosts: finalPoolForNext.map(p => ({ id: p.id, content: p.content, tags: p.tags || [] })),
+        availablePosts: diversePool.map(p => ({ id: p.id, content: p.content, tags: p.tags || [] })),
       });
       const postMap = new Map<string, SocialPost>(); pool.forEach(p => postMap.set(p.id, p));
       const aiPosts = recommendation.recommendedPostIds.filter(id => postMap.has(id)).map(id => postMap.get(id)!);
-      const combined = [...aiPosts, ...finalPoolForNext.filter(p => !recommendation.recommendedPostIds.includes(p.id))];
+      const combined = [...aiPosts, ...diversePool.filter(p => !recommendation.recommendedPostIds.includes(p.id))];
       setQueue([current, ...combined]); setUpNext(makeUpNext(combined));
     } catch (err) { console.warn('Liaison AI bypassed'); }
   }, [getTopInterests, firestore]);
