@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -62,7 +61,7 @@ export function cosineSimilarity(a: number[], b: number[]) {
 
 function exponentialFreshness(date: Date) {
   const ageHours = (Date.now() - date.getTime()) / 3600000;
-  return 10 * Math.exp(-hours / 12);
+  return 10 * Math.exp(-ageHours / 12);
 }
 
 export function explorationBoost(post: SocialPost) {
@@ -424,7 +423,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       const counts = prev[post.id] || { '🔥': 0, '🌊': 0, '💎': 0, '👑': 0, '⚡': 0 };
       return { ...prev, [post.id]: { ...counts, [emoji]: counts[emoji] + 1 } };
     });
-    recordSignal(post, 'reaction'); if (firestore) recordEngagement(firestore, post.id, 'like', post.authorId, post.createdAt);
+    recordSignal(post, 'reaction'); if (firestore) recordEngagement(firestore, p.id, 'like', post.authorId, post.createdAt);
     const burst: ReactionBurst = { id: `${Date.now()}-${Math.random()}`, emoji, x: 20 + Math.random() * 60, y: 20 + Math.random() * 60 };
     setReactionBursts(prev => [...prev, burst]); setTimeout(() => setReactionBursts(p => p.filter(b => b.id !== burst.id)), 1200);
   }, [recordSignal, firestore]);
