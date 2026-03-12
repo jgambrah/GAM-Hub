@@ -138,7 +138,7 @@ export type AdCampaign = {
   billingModel: 'cpm' | 'cpc';
   rateGHS: number;
   totalBudgetGHS?: number;
-  totalSpendGHS?: number;
+  totalSpendGHS?:   number;
   impressionTarget?: number;
   clickTarget?:      number;
   impressions:      number;
@@ -174,6 +174,7 @@ export type SocialPost = {
   mood?: string; // NEW: Emotional vibe
   musicGenre?: string; // NEW: Detected background music
   detectedObjects?: string[]; // NEW: Key visual objects
+  transcript?: string; // NEW: AI Speech summary
   embedding?: number[]; // SEMANTIC VECTOR
   originalVideoPath?: string;
   mediaStatus?: 'processing' | 'ready' | 'error';

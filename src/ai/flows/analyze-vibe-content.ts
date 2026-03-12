@@ -3,6 +3,7 @@
 /**
  * @fileOverview Liaison AI Content Understanding Engine.
  * Analyzes video/audio/text to extract deep cultural and semantic metadata.
+ * Now expanded with Speech Transcription summary.
  */
 
 import {ai} from '@/ai/genkit';
@@ -11,7 +12,7 @@ import {z} from 'genkit';
 const AnalyzeVibeInputSchema = z.object({
   mediaUrl: z.string().describe('The URL of the media (video or image) to analyze.'),
   caption: z.string().optional().describe('The user provided caption for context.'),
-  mediaType: z.enum(['video', 'image', 'youtube', 'tiktok']).describe('Type of media being analyzed.'),
+  mediaType: z.enum(['video', 'image', 'youtube', 'tiktok', 'text']).describe('Type of media being analyzed.'),
 });
 export type AnalyzeVibeInput = z.infer<typeof AnalyzeVibeInputSchema>;
 
@@ -21,7 +22,7 @@ const AnalyzeVibeOutputSchema = z.object({
   mood: z.string().describe('The emotional vibe or mood of the content (e.g., hype, chill, aggressive).'),
   musicGenre: z.string().optional().describe('Detected music genre if applicable.'),
   detectedObjects: z.array(z.string()).describe('List of key visual objects or scenes detected.'),
-  transcript: z.string().optional().describe('Summary transcript of speech if detected.'),
+  transcript: z.string().optional().describe('Summary transcript of speech if detected or summarized context of the vibe.'),
 });
 export type AnalyzeVibeOutput = z.infer<typeof AnalyzeVibeOutputSchema>;
 
@@ -48,6 +49,7 @@ ANALYSIS GOALS:
 3. **Mood Signature**: Detect the emotional frequency (e.g., hype, serene, stress, victory).
 4. **Detected Objects**: List the key visual elements (e.g., "Library", "Afrobeats Dance", "Kenkey Party").
 5. **Cultural Context**: Use your knowledge of Ghanaian university culture (UG, KNUST, etc.) to detect specific local references.
+6. **Speech Intelligence**: If the content contains speech (from the caption or implied by media), provide a 1-sentence summary transcript.
 
 Return a high-fidelity metadata profile for this vibration.`,
 });

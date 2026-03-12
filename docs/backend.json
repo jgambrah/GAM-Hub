@@ -84,6 +84,7 @@
         "mood": { "type": "string", "description": "The emotional tone of the post." },
         "musicGenre": { "type": "string", "description": "Detected music genre if applicable." },
         "detectedObjects": { "type": "array", "items": { "type": "string" }, "description": "Visual objects detected in media." },
+        "transcript": { "type": "string", "description": "AI-generated summary of speech or audio content." },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "authorId", "content", "createdAt"]

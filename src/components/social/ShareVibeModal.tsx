@@ -24,7 +24,7 @@ import { analyzeVibeContent } from '@/ai/flows/analyze-vibe-content';
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Now with full AI Content Understanding (Multi-modal).
+ * Now with full AI Content Understanding (Multi-modal) and Tag Expansion.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -141,31 +141,32 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       const docRef = await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // C. ASYNC AI UNDERSTANDING PIPELINE (Non-blocking)
+      // C. ASYNC AI UNDERSTANDING PIPELINE (Non-blocking Tag Expansion)
       const runAiAnalysis = async () => {
           try {
-              // 1. AI Content understanding (Multi-modal)
+              // 1. AI Content understanding (Multi-modal + Speech)
               const aiResult = await analyzeVibeContent({
                   mediaUrl: mediaUrl || '',
                   caption: content,
-                  mediaType: mediaType as any
+                  mediaType: (mediaType as any) === 'text' ? 'text' : (mediaType as any)
               });
 
-              // 2. Semantic Embedding
+              // 2. Semantic Embedding (The Taste Vector)
               const finalTags = Array.from(new Set([...manualTags, ...aiResult.aiTags])).slice(0, 15);
               const embedding = await generatePostEmbedding({ content: content || "", tags: finalTags });
 
-              // 3. Update post with AI intelligence
+              // 3. Update post with expanded intelligence
               await updateDoc(doc(firestore, 'campus_pulse', docRef.id), {
                   aiTags: aiResult.aiTags,
                   aiTopics: aiResult.aiTopics,
                   mood: aiResult.mood,
                   musicGenre: aiResult.musicGenre,
                   detectedObjects: aiResult.detectedObjects,
+                  transcript: aiResult.transcript,
                   embedding: embedding
               });
 
-              // 4. Update Hashtag Indexes
+              // 4. Update Hashtag Indexes (Graph Learning)
               if (finalTags.length > 0) {
                   await updateHashtagIndex(firestore, finalTags);
                   if (finalTags.length >= 2) await updateHashtagGraph(firestore, finalTags);
@@ -231,12 +232,12 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
             <div className="space-y-2">
                 <textarea 
-                    placeholder="What's the frequency, Citizen? 😊 Liaison AI will automatically analyze your media." 
+                    placeholder="What's the frequency, Citizen? 😊 Liaison AI will automatically expand your tags." 
                     className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
                     value={content}
                     onChange={(e) => setContent(e.target.value)} 
                 />
-                <p className="text-[9px] text-muted-foreground px-4 italic">Multi-modal AI Pipeline active. 🤖🎬</p>
+                <p className="text-[9px] text-muted-foreground px-4 italic">Multi-modal AI & Speech summary active. 🤖🎬</p>
             </div>
             
             {preview && (
