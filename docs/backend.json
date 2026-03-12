@@ -29,9 +29,26 @@
         "campusId": { "type": "string" },
         "role": { "type": "string" },
         "firstName": { "type": "string" },
-        "lastName": { "type": "string" }
+        "lastName": { "type": "string" },
+        "qualityScore": { "type": "number", "description": "Global reputation score derived from engagement metrics." }
       },
       "required": ["id", "email", "campusId", "role"]
+    },
+    "CreatorReputation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "CreatorReputation",
+      "type": "object",
+      "description": "Represents the quality and reputation score of a content creator.",
+      "properties": {
+        "id": { "type": "string" },
+        "qualityScore": { "type": "number" },
+        "engagementRate": { "type": "number" },
+        "completionRate": { "type": "number" },
+        "postCount": { "type": "number" },
+        "violationScore": { "type": "number" },
+        "lastUpdatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "qualityScore", "lastUpdatedAt"]
     },
     "Product": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -62,27 +79,6 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "authorId", "content", "createdAt"]
-    },
-    "Manifesto": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Manifesto",
-      "type": "object",
-      "description": "Represents a candidate's political manifesto.",
-      "properties": {
-        "id": { "type": "string" },
-        "candidateName": { "type": "string" },
-        "position": { "type": "string" },
-        "campusId": { "type": "string" },
-        "campusAcronym": { "type": "string" },
-        "hall": { "type": "string" },
-        "motto": { "type": "string" },
-        "fullManifesto": { "type": "string" },
-        "campaignVideoUrl": { "type": "string" },
-        "status": { "type": "string" },
-        "endorsements": { "type": "number" },
-        "candidateImage": { "type": "string" }
-      },
-      "required": ["id", "candidateName", "position", "campusId", "status", "endorsements"]
     }
   },
   "auth": {
@@ -107,11 +103,11 @@
         }
       },
       {
-        "path": "/products/{productId}",
+        "path": "/creator_reputation/{creatorId}",
         "definition": {
-          "entityName": "Product",
-          "schema": { "$ref": "#/backend/entities/Product" },
-          "description": "Marketplace items."
+          "entityName": "CreatorReputation",
+          "schema": { "$ref": "#/backend/entities/CreatorReputation" },
+          "description": "Stores quality scores for content creators."
         }
       },
       {
@@ -119,15 +115,7 @@
         "definition": {
           "entityName": "CampusPulse",
           "schema": { "$ref": "#/backend/entities/CampusPulse" },
-          "description": "UNIFIED FLAT PATH: All campus vibrations and arena entries live here for high-trust access."
-        }
-      },
-      {
-        "path": "/manifestos/{manifestoId}",
-        "definition": {
-          "entityName": "Manifesto",
-          "schema": { "$ref": "#/backend/entities/Manifesto" },
-          "description": "Political manifestos for campus elections."
+          "description": "Unified social post feed."
         }
       }
     ]

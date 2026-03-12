@@ -206,7 +206,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         setLikeCount(prev => prev + 1);
         setIsLiked(true);
         recordLike(post);
-        recordEngagement(firestore, post.id, 'like', post.createdAt);
+        recordEngagement(firestore, post.id, 'like', post.authorId, post.createdAt);
       }
     } catch (error) { console.error(error); }
     finally { setIsProcessingLike(false); }
@@ -214,7 +214,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   const handleShare = () => {
     if (!firestore) return;
-    recordEngagement(firestore, post.id, 'share', post.createdAt);
+    recordEngagement(firestore, post.id, 'share', post.authorId, post.createdAt);
     if (navigator.share) {
       navigator.share({
         title: 'Check out this vibe on GAM Hub',
@@ -577,7 +577,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
       {showComments && (
         <div className={cn('border-t border-border', isActiveVibe ? 'px-8 pb-8' : 'px-6 pb-6')}>
-          <CommentSection postId={post.id} />
+          <CommentSection postId={post.id} authorId={post.authorId} />
         </div>
       )}
     </div>

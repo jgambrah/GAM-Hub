@@ -1,3 +1,4 @@
+
 'use client';
 
 import { doc, increment, serverTimestamp, setDoc, Firestore } from 'firebase/firestore';
@@ -6,11 +7,13 @@ import type { SocialPost } from './types';
 /**
  * 🏎️ THE LIAISON ENGAGEMENT TRACKER
  * Records viral signals to the trending_stats collection for velocity calculation.
+ * Now upgraded to track author performance for reputation scoring.
  */
 export function recordEngagement(
   firestore: Firestore, 
   postId: string, 
   type: 'view' | 'like' | 'comment' | 'share' | 'completion',
+  authorId?: string,
   postCreatedAt?: any
 ) {
   if (!firestore || !postId) return;
@@ -28,11 +31,10 @@ export function recordEngagement(
   if (type === 'share') updates.shares = increment(1);
   if (type === 'completion') updates.completions = increment(1);
 
-  // 2. Persistent Handshake: Ensure the document exists with a creation timestamp
+  // 2. Persistent Handshake: Ensure the document exists with a creation timestamp and author anchor
   const data: any = { ...updates };
-  if (postCreatedAt) {
-    data.createdAt = postCreatedAt;
-  }
+  if (postCreatedAt) data.createdAt = postCreatedAt;
+  if (authorId) data.authorId = authorId;
 
   // Non-blocking write
   setDoc(ref, data, { merge: true }).catch(err => {
@@ -49,6 +51,7 @@ export async function promoteToTrending(firestore: Firestore, post: SocialPost) 
   const ref = doc(firestore, 'trending_stats', post.id);
   
   await setDoc(ref, {
+    authorId: post.authorId,
     trendScore: 50, // High base score for promotion
     manualPromotion: true,
     updatedAt: serverTimestamp(),

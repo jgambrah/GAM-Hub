@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -7,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
-import { collection, query, orderBy, limit, getDocs, doc, getDoc, updateDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { getRelatedHashtags } from '@/lib/hashtag-utils';
 
 export type MediaCategory = 'video' | 'image' | 'text';
@@ -114,17 +115,28 @@ export function computeBaseScore(
 }
 
 export function computeVibeScore(
-  current: SocialPost, candidate: SocialPost, getPersonalScore: (p: SocialPost) => number,
-  viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set()
+  current: SocialPost, 
+  candidate: SocialPost, 
+  getPersonalScore: (p: SocialPost) => number,
+  viralTags: Set<string>, 
+  trendingTags: Set<string>, 
+  relatedTags: Set<string>,
+  creatorReputation: Record<string, number> = {}
 ) {
   const base = computeBaseScore(current, candidate, viralTags, trendingTags, relatedTags);
   const personal = getPersonalScore(candidate);
-  return base * 0.6 + personal * 0.4;
+  
+  // ELITE UPGRADE: Factor in Creator Reputation (Quality Score)
+  const creatorQuality = creatorReputation[candidate.authorId] || 50;
+  const reputationBoost = (creatorQuality / 100) * 20; // Max +20 points for high quality
+
+  return base * 0.5 + personal * 0.3 + reputationBoost;
 }
 
 export function buildSmartQueue(
   current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
-  viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set()
+  viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set(),
+  creatorReputation: Record<string, number> = {}
 ) {
   const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
@@ -136,7 +148,7 @@ export function buildSmartQueue(
       const match = (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) || p.mediaType === 'video';
       if (!match) continue;
     }
-    const score = computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags);
+    const score = computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags, creatorReputation);
     ranked.push({ post: p, score });
   }
   return ranked.sort((a, b) => b.score - a.score);
@@ -188,6 +200,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [isMiniPlayerVisible, setIsMiniPlayerVisible] = useState(true);
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());
   const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
+  const [creatorReputation, setCreatorReputation] = useState<Record<string, number>>({});
   const { profile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -201,6 +214,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const userEmbeddingRef = useRef(profile.vibeEmbedding);
   const viralTagsRef = useRef(viralTags);
   const trendingTagsRef = useRef(trendingTags);
+  const creatorReputationRef = useRef(creatorReputation);
 
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { allPostsRef.current = allPosts; }, [allPosts]);
@@ -212,6 +226,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => { userEmbeddingRef.current = profile.vibeEmbedding; }, [profile.vibeEmbedding]);
   useEffect(() => { viralTagsRef.current = viralTags; }, [viralTags]);
   useEffect(() => { trendingTagsRef.current = trendingTags; }, [trendingTags]);
+  useEffect(() => { creatorReputationRef.current = creatorReputation; }, [creatorReputation]);
 
   useEffect(() => {
     if (!firestore) return;
@@ -223,16 +238,29 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         });
         setViralTags(viral); setTrendingTags(trending);
     });
+
+    // Load top creators to boost their content in the discovery engine
+    const q = query(
+      collection(firestore, 'creator_reputation'), 
+      orderBy('qualityScore', 'desc'), 
+      limit(200)
+    );
+    const unsubRep = onSnapshot(q, (snap) => {
+      const map: Record<string, number> = {};
+      snap.docs.forEach(d => { map[d.id] = d.data().qualityScore; });
+      setCreatorReputation(map);
+    });
+    return () => unsubRep();
   }, [firestore]);
 
   const recordPlay = useCallback((p: SocialPost) => {
     recordSignal(p, 'play');
-    if (firestore) recordEngagement(firestore, p.id, 'view', p.createdAt);
+    if (firestore) recordEngagement(firestore, p.id, 'view', p.authorId, p.createdAt);
   }, [recordSignal, firestore]);
 
   const recordWatchedToEnd = useCallback((p: SocialPost) => {
     recordSignal(p, 'watched_to_end');
-    if (firestore) recordEngagement(firestore, p.id, 'completion', p.createdAt);
+    if (firestore) recordEngagement(firestore, p.id, 'completion', p.authorId, p.createdAt);
   }, [recordSignal, firestore]);
 
   const recordLike = useCallback((p: SocialPost) => recordSignal(p, 'like'), [recordSignal]);
@@ -254,6 +282,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const userEmbedding = userEmbeddingRef.current;
     const viral = viralTagsRef.current;
     const trending = trendingTagsRef.current;
+    const reputations = creatorReputationRef.current;
 
     let relatedTags = new Set<string>();
     if ((current.tags || []).length > 0 && firestore) {
@@ -268,13 +297,13 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const explorationPool = pool.filter(p => !vectorRanked.some(v => v.id === p.id) && !trendingRanked.some(t => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 20);
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
-    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags);
+    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags, reputations);
     const finalPoolForNext = rankedResults.map(r => r.post).slice(0, 25);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, scorer, viral, trending, relatedTags),
+        score: computeVibeScore(current, p, scorer, viral, trending, relatedTags, reputations),
         reason: buildReason(current, p, scorer, userEmbedding, relatedTags),
       }));
 
@@ -362,7 +391,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       const counts = prev[post.id] || { '🔥': 0, '🌊': 0, '💎': 0, '👑': 0, '⚡': 0 };
       return { ...prev, [post.id]: { ...counts, [emoji]: counts[emoji] + 1 } };
     });
-    recordSignal(post, 'reaction'); if (firestore) recordEngagement(firestore, post.id, 'like', post.createdAt);
+    recordSignal(post, 'reaction'); if (firestore) recordEngagement(firestore, post.id, 'like', post.authorId, post.createdAt);
     const burst: ReactionBurst = { id: `${Date.now()}-${Math.random()}`, emoji, x: 20 + Math.random() * 60, y: 20 + Math.random() * 60 };
     setReactionBursts(prev => [...prev, burst]); setTimeout(() => setReactionBursts(p => p.filter(b => b.id !== burst.id)), 1200);
   }, [recordSignal, firestore]);

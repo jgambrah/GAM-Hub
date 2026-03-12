@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -12,7 +13,7 @@ import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { cn } from '@/lib/utils';
 import { recordEngagement } from '@/lib/trending-service';
 
-export default function CommentSection({ postId }: { postId: string }) {
+export default function CommentSection({ postId, authorId }: { postId: string, authorId?: string }) {
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isExtraBold, setIsExtraBold] = useState(false);
@@ -56,8 +57,8 @@ export default function CommentSection({ postId }: { postId: string }) {
             commentCount: increment(1)
         });
 
-        // 🏎️ Record Viral Signal
-        recordEngagement(firestore, postId, 'comment');
+        // 🏎️ Record Viral Signal & Author Performance
+        recordEngagement(firestore, postId, 'comment', authorId);
 
         setText('');
         setShowEmojiPicker(false);

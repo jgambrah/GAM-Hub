@@ -1,3 +1,4 @@
+
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentUpdated, onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {onRequest, onCall, HttpsError} = require("firebase-functions/v2/https");
@@ -31,31 +32,96 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 });
 
 /**
+ * 🏆 CREATOR REPUTATION ENGINE
+ * Aggregates performance across all posts to assign a quality score.
+ */
+exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}", async (event) => {
+  const data = event.data.after.data();
+  const authorId = data.authorId;
+  if (!authorId) return null;
+
+  const db = admin.firestore();
+  
+  // Optimization: Only update reputation on every 5th engagement event per post
+  const totalEngagement = (data.views || 0) + (data.likes || 0) + (data.comments || 0);
+  if (totalEngagement % 5 !== 0) return null;
+
+  const postsSnap = await db.collection("trending_stats").where("authorId", "==", authorId).get();
+  if (postsSnap.empty) return null;
+
+  let totalViews = 0;
+  let totalEngagementCount = 0;
+  let totalCompletions = 0;
+  const count = postsSnap.size;
+
+  postsSnap.forEach(d => {
+    const p = d.data();
+    totalViews += (p.views || 0);
+    totalEngagementCount += (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
+    totalCompletions += (p.completions || 0);
+  });
+
+  const viewsForRate = Math.max(totalViews, 1);
+  const avgEngagementRate = totalEngagementCount / viewsForRate;
+  const avgCompletionRate = totalCompletions / viewsForRate;
+
+  // Scoring formula: (EngagementRate * 300) + (CompletionRate * 40) + Base 40
+  // Target: High quality creators hit 80-100.
+  let qualityScore = 40 + (avgEngagementRate * 300) + (avgCompletionRate * 40);
+  qualityScore = Math.min(100, Math.max(10, qualityScore));
+
+  const reputation = {
+    id: authorId,
+    qualityScore,
+    engagementRate: avgEngagementRate,
+    completionRate: avgCompletionRate,
+    postCount: count,
+    lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+
+  await db.collection("creator_reputation").doc(authorId).set(reputation, { merge: true });
+  
+  // Denormalize to user doc for high-performance ranking
+  return db.collection("users").doc(authorId).set({ qualityScore }, { merge: true });
+});
+
+/**
  * #️⃣ HASHTAG INDEXER & VELOCITY TRACKER
  * Updates time-series buckets whenever a post is created.
  */
 exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}", async (event) => {
   const data = event.data.data();
   const tags = data.tags || [];
-  if (tags.length === 0) return;
-
   const db = admin.firestore();
   const batch = db.batch();
-  const minuteBucket = new Date().toISOString().slice(0, 16);
 
-  tags.forEach(tag => {
-    const normalizedTag = tag.toLowerCase();
-    const tagRef = db.collection('hashtags').doc(normalizedTag);
-    batch.set(tagRef, {
-      tag: normalizedTag,
-      postCount: admin.firestore.FieldValue.increment(1),
-      lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+  // 1. Initialize trending stats for the new post (anchored to author)
+  const statsRef = db.collection('trending_stats').doc(event.params.postId);
+  batch.set(statsRef, {
+    authorId: data.authorId,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    views: 0, likes: 0, comments: 0, shares: 0, completions: 0,
+    trendScore: 0
+  }, { merge: true });
 
-    const statsRef = db.collection("hashtagStats").doc(normalizedTag).collection("minutes").doc(minuteBucket);
-    batch.set(statsRef, { count: admin.firestore.FieldValue.increment(1) }, { merge: true });
-  });
+  // 2. Hashtag Indexing
+  if (tags.length > 0) {
+    const minuteBucket = new Date().toISOString().slice(0, 16);
+    tags.forEach(tag => {
+      const normalizedTag = tag.toLowerCase();
+      const tagRef = db.collection('hashtags').doc(normalizedTag);
+      batch.set(tagRef, {
+        tag: normalizedTag,
+        postCount: admin.firestore.FieldValue.increment(1),
+        lastUsedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      const statsRef = db.collection("hashtagStats").doc(normalizedTag).collection("minutes").doc(minuteBucket);
+      batch.set(statsRef, { count: admin.firestore.FieldValue.increment(1) }, { merge: true });
+    });
+  }
+
   await batch.commit();
 });
 

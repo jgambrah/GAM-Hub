@@ -29,6 +29,7 @@ export type User = {
   trial_leads_count?: number; // Free trial leads for service providers
   rating?: number;
   reviewCount?: number;
+  qualityScore?: number; // Added for Creator Reputation
   fcmToken?: string;
   candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   candidatePosition?: string;
@@ -44,6 +45,16 @@ export type User = {
   verifiedAt?: any;
   verifiedBy?: string;
   businessName?: string;
+};
+
+export type CreatorReputation = {
+  id: string;
+  qualityScore: number;
+  engagementRate: number;
+  completionRate: number;
+  postCount: number;
+  violationScore: number;
+  lastUpdatedAt: any;
 };
 
 export type Campus = {
