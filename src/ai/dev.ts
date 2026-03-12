@@ -11,3 +11,4 @@ import '@/ai/flows/campus-guide-flow.ts';
 import '@/ai/flows/academic-vibe-summary-flow.ts';
 import '@/ai/flows/generate-semantic-hashtags.ts';
 import '@/ai/flows/analyze-vibe-content.ts';
+import '@/ai/flows/generate-query-embedding.ts';

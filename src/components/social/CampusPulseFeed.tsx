@@ -7,18 +7,19 @@ import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from '
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash, Search as SearchIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import { useVibePlayer } from './VibePlayerContext';
+import { useVibePlayer, cosineSimilarity } from './VibePlayerContext';
 import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
+import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
 
 /**
  * CampusPulseFeed Component
  * 
  * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
- * Now upgraded to support Firestore-level Hashtag filtering.
+ * Now upgraded with Semantic Search (Vector Similarity) for intelligent discovery.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -35,10 +36,11 @@ export default function CampusPulseFeed({
     const { user, isTokenReady } = useAuth();
     const { isContinuous, setIsContinuous, addToQueue } = useVibePlayer();
     
-    const [posts, setPosts] = useState<SocialPost[]>([]);
+    const [posts, setPosts] = useState<SocialPost[]>();
     const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [queryVector, setQueryVector] = useState<number[] | null>(null);
 
     /**
      * 🏗️ THE BLENDED RETRIEVAL COMMAND
@@ -52,6 +54,14 @@ export default function CampusPulseFeed({
         const tagToFilter = activeTag || (searchQuery.startsWith('#') ? searchQuery.slice(1).toLowerCase() : null);
         
         try {
+            // 🧠 SEMANTIC PASS: Generate embedding for search queries (not tags)
+            if (searchQuery.trim() && !searchQuery.startsWith('#')) {
+                const vector = await generateQueryEmbedding(searchQuery);
+                setQueryVector(vector);
+            } else {
+                setQueryVector(null);
+            }
+
             // Bucket 1: RECENT (National Hub)
             const recentQuery = tagToFilter 
                 ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
@@ -78,13 +88,12 @@ export default function CampusPulseFeed({
             const [recentSnap, trendingSnap, campusSnap, explorationSnap] = await Promise.all([
                 getDocs(recentQuery),
                 getDocs(trendingStatsQuery),
-                getDocs(campusQuery),
-                getDocs(explorationQuery)
+                getDocs(campusSnap || campusQuery),
+                getDocs(explorationSnap || explorationQuery)
             ]);
 
             const mergedMap = new Map<string, SocialPost>();
             
-            // Merge all buckets into a unified pool
             const addDocsToMap = (snap: any) => {
                 snap.docs.forEach((doc: any) => {
                     if (!mergedMap.has(doc.id)) {
@@ -105,7 +114,6 @@ export default function CampusPulseFeed({
                 missingSnaps.forEach(snap => {
                     if (snap.exists()) {
                         const postData = { id: snap.id, ...snap.data() } as SocialPost;
-                        // If we are filtering by tag, only add if the post has the tag
                         if (!tagToFilter || postData.tags?.includes(tagToFilter)) {
                             mergedMap.set(snap.id, postData);
                         }
@@ -117,7 +125,7 @@ export default function CampusPulseFeed({
             setPosts(finalPool);
             addToQueue(finalPool);
 
-            // Fetch Official SRC Bulletin (No tag filter usually for official news)
+            // Fetch Official SRC Bulletin
             const srcQuery = query(
                 collection(firestore, 'src_posts'),
                 where('campusId', '==', activeCampusId),
@@ -137,7 +145,7 @@ export default function CampusPulseFeed({
 
     useEffect(() => {
         fetchBlendedCandidates();
-    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag]);
+    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag, searchQuery]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
@@ -145,6 +153,8 @@ export default function CampusPulseFeed({
     };
 
     const filteredPosts = useMemo(() => {
+        if (!posts) return [];
+
         const mappedSrc: SocialPost[] = (srcPosts || []).map(p => ({
             id: p.id,
             authorId: p.authorId,
@@ -165,7 +175,19 @@ export default function CampusPulseFeed({
 
         let combined = [...mappedSrc, ...posts];
 
-        if (searchQuery.trim() && !searchQuery.startsWith('#')) {
+        // 🧠 SEMANTIC RANKING: If we have a query vector, rank results by cosine similarity
+        if (queryVector) {
+            combined = combined
+                .map(post => {
+                    const similarity = post.embedding ? cosineSimilarity(queryVector, post.embedding) : 0;
+                    // Add a small boost if the keyword also matches exactly in content
+                    const keywordMatch = post.content?.toLowerCase().includes(searchQuery.toLowerCase()) ? 0.1 : 0;
+                    return { ...post, searchScore: similarity + keywordMatch };
+                })
+                .filter(post => (post as any).searchScore > 0.3) // Sensitivity threshold for semantic matches
+                .sort((a, b) => (b as any).searchScore - (a as any).searchScore);
+        } else if (searchQuery.trim() && !searchQuery.startsWith('#')) {
+            // Fallback to keyword search if vector generation is still in progress or failed
             const term = searchQuery.toLowerCase().trim();
             combined = combined.filter(post => {
                 const contentMatch = post.content?.toLowerCase().includes(term);
@@ -175,7 +197,7 @@ export default function CampusPulseFeed({
         }
 
         return combined;
-    }, [posts, srcPosts, searchQuery]);
+    }, [posts, srcPosts, searchQuery, queryVector]);
 
     return (
         <div className="space-y-8 pb-20">
@@ -191,17 +213,41 @@ export default function CampusPulseFeed({
                 </div>
             )}
 
+            {searchQuery && !activeTag && (
+                <div className="flex items-center justify-between px-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                            <SearchIcon size={18} />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tight italic">
+                                Results for "{searchQuery}"
+                            </h3>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                                <Zap size={10} className="text-indigo-500 fill-indigo-500" /> 
+                                {queryVector ? 'Semantic Search Engine Active' : 'Keyword Discovery Active'}
+                            </p>
+                        </div>
+                    </div>
+                    {queryVector && (
+                        <div className="bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">
+                            <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Meaning Match</span>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-blue-500 animate-in slide-in-from-top-4">
                 <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
                         <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">{activeTag ? 'Hashtag Vibe Stream' : 'Blended Discovery'}</h4>
+                        <h4 className="font-black text-sm tracking-tight">{searchQuery ? 'Smart Search Stream' : 'Blended Discovery'}</h4>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipeline:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> {activeTag ? `Filtering #${activeTag}` : 'Exploiting + Exploring'}
+                                <TrendingUp size={10} /> {searchQuery ? 'Semantic Retrieval' : 'Exploiting + Exploring'}
                             </span>
                         </div>
                     </div>
@@ -223,11 +269,17 @@ export default function CampusPulseFeed({
                 </div>
             </div>
 
-            {isLoading && posts.length === 0 ? (
+            {isLoading && (!posts || posts.length === 0) ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Skeleton className="h-96 rounded-[2.5rem]" />
                     <Skeleton className="h-96 rounded-[2.5rem]" />
                     <Skeleton className="h-96 rounded-[2.5rem]" />
+                </div>
+            ) : filteredPosts.length === 0 ? (
+                <div className="p-20 text-center bg-white dark:bg-card rounded-[3rem] border-2 border-dashed">
+                    <SearchIcon className="mx-auto h-12 w-12 text-slate-200 mb-4" />
+                    <p className="font-black text-slate-400 uppercase tracking-widest">No matching vibes found</p>
+                    <p className="text-xs text-slate-300 mt-2">Try searching for broader topics like "campus life" or "exam stress".</p>
                 </div>
             ) : (
                 <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
