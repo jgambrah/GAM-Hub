@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useCallback, useEffect, useState, useRef } from 'react';
@@ -17,11 +18,21 @@ export interface VibeProfile {
   vibeEmbedding?: number[]; // THE SEMANTIC TASTE VECTOR
 }
 
+export interface SessionProfile {
+  tagWeights:    Record<string, number>;
+  authorWeights: Record<string, number>;
+}
+
 export const EMPTY_PROFILE: VibeProfile = {
   tagWeights:    {},
   authorWeights: {},
   typeWeights:   {},
   campusWeights: {},
+};
+
+export const EMPTY_SESSION: SessionProfile = {
+  tagWeights:    {},
+  authorWeights: {},
 };
 
 export type SignalType = 'like' | 'unlike' | 'reaction' | 'play' | 'watched_to_end' | 'skip';
@@ -59,6 +70,7 @@ export function useVibeProfile() {
   const { user } = useAuth();
 
   const [profile, setProfile] = useState<VibeProfile>(EMPTY_PROFILE);
+  const [sessionProfile, setSessionProfile] = useState<SessionProfile>(EMPTY_SESSION);
   const [isLoaded, setIsLoaded] = useState(false);
   const signalCountRef = useRef(0);
   
@@ -90,11 +102,17 @@ export function useVibeProfile() {
   }, [firestore, user?.id]);
 
   const getTopInterests = useCallback((n = 8): string[] => {
-    return Object.entries(profile.tagWeights)
+    // Combine session and persistent for "Top Interests"
+    const combinedTags = { ...profile.tagWeights };
+    Object.entries(sessionProfile.tagWeights).forEach(([tag, weight]) => {
+        combinedTags[tag] = (combinedTags[tag] || 0) + weight * 2; // Weight session higher
+    });
+
+    return Object.entries(combinedTags)
       .sort(([, a], [, b]) => b - a)
       .slice(0, n)
       .map(([tag]) => tag);
-  }, [profile.tagWeights]);
+  }, [profile.tagWeights, sessionProfile.tagWeights]);
 
   const recordSignal = useCallback(async (post: SocialPost, signal: SignalType) => {
     if (!firestore || !user?.id) return;
@@ -108,7 +126,13 @@ export function useVibeProfile() {
     signalCountRef.current += 1;
     const shouldRefreshEmbedding = signalCountRef.current % 5 === 0;
 
-    // 1. UPDATE STATE OPTIMISTICALLY
+    // 1. UPDATE SESSION PROFILE (IMMEDIATE)
+    setSessionProfile(prev => ({
+        tagWeights: applyWeights(prev.tagWeights, tags, w.tag),
+        authorWeights: applyWeights(prev.authorWeights, authors, w.author),
+    }));
+
+    // 2. UPDATE PERSISTENT PROFILE OPTIMISTICALLY
     setProfile(prev => {
       const next: VibeProfile = {
         ...prev,
@@ -120,9 +144,8 @@ export function useVibeProfile() {
       return next;
     });
 
-    // 2. TRIGGER ASYNC SIDE EFFECT (OUTSIDE SETTER)
+    // 3. TRIGGER ASYNC PERSISTENCE (OUTSIDE SETTER)
     const performUpdate = async () => {
-      // Calculate 'next' for sync based on most recent stable ref
       const prev = currentProfileRef.current;
       const next: VibeProfile = {
         ...prev,
@@ -134,7 +157,6 @@ export function useVibeProfile() {
 
       let finalEmbedding = next.vibeEmbedding;
       
-      // 🧠 LIAISON BRAIN: Periodic Semantic Taste Vector Refresh
       if (shouldRefreshEmbedding) {
           const interests = Object.entries(next.tagWeights)
               .sort(([, a], [, b]) => b - a)
@@ -160,21 +182,26 @@ export function useVibeProfile() {
       }, { merge: true });
     };
 
-    // Execute side effect asynchronously
     performUpdate().catch(err => console.warn('vibe_profile sync failed:', err));
 
-  }, [firestore, user?.id]);
+  }, [firestore, user?.id, currentProfileRef]);
 
   const getPersonalScore = useCallback((post: SocialPost): number => {
     if (!isLoaded) return 0;
     let score = 0;
 
+    // Historical persistent weights
     for (const tag of (post.tags || []).map(t => t.toLowerCase())) {
       score += (profile.tagWeights[tag] ?? 0) * 0.6;
+      // SESSION BOOST: Weight recent session interests much higher
+      score += (sessionProfile.tagWeights[tag] ?? 0) * 2.5;
     }
+    
     if (post.authorId) {
       score += (profile.authorWeights[post.authorId] ?? 0) * 0.5;
+      score += (sessionProfile.authorWeights[post.authorId] ?? 0) * 2.0;
     }
+    
     if (post.mediaType) {
       score += (profile.typeWeights[post.mediaType] ?? 0) * 0.3;
     }
@@ -183,7 +210,7 @@ export function useVibeProfile() {
     }
 
     return score;
-  }, [profile, isLoaded]);
+  }, [profile, sessionProfile, isLoaded]);
 
-  return { profile, isLoaded, recordSignal, getPersonalScore, getTopInterests };
+  return { profile, sessionProfile, isLoaded, recordSignal, getPersonalScore, getTopInterests };
 }

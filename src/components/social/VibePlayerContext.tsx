@@ -1,10 +1,11 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import type { SocialPost } from '@/lib/types';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { useAuth } from '@/hooks/use-auth';
-import { useVibeProfile } from '@/hooks/use-vibe-profile';
+import { useVibeProfile, type SignalType } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
 import { collection, query, orderBy, limit, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
@@ -148,6 +149,7 @@ export function computeVibeScore(
   }
 
   // 5. BEHAVIORAL & REPUTATION SIGNALS
+  // This now includes session-specific real-time adaptations via useVibeProfile
   score += getPersonalScore(candidate) * 0.5;
   score += explorationBoost(candidate);
 
@@ -266,7 +268,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());
   const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
   const [creatorReputation, setCreatorReputation] = useState<Record<string, any>>({});
-  const { profile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
+  const { profile, sessionProfile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const queueRef = useRef<SocialPost[]>([]);
@@ -316,25 +318,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     return () => unsubRep();
   }, [firestore]);
 
-  const recordPlay = useCallback((p: SocialPost) => {
-    recordSignal(p, 'play');
-    if (firestore) recordEngagement(firestore, p.id, 'view', p.authorId, p.createdAt);
-  }, [recordSignal, firestore]);
-
-  const recordWatchedToEnd = useCallback((p: SocialPost) => {
-    recordSignal(p, 'watched_to_end');
-    if (firestore) recordEngagement(firestore, p.id, 'completion', p.authorId, p.createdAt);
-  }, [recordSignal, firestore]);
-
-  const recordLike = useCallback((p: SocialPost) => recordSignal(p, 'like'), [recordSignal]);
-  const recordUnlike = useCallback((p: SocialPost) => recordSignal(p, 'unlike'), [recordSignal]);
-  const recordSkip = useCallback((p: SocialPost) => recordSignal(p, 'skip'), [recordSignal]);
-
-  const sortFeedByProfile = useCallback((posts: SocialPost[]): SocialPost[] => {
-    if (!isProfileLoaded) return posts;
-    return [...posts].sort((a, b) => getPersonalScore(b) - getPersonalScore(a));
-  }, [isProfileLoaded, getPersonalScore]);
-
   const clearDisplayTimer = useCallback(() => {
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
@@ -376,6 +359,36 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setUpNext(makeUpNext(diversePool));
     setIsLoadingQueue(false);
   }, [firestore]);
+
+  // 🔄 REBUILD TRIGGER: Re-evaluate queue when session signals occur
+  useEffect(() => {
+    if (activePost && allPosts.length > 0) {
+        // Debounce slightly to allow sessionProfile to settle
+        const timer = setTimeout(() => {
+            rebuildQueue(activePost, allPosts, activeMood);
+        }, 500);
+        return () => clearTimeout(timer);
+    }
+  }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
+
+  const recordPlay = useCallback((p: SocialPost) => {
+    recordSignal(p, 'play');
+    if (firestore) recordEngagement(firestore, p.id, 'view', p.authorId, p.createdAt);
+  }, [recordSignal, firestore]);
+
+  const recordWatchedToEnd = useCallback((p: SocialPost) => {
+    recordSignal(p, 'watched_to_end');
+    if (firestore) recordEngagement(firestore, p.id, 'completion', p.authorId, p.createdAt);
+  }, [recordSignal, firestore]);
+
+  const recordLike = useCallback((p: SocialPost) => recordSignal(p, 'like'), [recordSignal]);
+  const recordUnlike = useCallback((p: SocialPost) => recordSignal(p, 'unlike'), [recordSignal]);
+  const recordSkip = useCallback((p: SocialPost) => recordSignal(p, 'skip'), [recordSignal]);
+
+  const sortFeedByProfile = useCallback((posts: SocialPost[]): SocialPost[] => {
+    if (!isProfileLoaded) return posts;
+    return [...posts].sort((a, b) => getPersonalScore(b) - getPersonalScore(a));
+  }, [isProfileLoaded, getPersonalScore]);
 
   const pushToHistory = useCallback((post: SocialPost) => {
     setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX));
