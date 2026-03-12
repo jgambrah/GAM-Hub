@@ -1,11 +1,13 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, X, Bot, Sparkles, Loader2 } from 'lucide-react';
-import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { getCampusGuidance } from '@/ai/flows/campus-guide-flow';
 import { useAuth } from '@/hooks/use-auth';
+import type { UserIntelligence } from '@/lib/types';
 
 type AIMessage = {
   id: string;
@@ -63,14 +65,33 @@ export default function CampusAIGuide() {
         status: 'thinking'
       });
 
-      // 2. Call the AI Flow directly
+      // 🧠 2. LIAISON BRAIN SYNC: Fetch unified interests for context
+      let contextPrefix = "";
+      try {
+          const intelSnap = await getDoc(doc(firestore, 'user_intelligence', firebaseUser.uid));
+          if (intelSnap.exists()) {
+              const intel = intelSnap.data() as UserIntelligence;
+              const topTags = Object.entries(intel.interests || {})
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 5)
+                .map(([tag]) => tag);
+              
+              if (topTags.length > 0) {
+                  contextPrefix = `[CITIZEN CONTEXT: The user is currently vibrating for: ${topTags.join(', ')}]\n\n`;
+              }
+          }
+      } catch (e) {
+          console.warn("Liaison AI context fetch drifted.");
+      }
+
+      // 3. Call the AI Flow with Unified Context
       const result = await getCampusGuidance({
-        prompt: userPrompt,
+        prompt: contextPrefix + userPrompt,
         userName: user?.name,
         campusId: user?.campusId
       });
 
-      // 3. Update the document with the response
+      // 4. Update the document with the response
       const messageRef = doc(firestore, 'users', firebaseUser.uid, 'ai_assistant', docRef.id);
       updateDocumentNonBlocking(messageRef, {
         response: result.response,
@@ -79,7 +100,6 @@ export default function CampusAIGuide() {
 
     } catch (err) {
       console.error("AI Assistant Flow Error:", err);
-      // In case of error, we can optionally update the doc to show an error message
     } finally {
       setIsAiThinking(false);
     }
@@ -120,7 +140,7 @@ export default function CampusAIGuide() {
                 {/* User Prompt */}
                 <div className="flex justify-end">
                   <div className="max-w-[85%] bg-primary text-primary-foreground p-4 rounded-3xl rounded-tr-none text-xs font-bold shadow-sm">
-                    {m.prompt}
+                    {m.prompt.replace(/\[CITIZEN CONTEXT: .*\]\n\n/, '')}
                   </div>
                 </div>
                 {/* AI Response */}

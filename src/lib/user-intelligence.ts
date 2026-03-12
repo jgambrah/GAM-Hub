@@ -26,7 +26,7 @@ const SIGNAL_VALUES: Record<MarketplaceSignal | VibeSignal, number> = {
   'click': 6,
   'intent': 10,
   'favorite': 12,
-  'purchase': 25, // Strongest possible intent
+  'purchase': 25, // Strongest possible intent signal
 };
 
 /**
@@ -70,7 +70,7 @@ export async function updateMarketInterest(
   const ref = doc(firestore, 'user_intelligence', userId);
   const updates: any = { updatedAt: serverTimestamp() };
 
-  // Purchases have a multiplier effect on the signal
+  // Purchases have a multiplier effect on the signal (3x)
   const multiplier = isPurchase ? 3 : 1;
 
   // 1. Boost Category (Primary Signal)
@@ -129,7 +129,7 @@ export async function recordUnifiedSignal(
   interestsToBoost.forEach(interest => {
     // Determine the interest weight based on the signal origin
     let weight = score;
-    if (type === 'watch') weight = 1; // Align with updateVideoInterest logic
+    if (type === 'watch') weight = 1; // Align with updateVideoInterest protocol
     
     updates[`interests.${interest}`] = increment(weight);
   });

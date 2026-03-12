@@ -100,7 +100,9 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
 
   try {
     const interestedUserIds = new Set();
-    const profilesSnap = await db.collection("user_market_profiles")
+    
+    // 🧠 UNIFIED BRAIN SYNC: Query the centralized intelligence vault
+    const profilesSnap = await db.collection("user_intelligence")
       .where("favoriteProducts", "array-contains", productId)
       .get();
     profilesSnap.docs.forEach(doc => interestedUserIds.add(doc.id));
@@ -191,14 +193,12 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
 
 /**
  * 🔔 SMART NOTIFICATION ENGINE: Demand Spike Detector
- * Threshold: At least 5 students looking for the same item on a campus.
  */
 exports.onDemandSignalUpdatedNotify = onDocumentUpdated("demand_signals/{signalId}", async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
   const db = admin.firestore();
 
-  // Condition: Crosses the "5 Request" threshold
   if (after.demandCount >= 5 && (before.demandCount || 0) < 5) {
     try {
       const vendorsSnap = await db.collection("users")
@@ -262,6 +262,7 @@ exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event)
 
 /**
  * 🧠 SMART TIMING: DAILY RECOMMENDATIONS SCHEDULER
+ * Uses the Unified Intelligence Brain for maximum relevance.
  */
 exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
   const db = admin.firestore();
@@ -272,22 +273,26 @@ exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
     for (const uDoc of usersSnap.docs) {
       const userId = uDoc.id;
       const userData = uDoc.data();
-      const profileSnap = await db.collection("user_market_profiles").doc(userId).get();
+      
+      // 🧠 UNIFIED BRAIN SYNC: Get the centralized behavioral profile
+      const profileSnap = await db.collection("user_intelligence").doc(userId).get();
       if (!profileSnap.exists) continue;
       
       const profile = profileSnap.data();
-      const viewedCategories = profile.viewedCategories || {};
+      const interests = profile.interests || {};
+      
+      // Find the #1 highest weight interest across ALL behaviors
       let topCategory = null;
       let maxViews = 0;
-      Object.entries(viewedCategories).forEach(([cat, count]) => {
-        if (count > maxViews) { maxViews = count; topCategory = cat; }
+      Object.entries(interests).forEach(([cat, score]) => {
+        if (score > maxViews) { maxViews = score; topCategory = cat; }
       });
 
       if (!topCategory) continue;
 
       const productsSnap = await db.collection("products")
         .where("campusId", "==", userData.campusId)
-        .where("category", "==", topCategory)
+        .where("category", "==", topCategory.charAt(0).toUpperCase() + topCategory.slice(1))
         .orderBy("trendScore", "desc")
         .limit(1)
         .get();
@@ -298,7 +303,7 @@ exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
       await checkThrottlingAndNotify(userId, {
         notification: {
           title: "🧠 Morning Pick for You",
-          body: `Since you like ${topCategory}, you'll love ${topPick.name}!`
+          body: `Since you love ${topCategory}, you'll love ${topPick.name}!`
         },
         data: { productId: topPick.id, type: "daily_recommendation" }
       }, db);

@@ -76,7 +76,7 @@ export function explorationBoost(post: SocialPost) {
  * computeVibeScore
  * ---------------
  * The multi-signal discovery equation.
- * Now factors in Unified Personalization Score from the intelligence brain.
+ * Grounded in the Unified Intelligence Brain.
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -91,10 +91,11 @@ export function computeVibeScore(
   let score = 0;
 
   // 🎯 1. UNIFIED PERSONALIZATION (Highest Weight)
-  // This uses the user_intelligence model where score += userInterest[tag] * 2
+  // This uses the shared user_intelligence model. 
+  // score += userInterest[tag] * 2.0 (Includes Social + Market signals)
   score += getPersonalScore(candidate);
 
-  // 2. CONTENT INTELLIGENCE MATCH
+  // 2. CONTENT INTELLIGENCE MATCH (Contextual relevance)
   const currentTags = new Set([
     ...(current.tags || []),
     ...(current.aiTags || [])
@@ -108,7 +109,7 @@ export function computeVibeScore(
   const aiMatches = candidateTags.filter(t => currentTags.has(t));
   score += aiMatches.length * 12;
 
-  // 3. VECTOR SIMILARITY
+  // 3. VECTOR SIMILARITY (Semantic depth)
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
     if (similarity > 0.85) score += 20;
@@ -131,6 +132,7 @@ export function computeVibeScore(
   }
 
   // 🛍️ 6. COMMERCE-CONVERSION BOOST
+  // Prioritize videos that have proven to drive marketplace traffic
   if (candidate.commerceClicks) {
       score += Math.min(candidate.commerceClicks * 5, 50);
   }
