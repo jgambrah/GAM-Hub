@@ -127,7 +127,8 @@ export function computeMarketScore(
   // 🏎️ 4. TRENDING MOMENTUM (The Momentum Pillar)
   // trendScore = (viewCount * 1) + (cartCount * 4) + (purchaseCount * 8) + (shareCount * 3)
   if (product.trendScore) {
-    score += product.trendScore * 2;
+    // Boost based on high-velocity demand
+    score += product.trendScore * 0.5;
   }
 
   // 📊 5. COMMERCIAL INTENT (Category Interest from Profile)

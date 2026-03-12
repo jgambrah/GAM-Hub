@@ -9,10 +9,11 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useCampusView } from '@/hooks/use-campus-view';
 import SponsoredMajorAd from '@/components/market/SponsoredMajorAd';
 import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
-import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot, Trophy, Mic, MicOff, Volume2 } from 'lucide-react';
+import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot, Trophy, Mic, TrendingUp, Star, Flame, Tag } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,94 +26,54 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [isListening, setIsListening] = React.useState(false);
 
-  // 🏎️ Rank Engine with AI Intent Parsing & Result Explanation
-  const { products: rankedProducts, isLoading: isRanking, isParsing, hasProfile, intent, isExplaining } = useMarketRecommendations(searchQuery);
+  // 🏎️ Rank Engine with structured discovery layers
+  const { 
+    products: rankedProducts, 
+    trending, 
+    deals, 
+    topRated,
+    isLoading: isRanking, 
+    isParsing, 
+    hasProfile, 
+    intent, 
+    isExplaining 
+  } = useMarketRecommendations(searchQuery);
 
   // 🎙️ VOICE SHOPPING PROTOCOL
   const startVoiceSearch = () => {
     if (typeof window === 'undefined') return;
-    
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitRecognition;
     if (!SpeechRecognition) {
-      toast({ 
-        variant: 'destructive', 
-        title: 'Voice Search Unsupported', 
-        description: 'Your browser does not support speech recognition. Please try Chrome or Safari.' 
-      });
+      toast({ variant: 'destructive', title: 'Voice Search Unsupported', description: 'Please use Chrome or Safari.' });
       return;
     }
-
     const recognition = new SpeechRecognition();
-    recognition.lang = 'en-GH'; // Tune for Ghanaian accent
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setSearchQuery(transcript);
-      toast({
-        title: "Voice Captured",
-        description: `Searching for: "${transcript}"`,
-      });
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("Speech Recognition Error:", event.error);
-      setIsListening(false);
-      if (event.error === 'not-allowed') {
-        toast({ variant: 'destructive', title: 'Mic Access Denied', description: 'Please enable microphone permissions in your browser settings.' });
-      }
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    try {
-      recognition.start();
-    } catch (e) {
-      setIsListening(false);
-    }
+    recognition.lang = 'en-GH';
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (e: any) => setSearchQuery(e.results[0][0].transcript);
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    try { recognition.start(); } catch (e) { setIsListening(false); }
   };
 
   const campusProducts = React.useMemo(() => {
     if (!rankedProducts) return [];
     if (viewMode === 'vendor' || isAdmin) return rankedProducts;
-    
-    return rankedProducts.filter(p => {
-        if (p.productType === 'service') {
-            return p.has_fuel !== false;
-        }
-        return true;
-    });
+    return rankedProducts;
   }, [rankedProducts, viewMode, isAdmin]);
 
   const isLoading = isUserLoading || isRanking;
-  
-  const getEmptyStateMessage = () => {
-    if (searchQuery) return `No results found for "${searchQuery}". Try a different keyword.`;
-    if (isAdmin) {
-      return viewAsCampus
-        ? `There are no products listed for ${viewAsCampus.name} yet.`
-        : 'Select a campus from the switcher to see its products.';
-    }
-    return 'There are no products available for your campus right now.';
-  };
+  const isBrowsing = !searchQuery.trim();
 
   return (
-    <div className="space-y-8 pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between px-2 gap-6">
+    <div className="space-y-10 pb-32">
+      {/* HEADER: COMMAND SIGNAL */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between px-4 gap-6">
         <div className="space-y-1">
             <h1 className="font-headline text-4xl font-black tracking-tight text-foreground italic uppercase">Marketplace</h1>
             <p className="text-xs text-muted-foreground font-bold uppercase tracking-[0.2em]">Verified Campus Commerce</p>
         </div>
         
-        {/* AI SEARCH BAR + VOICE COMMAND */}
         <div className="relative w-full max-w-md group">
             <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
                 {isListening ? (
@@ -128,31 +89,18 @@ export default function ProductsPage() {
             <Input 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={isListening ? "Listening to the Yard..." : "Ask Liaison Assistant..."}
+                placeholder={isListening ? "Listening..." : "Ask Liaison Assistant..."}
                 className={cn(
-                    "pl-12 pr-24 h-14 rounded-2xl bg-white border-2 border-slate-100 shadow-sm focus:ring-2 focus:ring-primary focus:border-transparent transition-all font-bold",
-                    isListening && "border-red-200 ring-2 ring-red-100 bg-red-50/10"
+                    "pl-12 pr-24 h-14 rounded-2xl bg-white border-2 border-slate-100 shadow-sm focus:ring-2 focus:ring-primary transition-all font-bold",
+                    isListening && "border-red-200 ring-red-100"
                 )}
             />
             
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {searchQuery && (
-                    <button 
-                        onClick={() => setSearchQuery('')}
-                        className="p-2 hover:bg-muted rounded-xl transition-colors text-slate-400"
-                    >
-                        <X size={16} />
-                    </button>
+                    <button onClick={() => setSearchQuery('')} className="p-2 hover:bg-muted rounded-xl text-slate-400"><X size={16} /></button>
                 )}
-                <button 
-                    onClick={startVoiceSearch}
-                    disabled={isListening}
-                    className={cn(
-                        "p-2.5 rounded-xl transition-all active:scale-90 shadow-sm",
-                        isListening ? "bg-red-600 text-white shadow-red-200" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    )}
-                    title="Voice Shopping"
-                >
+                <button onClick={startVoiceSearch} disabled={isListening} className={cn("p-2.5 rounded-xl transition-all shadow-sm", isListening ? "bg-red-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>
                     {isListening ? <Loader2 className="animate-spin" size={18} /> : <Mic size={18} />}
                 </button>
             </div>
@@ -161,43 +109,84 @@ export default function ProductsPage() {
         {viewMode === 'vendor' && <AddProductDialog />}
       </div>
 
-      {/* AI INTELLIGENCE STATUS BAR */}
-      <div className="px-4">
-          {(hasProfile || isParsing || intent) && !isLoading && (
-              <div className="bg-blue-50 dark:bg-blue-900/20 px-6 py-3 rounded-[1.5rem] border border-blue-100 dark:border-blue-800 flex items-center justify-between animate-in slide-in-from-top-2 duration-500">
-                  <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200/50">
-                        {isParsing ? <Loader2 className="animate-spin" size={14}/> : <Bot size={14} />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
-                            {isParsing ? 'Analyzing Intent...' : intent ? `Searching for ${intent.category || 'items'} ${intent.intent ? `for ${intent.intent}` : ''}` : 'Personalized Discovery Active'}
-                        </p>
-                        {intent?.priceMax && (
-                            <p className="text-[8px] font-bold text-slate-400 uppercase">Budget Cap: GHS {intent.priceMax}</p>
-                        )}
-                      </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                      {isExplaining && <Loader2 className="animate-spin text-amber-500" size={12}/>}
-                      <Zap size={12} className="text-amber-500 fill-amber-500" />
-                      <span className="text-[9px] font-bold text-slate-400 uppercase hidden sm:inline">Liaison Assistant Active</span>
-                  </div>
+      {/* INTELLIGENCE HUB: DISCOVERY SECTIONS */}
+      {isBrowsing && !isLoading && (
+        <div className="space-y-12 animate-in fade-in duration-700">
+          
+          <SponsoredMajorAd userMajor={user?.major} />
+
+          {/* 🔥 TRENDING SECTION */}
+          {trending.length > 0 && (
+            <section className="space-y-4">
+              <div className="px-6 flex items-center gap-2">
+                <div className="p-2 bg-red-100 text-red-600 rounded-xl shadow-inner"><Flame size={18} /></div>
+                <h3 className="text-xl font-black italic tracking-tight uppercase">Trending Now</h3>
               </div>
+              <ScrollArea className="w-full">
+                <div className="flex gap-6 pb-6 px-6">
+                  {trending.map(p => (
+                    <div key={p.id} className="min-w-[280px] w-[280px] flex-shrink-0">
+                      <ProductCard product={p} />
+                    </div>
+                  ))}
+                </div>
+                <ScrollBar orientation="horizontal" />
+              </ScrollArea>
+            </section>
           )}
-      </div>
 
-      {!searchQuery && viewMode === 'student' && <SponsoredMajorAd userMajor={user?.major} />}
+          {/* 📉 HOT DEALS SECTION */}
+          {deals.length > 0 && (
+            <section className="space-y-4">
+              <div className="px-6 flex items-center gap-2">
+                <div className="p-2 bg-emerald-100 text-emerald-600 rounded-xl shadow-inner"><Tag size={18} /></div>
+                <h3 className="text-xl font-black italic tracking-tight uppercase">Hot Deals</h3>
+              </div>
+              <ScrollArea className="w-full">
+                <div className="flex gap-6 pb-6 px-6">
+                  {deals.map(p => (
+                    <div key={p.id} className="min-w-[280px] w-[280px] flex-shrink-0">
+                      <ProductCard product={p} />
+                    </div>
+                  ))}
+                </div>
+                <ScrollBar orientation="horizontal" />
+              </ScrollArea>
+            </section>
+          )}
 
-      <div className="px-2">
+          {/* ⭐ TOP RATED VENDORS SECTION */}
+          {topRated.length > 0 && (
+            <section className="space-y-4">
+              <div className="px-6 flex items-center gap-2">
+                <div className="p-2 bg-amber-100 text-amber-600 rounded-xl shadow-inner"><Star size={18} /></div>
+                <h3 className="text-xl font-black italic tracking-tight uppercase">Elite Merchants</h3>
+              </div>
+              <ScrollArea className="w-full">
+                <div className="flex gap-6 pb-6 px-6">
+                  {topRated.map(p => (
+                    <div key={p.id} className="min-w-[280px] w-[280px] flex-shrink-0">
+                      <ProductCard product={p} />
+                    </div>
+                  ))}
+                </div>
+                <ScrollBar orientation="horizontal" />
+              </ScrollArea>
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* AI SEARCH RESULTS */}
+      <div className="px-4">
         {intent && searchQuery && !isLoading && (
-            <div className="mb-8 animate-in fade-in slide-in-from-left-4 duration-500">
+            <div className="mb-8 animate-in slide-in-from-left-4 duration-500">
                 <div className="flex items-center gap-4">
-                    <div className="p-4 bg-amber-500 rounded-[1.5rem] shadow-xl shadow-amber-200/50 text-slate-950">
+                    <div className="p-4 bg-amber-500 rounded-[1.5rem] shadow-xl text-slate-950">
                         <Trophy size={28} />
                     </div>
                     <div>
-                        <h3 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2 italic tracking-tighter uppercase leading-none">
+                        <h3 className="text-3xl font-black text-slate-900 dark:text-white italic tracking-tighter uppercase leading-none">
                             Top Picks For {intent.intent?.toUpperCase() || intent.category?.toUpperCase() || 'You'}
                         </h3>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
@@ -208,19 +197,26 @@ export default function ProductsPage() {
             </div>
         )}
 
+        <div className="flex items-center justify-between mb-6 px-2">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
+                <ShoppingBag className="text-primary" /> {isBrowsing ? 'Recommended For You' : 'Search Discoveries'}
+            </h2>
+            <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-2xl border border-blue-100 dark:border-blue-800 flex items-center gap-2">
+                <Zap size={14} className="text-blue-600 fill-blue-600 animate-pulse" />
+                <span className="text-[9px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">Hybrid Discovery Active</span>
+            </div>
+        </div>
+
         {isLoading ? (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {[...Array(8)].map((_, i) => (
                 <div key={i} className="space-y-3">
                 <Skeleton className="h-48 w-full rounded-[2.5rem]"/>
-                <div className="space-y-2 px-4">
-                    <Skeleton className="h-6 w-3/4" />
-                    <Skeleton className="h-4 w-full" />
-                </div>
+                <div className="space-y-2 px-4"><Skeleton className="h-6 w-3/4" /><Skeleton className="h-4 w-full" /></div>
                 </div>
             ))}
             </div>
-        ) : campusProducts && campusProducts.length > 0 ? (
+        ) : campusProducts.length > 0 ? (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in duration-500">
             {campusProducts.map((product) => (
                 <ProductCard key={product.id} product={product} />
@@ -229,10 +225,8 @@ export default function ProductsPage() {
         ) : (
             <div className="flex flex-col items-center justify-center rounded-[3rem] border-4 border-dashed border-muted-foreground/10 py-32 text-center bg-muted/5">
                 <ShoppingBag className="mx-auto text-muted-foreground/20 mb-6" size={64} />
-                <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">No products found</h2>
-                <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto italic font-medium">
-                {getEmptyStateMessage()}
-                </p>
+                <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">No vibes matched</h2>
+                <p className="text-sm text-muted-foreground mt-2 italic font-medium">Try searching for broader keywords like "food" or "tech".</p>
             </div>
         )}
       </div>

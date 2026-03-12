@@ -6,7 +6,7 @@ import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase'
 import { collection, query, where, orderBy, limit, doc, Query, DocumentData } from 'firebase/firestore';
 import type { Product, MarketProfile, MarketIntent } from '@/lib/types';
 import { useVibeProfile } from './use-vibe-profile';
-import { computeMarketScore } from '@/lib/market-scoring';
+import { computeMarketScore, computeVendorScore, computeDealBoost } from '@/lib/market-scoring';
 import { enforceMarketDiversity } from '@/lib/market-diversity';
 import { useAuth } from './use-auth';
 import { parseMarketIntent } from '@/ai/flows/market-intent-parser';
@@ -16,13 +16,6 @@ import { generateRecommendationReason } from '@/ai/flows/explain-recommendation'
  * useMarketRecommendations Hook (The AI Shopping Assistant API)
  * -----------------------------------------------------------
  * The definitive Marketplace Feed Builder.
- * 
- * Pipeline:
- * 1. AI INTENT PARSING: Natural language to structured query.
- * 2. BUCKETED RETRIEVAL: Pull candidates from current campus using parsed intent filters.
- * 3. MULTI-SIGNAL RANKING: Intent + Vibe + Trust + Deal + Semantic Tags.
- * 4. DIVERSITY FILTER: Vendor & Category balance.
- * 5. AI EXPLANATION: Step 4 - Explain top matches to build trust.
  */
 export function useMarketRecommendations(searchQuery: string = '') {
   const { firestore } = useFirebase();
@@ -34,7 +27,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
   const [rankedProducts, setRankedProducts] = useState<Product[]>([]);
   const [isExplaining, setIsExplaining] = useState(false);
 
-  // 🧠 STAGE 0: AI INTENT PARSING (The Shopping Assistant)
+  // 🧠 STAGE 0: AI INTENT PARSING
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.startsWith('#')) {
         setParsedIntent(null);
@@ -69,7 +62,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
   }, [firestore, user?.id]);
   const { data: marketProfile, isLoading: isLoadingProfile } = useDoc<MarketProfile>(marketProfileRef);
 
-  // 2. STAGE 1: INTENT-AWARE RETRIEVAL
+  // 2. STAGE 1: RETRIEVAL
   const candidatesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     
@@ -104,7 +97,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
     const sortedProducts = finalRankedPool.map(r => r.product);
     const diverse = enforceMarketDiversity(sortedProducts);
     
-    // 🧠 STAGE 4: AI RESULT EXPLANATION (Only for Top 3 to prevent latency)
+    // 🧠 STAGE 4: AI RESULT EXPLANATION (Only for Top 3)
     const runExplainer = async () => {
         if (searchQuery.trim() && diverse.length > 0 && !isParsing) {
             setIsExplaining(true);
@@ -141,8 +134,33 @@ export function useMarketRecommendations(searchQuery: string = '') {
     runExplainer();
   }, [candidates, marketProfile, vibeProfile, user, searchQuery, parsedIntent, isParsing]);
 
+  // SPECIALIZED DISCOVERY SECTIONS
+  const trending = useMemo(() => {
+    return rankedProducts
+      .filter(p => (p.trendScore || 0) > 0)
+      .sort((a, b) => (b.trendScore || 0) - (a.trendScore || 0))
+      .slice(0, 10);
+  }, [rankedProducts]);
+
+  const deals = useMemo(() => {
+    return rankedProducts
+      .filter(p => computeDealBoost(p.averagePrice, p.price) > 0)
+      .sort((a, b) => computeDealBoost(b.averagePrice, b.price) - computeDealBoost(a.averagePrice, a.price))
+      .slice(0, 10);
+  }, [rankedProducts]);
+
+  const topRated = useMemo(() => {
+    return rankedProducts
+      .filter(p => computeVendorScore(p) > 10)
+      .sort((a, b) => computeVendorScore(b) - computeVendorScore(a))
+      .slice(0, 10);
+  }, [rankedProducts]);
+
   return {
     products: rankedProducts,
+    trending,
+    deals,
+    topRated,
     isLoading: isLoadingCandidates || isLoadingProfile || !isVibeLoaded || isParsing,
     isParsing,
     isExplaining,
