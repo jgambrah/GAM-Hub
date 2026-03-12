@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -6,7 +7,7 @@ import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from '
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash, Search as SearchIcon, Loader2, UserCheck } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash, Search as SearchIcon, Loader2, UserCheck, ShoppingBag } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer, cosineSimilarity } from './VibePlayerContext';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
@@ -20,7 +21,7 @@ import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
  * 
  * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
  * Upgraded with Personalized Hybrid Semantic Search (Vector Similarity + Hashtag Matching + Interest Boost).
- * Now integrates the Trending Feed Boost (+35 points) for high-momentum vibrations.
+ * Now supports 'shoppable' tab mode which prioritizes videos with product tags and high conversion clicks.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -30,7 +31,7 @@ export default function CampusPulseFeed({
 }: {
     activeCampusId: string;
     searchQuery?: string;
-    tab?: 'all' | 'vlogs' | 'people' | 'market';
+    tab?: 'all' | 'vlogs' | 'people' | 'market' | 'shoppable';
     activeTag?: string;
 }) {
     const { firestore } = useFirebase();
@@ -68,9 +69,14 @@ export default function CampusPulseFeed({
             }
 
             // Bucket 1: RECENT (National Hub)
-            const recentQuery = tagToFilter 
+            let recentQuery = tagToFilter 
                 ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
                 : query(pulseRef, orderBy('createdAt', 'desc'), limit(250));
+
+            if (tab === 'shoppable') {
+                // Specialized shoppable query (Note: requires composite index, falling back to local filter if needed)
+                recentQuery = query(pulseRef, orderBy('createdAt', 'desc'), limit(300));
+            }
 
             // Bucket 2: TRENDING (High Velocity)
             const trendingStatsQuery = query(
@@ -164,7 +170,7 @@ export default function CampusPulseFeed({
 
     useEffect(() => {
         fetchBlendedCandidates();
-    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag, searchQuery]);
+    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag, searchQuery, tab]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
@@ -198,6 +204,17 @@ export default function CampusPulseFeed({
         const userInterests = new Set(getTopInterests(20).map(t => t.toLowerCase()));
         
         combined = combined
+            .filter(post => {
+                // 🛍️ SHOPPABLE MODE FILTER
+                if (tab === 'shoppable') {
+                    return post.productTags && post.productTags.length > 0;
+                }
+                // 🎥 VLOGS MODE FILTER
+                if (tab === 'vlogs') {
+                    return post.mediaType === 'video' || post.mediaType === 'youtube' || post.mediaType === 'tiktok';
+                }
+                return true;
+            })
             .map(post => {
                 // 1. Semantic Similarity (0.6 weight)
                 const similarity = (queryVector && post.embedding) ? cosineSimilarity(queryVector, post.embedding) : 0;
@@ -220,6 +237,11 @@ export default function CampusPulseFeed({
                 // 🏎️ VIRAL SPREAD INTEGRATION: Apply the +35 point boost for high momentum
                 if (post.trendScore && post.trendScore > 30) {
                     trendingBoost += 0.35; 
+                }
+
+                // 🛍️ SHOPPABLE BOOST (3x Click Multiplier)
+                if (tab === 'shoppable' && post.commerceClicks) {
+                    trendingBoost += Math.min((post.commerceClicks * 0.05), 0.5);
                 }
 
                 // 4. Creator Quality (0.1 weight)
@@ -248,7 +270,7 @@ export default function CampusPulseFeed({
             .sort((a, b) => (b as any).searchScore - (a as any).searchScore);
 
         return combined;
-    }, [posts, srcPosts, searchQuery, queryVector, getTopInterests]);
+    }, [posts, srcPosts, searchQuery, queryVector, getTopInterests, tab]);
 
     return (
         <div className="space-y-8 pb-20">
@@ -289,17 +311,22 @@ export default function CampusPulseFeed({
                 </div>
             )}
 
-            <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 border-blue-500 animate-in slide-in-from-top-4">
+            <div className={cn(
+                "p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 animate-in slide-in-from-top-4",
+                tab === 'shoppable' ? "bg-indigo-950 text-white border-amber-500" : "bg-slate-900 text-white border-blue-500"
+            )}>
                 <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
-                        <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
+                        {tab === 'shoppable' ? <ShoppingBag size={20} className="text-amber-400" /> : <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />}
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">{searchQuery ? 'Personalized Search Stream' : 'Blended Discovery'}</h4>
+                        <h4 className="font-black text-sm tracking-tight">
+                            {tab === 'shoppable' ? 'Trending Shoppable Hub' : searchQuery ? 'Personalized Search Stream' : 'Blended Discovery'}
+                        </h4>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Algorithm:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> {searchQuery ? 'Semantic + Profile' : 'Exploit + Explore'}
+                                <TrendingUp size={10} /> {tab === 'shoppable' ? 'Commercial Velocity' : searchQuery ? 'Semantic + Profile' : 'Exploit + Explore'}
                             </span>
                         </div>
                     </div>

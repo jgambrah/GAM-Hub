@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles, Hash, Loader2, Share2, Zap } from 'lucide-react';
+import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles, Hash, Loader2, Share2, Zap, ShoppingCart } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import TrendingTags from '@/components/social/TrendingTags';
 import TrendingSearchTicker from '@/components/social/TrendingSearchTicker';
@@ -13,7 +13,7 @@ import { useFirebase } from '@/firebase';
 export default function ExplorePage() {
   const { firestore } = useFirebase();
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'people' | 'market' | 'vlogs'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'people' | 'market' | 'vlogs' | 'shoppable'>('all');
   const [hashtagResults, setHashtagResults] = useState<any[]>([]);
   const [isSearchingTags, setIsSearchingTags] = useState(false);
 
@@ -98,8 +98,9 @@ export default function ExplorePage() {
           <div className="flex gap-2 overflow-x-auto no-scrollbar">
             {[
                 { id: 'all', label: 'All Vibes', icon: Globe }, 
+                { id: 'shoppable', label: 'Shop From Videos', icon: ShoppingBag }, 
                 { id: 'people', label: 'People', icon: Users }, 
-                { id: 'market', label: 'Market', icon: ShoppingBag },
+                { id: 'market', label: 'Market', icon: ShoppingCart },
                 { id: 'vlogs', label: 'Vlogs', icon: Video }
             ].map(t => (
               <button 
@@ -125,9 +126,12 @@ export default function ExplorePage() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between px-2">
                     <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                        <Sparkles className="text-blue-600" size={20} /> Latest Discoveries
+                        {activeTab === 'shoppable' ? <ShoppingBag className="text-blue-600" size={20} /> : <Sparkles className="text-blue-600" size={20} />}
+                        {activeTab === 'shoppable' ? 'Shoppable Videos' : 'Latest Discoveries'}
                     </h2>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hybrid Discovery Engine Active</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        {activeTab === 'shoppable' ? 'Commerce Engine Active' : 'Hybrid Discovery Engine Active'}
+                    </span>
                 </div>
                 
                 <CampusPulseFeed 
