@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -14,6 +13,34 @@ import { computeTrendScore } from './compute-trend-score';
 import { applyTrendDecay } from './apply-trend-decay';
 
 export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
+
+/**
+ * searchMarketplaceProducts
+ * -------------------------
+ * Searches for products on a specific campus.
+ */
+export async function searchMarketplaceProducts(firestore: Firestore, campusId: string, searchTerm: string) {
+  if (!firestore || !searchTerm) return [];
+  
+  // We fetch a batch and filter client-side for 'includes' functionality
+  const q = query(
+    collection(firestore, "products"),
+    where("campusId", "==", campusId),
+    limit(50)
+  );
+
+  const snapshot = await getDocs(q);
+  const term = searchTerm.toLowerCase().trim();
+  
+  return snapshot.docs
+    .map(doc => ({ id: doc.id, ...doc.data() } as Product))
+    .filter(p => 
+        p.name.toLowerCase().includes(term) || 
+        p.category.toLowerCase().includes(term) ||
+        p.tags?.some(t => t.toLowerCase().includes(term))
+    )
+    .slice(0, 10);
+}
 
 /**
  * getHighDemandItems
