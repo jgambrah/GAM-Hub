@@ -17,7 +17,7 @@ import { useAuth } from './use-auth';
  * Pipeline:
  * 1. BUCKETED RETRIEVAL: Pull 300 candidates from current campus.
  * 2. PROFILE MATCHING: Load user's market intent and vibe profiles.
- * 3. MULTI-SIGNAL RANKING: Apply scoring logic (Intent + Vibe + Search + Campus Intel).
+ * 3. MULTI-SIGNAL RANKING: Apply scoring logic (Intent + Vibe + Search + Trust + Deal).
  * 4. DIVERSITY FILTER: Final pass to ensure category & vendor balance.
  */
 export function useMarketRecommendations(searchQuery: string = '') {
@@ -52,7 +52,6 @@ export function useMarketRecommendations(searchQuery: string = '') {
     if (!candidates) return [];
     
     // A. Local Multi-Signal Scoring (Stage 2)
-    // We include Search Query and the full User object for campus intelligence
     const scored = [...candidates]
       .map(product => ({
         product,
@@ -60,16 +59,16 @@ export function useMarketRecommendations(searchQuery: string = '') {
       }))
       .sort((a, b) => b.score - a.score);
 
-    // If searching, we filter more strictly by score or presence of search term
-    let filtered = scored;
+    // Filter results if searching
+    let finalRankedPool = scored;
     if (searchQuery.trim()) {
-        filtered = scored.filter(r => r.score > 5); // Minimum relevance threshold for search
+        finalRankedPool = scored.filter(r => r.score > 5); 
     }
 
-    const finalRanked = filtered.map(r => r.product);
+    const sortedProducts = finalRankedPool.map(r => r.product);
 
     // B. Diversity Protocol (Stage 3: Balance Vendors and Categories)
-    return enforceMarketDiversity(finalRanked);
+    return enforceMarketDiversity(sortedProducts);
   }, [candidates, marketProfile, vibeProfile, user, searchQuery]);
 
   return {

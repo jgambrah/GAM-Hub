@@ -1,10 +1,17 @@
-
 'use client';
 
 /**
- * @fileOverview Marketplace Ranking Logic.
+ * @fileOverview Final Marketplace Ranking Engine.
  * Implements the professional multi-signal product scoring equation.
- * Upgraded with AI Search Ranking, Vendor Trust, and Price Intelligence.
+ * 
+ * Pipeline:
+ * 1. Intent (Category matching)
+ * 2. Reputed Trust (Vendor scoring)
+ * 3. Financial Value (Deal detection)
+ * 4. Momentum (Trending velocity)
+ * 5. Cultural Fit (Vibe tag matching)
+ * 6. Proximity (Campus intelligence)
+ * 7. Recency (Freshness decay)
  */
 
 import type { Product, MarketProfile, User } from './types';
@@ -36,19 +43,19 @@ export function computeVendorScore(product: Product) {
  * computeDealBoost
  * ----------------
  * Detects when a product becomes a good deal based on price history.
- * formula: (averagePrice - currentPrice) * 0.3
  */
-export function computeDealBoost(avgPrice: number, currentPrice: number) {
+export function computeDealBoost(avgPrice: number | undefined, currentPrice: number) {
+  if (!avgPrice) return 0;
   const discount = avgPrice - currentPrice;
   if (discount <= 0) return 0;
+  // Apply a 0.3x multiplier to the absolute GHS savings
   return discount * 0.3;
 }
 
 /**
  * computeMarketScore
  * ------------------
- * The professional marketplace recommendation formula.
- * Now featuring the AI Price Intelligence deal boost.
+ * The definitive Marketplace Ranking Formula.
  */
 export function computeMarketScore(
   product: Product,
@@ -59,56 +66,53 @@ export function computeMarketScore(
 ) {
   let score = 0;
 
-  // 1. AI SEARCH RELEVANCE (Weight: 25 pts)
+  // 1. AI SEARCH RELEVANCE (Initial Boost)
   if (searchQuery.trim()) {
     const term = searchQuery.toLowerCase().trim();
-    const nameMatch = product.name.toLowerCase().includes(term);
-    const descMatch = product.description.toLowerCase().includes(term);
-    const categoryMatch = product.category.toLowerCase().includes(term);
-    
-    if (nameMatch) score += 15;
-    if (categoryMatch) score += 10;
-    if (descMatch) score += 5;
-
-    const tags = product.tags || [];
-    if (tags.some(t => t.toLowerCase().includes(term))) {
-        score += 12;
-    }
+    if (product.name.toLowerCase().includes(term)) score += 20;
+    if (product.category.toLowerCase().includes(term)) score += 15;
+    if (product.tags?.some(t => t.toLowerCase().includes(term))) score += 12;
   }
 
-  // 🎯 2. SMART VENDOR RELIABILITY BOOST (Weight: 1.5x rating + reliability)
+  // 🛡️ 2. VENDOR TRUST SCORE (The Reputational Pillar)
+  // Reliability score from the merchant is added directly
   const vendorScore = computeVendorScore(product);
-  score += vendorScore * 1.5;
+  score += vendorScore;
 
-  // 💰 3. AI PRICE INTELLIGENCE (Deal Boost)
-  if (product.averagePrice && product.price < product.averagePrice) {
-    const dealBoost = computeDealBoost(product.averagePrice, product.price);
-    score += dealBoost;
+  // 💰 3. DEAL DETECTION (The Financial Pillar)
+  const dealBoost = computeDealBoost(product.averagePrice, product.price);
+  score += dealBoost;
+
+  // 🏎️ 4. TRENDING VELOCITY (The Momentum Pillar)
+  if (product.trendScore) {
+    score += product.trendScore * 2;
   }
 
-  if (!marketProfile && !user) return score;
-
-  // 4. CATEGORY INTEREST (User Weight: 3x Views, 6x Intent, 12x Purchase)
+  // 📊 5. COMMERCIAL INTENT (Category Interest)
   if (marketProfile) {
     const views = marketProfile.viewedCategories?.[product.category] || 0;
     const intents = marketProfile.intentCategories?.[product.category] || 0;
     const purchases = marketProfile.purchasedCategories?.[product.category] || 0;
 
+    // Weights: Views (3x), Intent (6x), Purchase (12x)
     score += views * 3;
     score += intents * 6; 
     score += purchases * 12;
+
+    // Price Range Match
+    if (marketProfile.pricePreference) {
+      const { min, max } = marketProfile.pricePreference;
+      if (product.price >= min && product.price <= max) {
+        score += 10;
+      } else {
+        const distance = product.price < min ? min - product.price : product.price - max;
+        score += Math.max(0, 10 - (distance / 50));
+      }
+    }
   }
 
-  // 5. CAMPUS-SPECIFIC INTELLIGENCE
-  if (user) {
-    if (product.campusId === user.campusId) score += 10;
-    const userMajor = (user.major || '').toLowerCase();
-    const productTags = (product.tags || []).map(t => t.toLowerCase());
-    if (userMajor && productTags.includes(userMajor)) score += 5;
-    if (product.campusAcronym === user.campusAcronym) score += 4;
-  }
-
-  // 6. THE VIBE BRIDGE (Tag Match - User Weight: 2x)
+  // 🌉 6. THE VIBE BRIDGE (Tag Match)
+  // Cross-references with the user's Video Discovery Profile
   if (vibeProfile && product.tags) {
     product.tags.forEach(tag => {
       const weight = vibeProfile.tagWeights[tag.toLowerCase()] || 0;
@@ -116,26 +120,27 @@ export function computeMarketScore(
     });
   }
 
-  // 7. TRENDING BOOST (Weight: 2x velocity)
-  if (product.trendScore) {
-    score += product.trendScore * 2;
-  }
-
-  // 8. PRICE RANGE MATCH
-  if (marketProfile?.pricePreference) {
-    const { min, max } = marketProfile.pricePreference;
-    if (product.price >= min && product.price <= max) {
-      score += 15;
-    } else {
-      const distance = product.price < min ? min - product.price : product.price - max;
-      score += Math.max(0, 15 - (distance / 100));
+  // 📍 7. CAMPUS INTELLIGENCE
+  if (user) {
+    // Proximity Boost (Same Campus)
+    if (product.campusId === user.campusId) score += 10;
+    
+    // Academic Boost (Same Major/Department)
+    const userMajor = (user.major || '').toLowerCase();
+    if (userMajor && product.tags?.some(t => t.toLowerCase() === userMajor)) {
+        score += 5;
     }
   }
 
-  // 9. FRESHNESS DECAY
+  // 8. POPULARITY (Base Signals)
+  score += (product.salesCount || 0) * 0.1;
+  score += (product.rating || 5) * 2;
+
+  // 📉 9. FRESHNESS DECAY
   if (product.createdAt) {
     const createdAt = typeof product.createdAt === 'string' ? new Date(product.createdAt) : (product.createdAt.toDate ? product.createdAt.toDate() : new Date(product.createdAt));
     const ageHours = (Date.now() - createdAt.getTime()) / 3600000;
+    // Slow decay over 48 hours
     score += 10 * Math.exp(-ageHours / 48);
   }
 

@@ -108,7 +108,7 @@ export type Product = {
   name: string;
   description: string;
   price: number;
-  averagePrice?: number; // NEW: Historical average for deal detection
+  averagePrice?: number; // Historical average for deal detection
   imageUrl: string;
   imageHint: string;
   videoUrl?: string | null; // YouTube link
@@ -119,20 +119,20 @@ export type Product = {
   campusId: string;
   campusAcronym: string;
   category: string;
-  tags?: string[]; // NEW: For recommendation matching
-  salesCount?: number; // NEW: Popularity signal
-  viewCount?: number; // NEW: Popularity signal
-  rating?: number; // NEW: Trust signal
-  trendScore?: number; // NEW: Real-time commercial velocity
-  recentSales?: number; // NEW: For trending boost
+  tags?: string[]; // For recommendation matching
+  salesCount?: number; // Popularity signal
+  viewCount?: number; // Popularity signal
+  rating?: number; // Trust signal
+  trendScore?: number; // Real-time commercial velocity
+  recentSales?: number; // For trending boost
   targetAudience: 'all' | 'student' | 'staff';
   isSponsored?: boolean;
-  sponsoredMajor?: string; // Kept for backward compatibility
+  sponsoredMajor?: string; 
   targetType?: 'major' | 'group' | 'all';
   targetValue?: string;
-  targetGroupId?: string; // NEW: Specific targeting ID
-  adHeadline?: string; // NEW: The Hook
-  adSlogan?: string; // NEW: The Vibe
+  targetGroupId?: string; 
+  adHeadline?: string; // The Hook
+  adSlogan?: string; // The Vibe
   adCredits?: number;
   adStatus?: 'active' | 'depleted';
   clicks?: number;
@@ -143,8 +143,8 @@ export type Product = {
   terms?: string;
   actionLabel?: string;
   externalLink?: string;
-  has_fuel?: boolean; // Hides service if vendor is out of leads
-  // NEW VENDOR RELIABILITY METRICS
+  has_fuel?: boolean; 
+  // VENDOR RELIABILITY METRICS (Denormalized for ranking)
   vendorRating?: number;
   vendorDeliveryRate?: number;
   vendorSalesCount?: number;
@@ -207,13 +207,13 @@ export type SocialPost = {
   likes: number;
   commentCount: number;
   tags?: string[];
-  aiTags?: string[]; // NEW: AI-detected hashtags
-  aiTopics?: string[]; // NEW: AI-detected broad topics
-  mood?: string; // NEW: Emotional vibe
-  musicGenre?: string; // NEW: Detected background music
-  detectedObjects?: string[]; // NEW: Key visual objects
-  transcript?: string; // NEW: AI Speech summary
-  embedding?: number[]; // SEMANTIC VECTOR
+  aiTags?: string[]; 
+  aiTopics?: string[]; 
+  mood?: string; 
+  musicGenre?: string; 
+  detectedObjects?: string[]; 
+  transcript?: string; 
+  embedding?: number[]; 
   originalVideoPath?: string;
   mediaStatus?: 'processing' | 'ready' | 'error';
   isProtected?: boolean;
@@ -225,9 +225,9 @@ export type SocialPost = {
   winnerPhoto?: string;
   position?: string;
   isOfficial?: boolean;
-  searchScore?: number; // Ranking score for search results
-  trendScore?: number; // Viral velocity score
-  authorQualityScore?: number; // Denormalized creator quality
+  searchScore?: number; 
+  trendScore?: number; 
+  authorQualityScore?: number; 
 };
 
 export type ArenaPost = {
@@ -249,11 +249,11 @@ export type ArenaPost = {
   mediaUrl?: string;
   mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
   tags?: string[];
-  aiTags?: string[]; // NEW: AI content understanding
+  aiTags?: string[]; 
   aiTopics?: string[];
   mood?: string;
   detectedObjects?: string[];
-  embedding?: number[]; // SEMANTIC VECTOR
+  embedding?: number[]; 
   status?: 'active' | 'blocked';
   moderationNote?: string;
 };
