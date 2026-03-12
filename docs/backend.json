@@ -36,6 +36,37 @@
       },
       "required": ["id", "email", "campusId", "role"]
     },
+    "NotificationSettings": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "NotificationSettings",
+      "type": "object",
+      "description": "User preferences for various notification types and quiet hours.",
+      "properties": {
+        "userId": { "type": "string" },
+        "priceDrops": { "type": "boolean" },
+        "trendingProducts": { "type": "boolean" },
+        "vendorUpdates": { "type": "boolean" },
+        "recommendations": { "type": "boolean" },
+        "quietHours": {
+          "type": "object",
+          "properties": {
+            "start": { "type": "number", "description": "Hour in 24h format (e.g. 22)" },
+            "end": { "type": "number", "description": "Hour in 24h format (e.g. 7)" }
+          }
+        }
+      }
+    },
+    "ProductView": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ProductView",
+      "type": "object",
+      "description": "A single instance of a user viewing a product.",
+      "properties": {
+        "userId": { "type": "string" },
+        "productId": { "type": "string" },
+        "viewedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "MarketProfile": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "MarketProfile",
@@ -94,6 +125,22 @@
           "entityName": "User",
           "schema": { "$ref": "#/backend/entities/User" },
           "description": "User profiles with notification tokens."
+        }
+      },
+      {
+        "path": "/user_notifications/{userId}",
+        "definition": {
+          "entityName": "NotificationSettings",
+          "schema": { "$ref": "#/backend/entities/NotificationSettings" },
+          "description": "Personalized notification toggles and quiet hours."
+        }
+      },
+      {
+        "path": "/user_product_views/{viewId}",
+        "definition": {
+          "entityName": "ProductView",
+          "schema": { "$ref": "#/backend/entities/ProductView" },
+          "description": "Time-stamped log of product interest."
         }
       },
       {

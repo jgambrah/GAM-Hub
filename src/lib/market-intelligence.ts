@@ -5,10 +5,11 @@
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
  * Upgraded with Notification FCM tokens and Follower Logic.
+ * Now includes User Notifications and Detailed Product View tracking.
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import type { Product, Order, ProductTrend } from './types';
+import type { Product, Order, ProductTrend, NotificationSettings } from './types';
 import { computeTrendScore } from './compute-trend-score';
 import { applyTrendDecay } from './apply-trend-decay';
 
@@ -18,6 +19,7 @@ export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'sh
  * recordMarketSignal
  * ------------------
  * Logs a behavioral event to the user's market profile and the product's velocity bucket.
+ * Now logs detailed product views for personalized notifications.
  */
 export async function recordMarketSignal(
   firestore: Firestore,
@@ -49,6 +51,13 @@ export async function recordMarketSignal(
       velocityUpdates.views = increment(1);
       productAggregates.viewCount = increment(1);
       trendUpdates.viewCount = increment(1);
+      
+      // 🕵️ DETAILED VIEW TRACKING (For Price Drop Alerts)
+      addDoc(collection(firestore, 'user_product_views'), {
+        userId,
+        productId: product.id,
+        viewedAt: new Date().toISOString()
+      }).catch(() => {});
       break;
     case 'favorite':
       profileUpdates.favoriteProducts = arrayUnion(product.id);
@@ -82,6 +91,20 @@ export async function recordMarketSignal(
   if (Object.keys(productAggregates).length > 0) {
     setDoc(statsRef, productAggregates, { merge: true }).catch(() => {});
   }
+}
+
+/**
+ * updateNotificationSettings
+ * --------------------------
+ * Persists user notification preferences.
+ */
+export async function updateNotificationSettings(
+    firestore: Firestore,
+    userId: string,
+    settings: Partial<NotificationSettings>
+) {
+    const ref = doc(firestore, 'user_notifications', userId);
+    return setDoc(ref, { userId, ...settings, updatedAt: serverTimestamp() }, { merge: true });
 }
 
 /**

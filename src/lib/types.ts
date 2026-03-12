@@ -49,6 +49,25 @@ export type User = {
   businessName?: string;
 };
 
+export type NotificationSettings = {
+  userId: string;
+  priceDrops: boolean;
+  trendingProducts: boolean;
+  vendorUpdates: boolean;
+  recommendations: boolean;
+  quietHours: {
+    start: number;
+    end: number;
+  };
+};
+
+export type ProductView = {
+  id: string;
+  userId: string;
+  productId: string;
+  viewedAt: string;
+};
+
 export type MarketProfile = {
   id: string;
   viewedCategories: Record<string, number>;
