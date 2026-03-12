@@ -84,7 +84,6 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
  * computeVibeScore
  * ---------------
  * The multi-signal discovery equation.
- * Combined: content match + semantic similarity + mood + trends + personal behavioral score.
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -112,10 +111,6 @@ export function computeVibeScore(
   const aiMatches = candidateTags.filter(t => currentTags.has(t));
   score += aiMatches.length * 12;
 
-  const currentTopics = new Set((current.aiTopics || []).map(t => t.toLowerCase()));
-  const matchingTopics = (candidate.aiTopics || []).filter(t => currentTopics.has(t.toLowerCase()));
-  score += matchingTopics.length * 10;
-
   // 2. VECTOR SIMILARITY
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
@@ -123,19 +118,9 @@ export function computeVibeScore(
   }
 
   // 3. MOOD SYNCHRONIZATION
-  const moodMapping: Record<VibeMood, string[]> = {
-    all: [],
-    hype: ['energetic', 'hype', 'fast', 'victory', 'exciting'],
-    chill: ['relaxed', 'calm', 'serene', 'smooth', 'mellow'],
-    study: ['focus', 'serious', 'educational', 'quiet'],
-    flex: ['proud', 'confident', 'swagger', 'wealthy']
-  };
-
   if (candidate.mood && activeMoodId !== 'all') {
-    const activeMoodTerms = moodMapping[activeMoodId];
-    if (activeMoodTerms.includes(candidate.mood.toLowerCase())) {
-      score += 10;
-    }
+    const moodDef = VIBE_MOODS.find(m => m.id === activeMoodId);
+    if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
   }
 
   // 4. GRAPH & TREND SIGNALS
@@ -149,7 +134,6 @@ export function computeVibeScore(
   }
 
   // 🎯 5. BEHAVIORAL SIGNALS (PERSONALIZATION)
-  // This score includes session bursts and pivots calculated in useVibeProfile
   score += getPersonalScore(candidate);
   score += explorationBoost(candidate);
 
@@ -168,7 +152,6 @@ export function computeVibeScore(
 /**
  * buildSmartQueue
  * ---------------
- * Re-scores candidates and builds a diversity-aware narrative thread.
  */
 export function buildSmartQueue(
   current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
@@ -336,13 +319,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         } catch (e) { console.warn("Graph lookup failed"); }
     }
     
-    const vectorRanked = userEmbeddingRef.current ? rankByEmbedding(pool, userEmbeddingRef.current).slice(0, 140) : pool.slice(0, 140);
-    const trendingRanked = pool.filter(p => !vectorRanked.some(v => v.id === p.id)).sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 40);
-    const explorationPool = pool.filter(p => !vectorRanked.some(v => v.id === p.id) && !trendingRanked.some(t => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 20);
-    const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
-
-    const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags, reputations);
-    
+    const rankedResults = buildSmartQueue(pool, pool, mood, scorer, viral, trending, relatedTags, reputations);
     const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 30);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>

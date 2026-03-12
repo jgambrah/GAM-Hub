@@ -36,6 +36,9 @@ export const EMPTY_SESSION: SessionProfile = {
   pivotTag:      null,
 };
 
+// ── Sliding Window Constraint ───────────────────────────────────────────────
+const SESSION_WINDOW_SIZE = 20;
+
 export type SignalType = 'like' | 'unlike' | 'reaction' | 'play' | 'watched_to_end' | 'skip';
 
 const SIGNAL_WEIGHTS: Record<SignalType, {
@@ -46,11 +49,12 @@ const SIGNAL_WEIGHTS: Record<SignalType, {
   reaction:       { tag: 2.0,  author: 1.0,  type: 1.0, campus: 0.5 },
   play:           { tag: 1.0,  author: 0.5,  type: 0.5, campus: 0.3 },
   watched_to_end: { tag: 4.0,  author: 3.0,  type: 2.0, campus: 1.5 },
-  skip:           { tag: -1.5, author: -1.0, type: -0.5, campus: -0.2 },
+  // 📉 NEGATIVE SIGNAL: Aggressive penalty for quick skips
+  skip:           { tag: -2.5, author: -1.5, type: -1.0, campus: -0.2 },
 };
 
 const CAP   = 100;
-const FLOOR = 0;
+const FLOOR = -50; // Allow negative values in session to suppress content
 
 function clamp(v: number) { return Math.min(CAP, Math.max(FLOOR, v)); }
 
@@ -70,7 +74,7 @@ function applyWeights(
  * useVibeProfile Hook
  * -------------------
  * Manages the User's persistent taste profile and short-term session behavior.
- * Implements Rapid Interest Shift Detection (Pivoting).
+ * Now upgraded with a 20-post sliding memory window and Negative Signal support.
  */
 export function useVibeProfile() {
   const { firestore } = useFirebase();
@@ -78,6 +82,7 @@ export function useVibeProfile() {
 
   const [profile, setProfile] = useState<VibeProfile>(EMPTY_PROFILE);
   const [sessionProfile, setSessionProfile] = useState<SessionProfile>(EMPTY_SESSION);
+  const [sessionHistory, setSessionHistory] = useState<{post: SocialPost, signal: SignalType}[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const signalCountRef = useRef(0);
   
@@ -131,25 +136,39 @@ export function useVibeProfile() {
     signalCountRef.current += 1;
     const shouldRefreshEmbedding = signalCountRef.current % 5 === 0;
 
-    // 🏎️ 1. UPDATE SESSION PROFILE (IMMEDIATE)
-    setSessionProfile(prev => {
-        const nextWeights = applyWeights(prev.tagWeights, tags, w.tag);
+    // 🏎️ 1. UPDATE SESSION WINDOW
+    setSessionHistory(prev => {
+        const next = [...prev, { post, signal }].slice(-SESSION_WINDOW_SIZE);
         
+        // RE-CALCULATE SESSION WEIGHTS FROM WINDOW (Memory Freshness)
+        const nextWeights: Record<string, number> = {};
+        const nextAuthorWeights: Record<string, number> = {};
+        
+        next.forEach(entry => {
+            const weights = SIGNAL_WEIGHTS[entry.signal];
+            const eTags = (entry.post.tags || []).map(t => t.toLowerCase());
+            eTags.forEach(t => nextWeights[t] = clamp((nextWeights[t] || 0) + weights.tag));
+            if (entry.post.authorId) {
+                nextAuthorWeights[entry.post.authorId] = clamp((nextAuthorWeights[entry.post.authorId] || 0) + weights.author);
+            }
+        });
+
         // 🎯 RAPID INTEREST SHIFT DETECTION (PIVOT)
-        // If a specific tag has exploded in the session (> 4 points), mark it as pivot
-        let pivot = prev.pivotTag;
-        for (const tag of tags) {
-            if (nextWeights[tag] >= 4) {
+        let pivot = null;
+        for (const [tag, weight] of Object.entries(nextWeights)) {
+            if (weight >= 6) { // High intensity in short window
                 pivot = tag;
                 break;
             }
         }
 
-        return {
+        setSessionProfile({
             tagWeights: nextWeights,
-            authorWeights: applyWeights(prev.authorWeights, authors, w.author),
+            authorWeights: nextAuthorWeights,
             pivotTag: pivot
-        };
+        });
+
+        return next;
     });
 
     // 2. UPDATE PERSISTENT PROFILE OPTIMISTICALLY
@@ -164,7 +183,9 @@ export function useVibeProfile() {
       return next;
     });
 
-    // 3. TRIGGER ASYNC PERSISTENCE
+    // 3. TRIGGER ASYNC PERSISTENCE (Only for significant signals)
+    if (signal === 'play' || signal === 'skip') return; // Don't persist every play/skip to save ops
+
     const performUpdate = async () => {
       const prev = currentProfileRef.current;
       const next: VibeProfile = {

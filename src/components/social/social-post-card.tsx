@@ -1,4 +1,3 @@
-
 'use client';
 
 import Image from 'next/image';
@@ -104,6 +103,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe]);
 
+  // 📉 NEGATIVE FEEDBACK LOOP: Quick Skip Detection
   React.useEffect(() => {
     if (!cardRef.current) return;
 
@@ -114,6 +114,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         } else {
           if (dwellStartTimeRef.current) {
             const timeVisible = Date.now() - dwellStartTimeRef.current;
+            // Liaison Rule: If visible for < 1.5s, it was skipped without engagement
             if (timeVisible < 1500 && !isActiveVibe) {
               recordSkip(post);
             }
