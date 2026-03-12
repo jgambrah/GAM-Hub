@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useCampusView } from '@/hooks/use-campus-view';
 import SponsoredMajorAd from '@/components/market/SponsoredMajorAd';
 import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
-import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot } from 'lucide-react';
+import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot, Trophy } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 export const dynamic = 'force-dynamic';
@@ -20,8 +20,8 @@ export default function ProductsPage() {
   const { viewAsCampus } = useCampusView();
   const [searchQuery, setSearchQuery] = React.useState('');
 
-  // 🏎️ Rank Engine with AI Intent Parsing
-  const { products: rankedProducts, isLoading: isRanking, isParsing, hasProfile, intent } = useMarketRecommendations(searchQuery);
+  // 🏎️ Rank Engine with AI Intent Parsing & Result Explanation
+  const { products: rankedProducts, isLoading: isRanking, isParsing, hasProfile, intent, isExplaining } = useMarketRecommendations(searchQuery);
 
   const campusProducts = React.useMemo(() => {
     if (!rankedProducts) return [];
@@ -95,6 +95,7 @@ export default function ProductsPage() {
                       </div>
                   </div>
                   <div className="flex items-center gap-2">
+                      {isExplaining && <Loader2 className="animate-spin text-amber-500" size={12}/>}
                       <Zap size={12} className="text-amber-500 fill-amber-500" />
                       <span className="text-[9px] font-bold text-slate-400 uppercase hidden sm:inline">Liaison Assistant Active</span>
                   </div>
@@ -104,33 +105,45 @@ export default function ProductsPage() {
 
       {!searchQuery && viewMode === 'student' && <SponsoredMajorAd userMajor={user?.major} />}
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="space-y-3">
-              <Skeleton className="h-48 w-full rounded-[2.5rem]"/>
-              <div className="space-y-2 px-4">
-                <Skeleton className="h-6 w-3/4" />
-                <Skeleton className="h-4 w-full" />
-              </div>
+      <div className="px-2">
+        {intent && searchQuery && !isLoading && (
+            <div className="mb-6 animate-in fade-in slide-in-from-left-4 duration-500">
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2 italic tracking-tight">
+                    <Trophy className="text-amber-500" size={24} /> 
+                    Top Picks For {intent.intent?.toUpperCase() || intent.category?.toUpperCase() || 'You'}
+                </h3>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 ml-8">AI Assisted Recommendation</p>
             </div>
-          ))}
-        </div>
-      ) : campusProducts && campusProducts.length > 0 ? (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 px-2 animate-in fade-in duration-500">
-          {campusProducts.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-col items-center justify-center rounded-[3rem] border-4 border-dashed border-muted-foreground/10 py-32 text-center bg-muted/5">
-            <ShoppingBag className="mx-auto text-muted-foreground/20 mb-6" size={64} />
-            <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">No products found</h2>
-            <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto italic font-medium">
-              {getEmptyStateMessage()}
-            </p>
-        </div>
-      )}
+        )}
+
+        {isLoading ? (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {[...Array(8)].map((_, i) => (
+                <div key={i} className="space-y-3">
+                <Skeleton className="h-48 w-full rounded-[2.5rem]"/>
+                <div className="space-y-2 px-4">
+                    <Skeleton className="h-6 w-3/4" />
+                    <Skeleton className="h-4 w-full" />
+                </div>
+                </div>
+            ))}
+            </div>
+        ) : campusProducts && campusProducts.length > 0 ? (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in duration-500">
+            {campusProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+            ))}
+            </div>
+        ) : (
+            <div className="flex flex-col items-center justify-center rounded-[3rem] border-4 border-dashed border-muted-foreground/10 py-32 text-center bg-muted/5">
+                <ShoppingBag className="mx-auto text-muted-foreground/20 mb-6" size={64} />
+                <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">No products found</h2>
+                <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto italic font-medium">
+                {getEmptyStateMessage()}
+                </p>
+            </div>
+        )}
+      </div>
     </div>
   );
 }
