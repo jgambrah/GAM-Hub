@@ -310,7 +310,7 @@ export default function CampusPulseFeed({
                     </button>
                     <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/10">
                         <span className="text-[10px] font-black uppercase text-slate-400">Autoplay</span>
-                        <Switch checked={isContinuous} onCheckedChange={setIsContinuous} className="data-[state=checked]:bg-blue-50" />
+                        <Switch checked={isContinuous} onCheckedChange={setIsContinuous} className="data-[state=checked]:bg-blue-600" />
                     </div>
                 </div>
             </div>
