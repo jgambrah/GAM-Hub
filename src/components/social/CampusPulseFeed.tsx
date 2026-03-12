@@ -88,8 +88,8 @@ export default function CampusPulseFeed({
             const [recentSnap, trendingSnap, campusSnap, explorationSnap] = await Promise.all([
                 getDocs(recentQuery),
                 getDocs(trendingStatsQuery),
-                getDocs(campusSnap || campusQuery),
-                getDocs(explorationSnap || explorationQuery)
+                getDocs(campusQuery),
+                getDocs(explorationQuery)
             ]);
 
             const mergedMap = new Map<string, SocialPost>();
@@ -264,7 +264,7 @@ export default function CampusPulseFeed({
                     </button>
                     <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/10">
                         <span className="text-[10px] font-black uppercase text-slate-400">Autoplay</span>
-                        <Switch checked={isContinuous} onCheckedChange={setIsContinuous} className="data-[state=checked]:bg-blue-500" />
+                        <Switch checked={isContinuous} onCheckedChange={setIsContinuous} className="data-[state=checked]:bg-blue-50" />
                     </div>
                 </div>
             </div>
