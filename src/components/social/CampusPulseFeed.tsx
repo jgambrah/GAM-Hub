@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -18,7 +19,7 @@ import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
  * CampusPulseFeed Component
  * 
  * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
- * Now upgraded with Semantic Search (Vector Similarity) for intelligent discovery.
+ * Now upgraded with Hybrid Semantic Search (Vector Similarity + Hashtag Matching).
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -44,7 +45,7 @@ export default function CampusPulseFeed({
 
     /**
      * 🏗️ THE BLENDED RETRIEVAL COMMAND
-     * Pipeline: Firestore Retrieval (4 Buckets) -> Vector Blending -> Local Ranking
+     * Pipeline: Firestore Retrieval (4 Buckets) -> Vector Blending -> Local Hybrid Ranking
      */
     const fetchBlendedCandidates = async () => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return;
@@ -54,7 +55,7 @@ export default function CampusPulseFeed({
         const tagToFilter = activeTag || (searchQuery.startsWith('#') ? searchQuery.slice(1).toLowerCase() : null);
         
         try {
-            // 🧠 SEMANTIC PASS: Generate embedding for search queries (not tags)
+            // 🧠 SEMANTIC PASS: Generate embedding for search queries
             if (searchQuery.trim() && !searchQuery.startsWith('#')) {
                 setIsEmbedding(true);
                 const vector = await generateQueryEmbedding(searchQuery);
@@ -64,7 +65,7 @@ export default function CampusPulseFeed({
                 setQueryVector(null);
             }
 
-            // Bucket 1: RECENT (National Hub) - Increase limit for wider semantic pool during search
+            // Bucket 1: RECENT (National Hub)
             const recentQuery = tagToFilter 
                 ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
                 : query(pulseRef, orderBy('createdAt', 'desc'), limit(250));
@@ -94,12 +95,20 @@ export default function CampusPulseFeed({
                 getDocs(explorationQuery)
             ]);
 
+            const trendingDocs = trendingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const trendingMap = new Map(trendingDocs.map(d => [d.id, d]));
+
             const mergedMap = new Map<string, SocialPost>();
             
             const addDocsToMap = (snap: any) => {
                 snap.docs.forEach((doc: any) => {
                     if (!mergedMap.has(doc.id)) {
-                        mergedMap.set(doc.id, { id: doc.id, ...doc.data() } as SocialPost);
+                        const stats = trendingMap.get(doc.id);
+                        mergedMap.set(doc.id, { 
+                            id: doc.id, 
+                            ...doc.data(), 
+                            trendScore: stats?.trendScore || 0 
+                        } as SocialPost);
                     }
                 });
             };
@@ -109,13 +118,18 @@ export default function CampusPulseFeed({
             addDocsToMap(explorationSnap);
 
             // 🏎️ TRENDING HYDRATION: Fetch post data for IDs in trending stats
-            const trendingIds = trendingSnap.docs.map((d: any) => d.id);
+            const trendingIds = trendingDocs.map((d: any) => d.id);
             const missingIds = trendingIds.filter((id: string) => !mergedMap.has(id));
             if (missingIds.length > 0) {
                 const missingSnaps = await Promise.all(missingIds.slice(0, 50).map((id: string) => getDoc(doc(firestore, 'campus_pulse', id))));
                 missingSnaps.forEach(snap => {
                     if (snap.exists()) {
-                        const postData = { id: snap.id, ...snap.data() } as SocialPost;
+                        const stats = trendingMap.get(snap.id);
+                        const postData = { 
+                            id: snap.id, 
+                            ...snap.data(), 
+                            trendScore: stats?.trendScore || 0 
+                        } as SocialPost;
                         if (!tagToFilter || postData.tags?.includes(tagToFilter)) {
                             mergedMap.set(snap.id, postData);
                         }
@@ -178,20 +192,37 @@ export default function CampusPulseFeed({
 
         let combined = [...mappedSrc, ...posts];
 
-        // 🧠 STAGE 2: SEMANTIC RANKING (Vector Similarity)
-        // If we have a query vector, rank candidate pool by conceptual meaning.
+        // 🧠 STAGE 2: HYBRID RANKING (Semantic + Keyword + Trend + Quality)
         if (queryVector) {
             combined = combined
                 .map(post => {
+                    // A. Semantic Similarity (0.6 weight)
                     const similarity = post.embedding ? cosineSimilarity(queryVector, post.embedding) : 0;
-                    // Boost if exact keyword match found in caption
-                    const keywordMatch = post.content?.toLowerCase().includes(searchQuery.toLowerCase()) ? 0.15 : 0;
-                    return { ...post, searchScore: similarity + keywordMatch };
+                    
+                    // B. Exact Hashtag Match (0.2 weight)
+                    const queryWords = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                    const postTags = new Set([
+                        ...(post.tags || []),
+                        ...(post.aiTags || [])
+                    ].map(t => t.toLowerCase()));
+                    const tagMatchCount = queryWords.filter(w => postTags.has(w)).length;
+                    const hashtagMatch = Math.min(tagMatchCount / Math.max(queryWords.length, 1), 1);
+
+                    // C. Trending Boost (0.1 weight)
+                    const trendingBoost = post.trendScore ? Math.min(post.trendScore / 100, 1) : 0;
+
+                    // D. Creator Quality (0.1 weight)
+                    const creatorScore = post.authorQualityScore ? post.authorQualityScore / 100 : 0.5;
+
+                    // Compute Professional Hybrid Score
+                    const finalScore = (similarity * 0.6) + (hashtagMatch * 0.2) + (trendingBoost * 0.1) + (creatorScore * 0.1);
+
+                    return { ...post, searchScore: finalScore };
                 })
-                .filter(post => (post as any).searchScore > 0.35) // CONCEPTUAL RELEVANCE THRESHOLD
+                .filter(post => (post as any).searchScore > 0.25) // Conceptual Relevance Threshold
                 .sort((a, b) => (b as any).searchScore - (a as any).searchScore);
         } else if (searchQuery.trim() && !searchQuery.startsWith('#')) {
-            // Fallback to keyword search if vector generation is still in progress or failed
+            // Fallback to keyword search
             const term = searchQuery.toLowerCase().trim();
             combined = combined.filter(post => {
                 const contentMatch = post.content?.toLowerCase().includes(term);
@@ -229,13 +260,13 @@ export default function CampusPulseFeed({
                             </h3>
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Zap size={10} className="text-indigo-500 fill-indigo-500" /> 
-                                {queryVector ? 'Semantic Intelligence Engine Active' : 'Keyword Discovery Pool'}
+                                {queryVector ? 'Hybrid Discovery Engine Active' : 'Keyword Discovery Pool'}
                             </p>
                         </div>
                     </div>
                     {queryVector && (
                         <div className="bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800 animate-in zoom-in">
-                            <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Conceptual Match</span>
+                            <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Semantic Match</span>
                         </div>
                     )}
                 </div>
@@ -247,11 +278,11 @@ export default function CampusPulseFeed({
                         <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">{searchQuery ? 'Semantic Search Stream' : 'Blended Discovery'}</h4>
+                        <h4 className="font-black text-sm tracking-tight">{searchQuery ? 'Hybrid Search Stream' : 'Blended Discovery'}</h4>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipeline:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Algorithm:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> {searchQuery ? 'Meaning Retrieval' : 'Exploit + Explore'}
+                                <TrendingUp size={10} /> {searchQuery ? 'Semantic + Keyword' : 'Exploit + Explore'}
                             </span>
                         </div>
                     </div>

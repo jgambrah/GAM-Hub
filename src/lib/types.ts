@@ -187,6 +187,9 @@ export type SocialPost = {
   winnerPhoto?: string;
   position?: string;
   isOfficial?: boolean;
+  searchScore?: number; // Ranking score for search results
+  trendScore?: number; // Viral velocity score
+  authorQualityScore?: number; // Denormalized creator quality
 };
 
 export type ArenaPost = {

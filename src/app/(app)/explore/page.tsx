@@ -1,7 +1,8 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles, Hash, Loader2, Share2 } from 'lucide-react';
+import { Search, Globe, Users, ShoppingBag, Video, X, Sparkles, Hash, Loader2, Share2, Zap } from 'lucide-react';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import TrendingTags from '@/components/social/TrendingTags';
 import TrendingSearchTicker from '@/components/social/TrendingSearchTicker';
@@ -38,14 +39,20 @@ export default function ExplorePage() {
       <div className="p-8 bg-slate-950 text-white rounded-b-[4rem] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl -mr-20 -mt-20" />
         <div className="max-w-4xl mx-auto relative z-10 space-y-8">
-          <h1 className="text-4xl font-black tracking-tight italic uppercase">Explore the Yard</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-4xl font-black tracking-tight italic uppercase">Explore the Yard</h1>
+            <div className="bg-blue-500/10 border border-blue-500/20 px-4 py-2 rounded-2xl flex items-center gap-2">
+                <Zap size={14} className="text-blue-400" fill="currentColor" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Hybrid Search</span>
+            </div>
+          </div>
           
           <div className="relative group">
             <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-400" size={22} />
             <input 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search majors, hashtags, or products..."
+              placeholder="Search concepts, hashtags, or people..."
               className="w-full bg-white/5 border border-white/10 p-6 pl-16 rounded-[2.5rem] outline-none focus:bg-white focus:text-slate-900 transition-all font-bold text-lg text-white"
             />
             {searchQuery && (
@@ -120,7 +127,7 @@ export default function ExplorePage() {
                     <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
                         <Sparkles className="text-blue-600" size={20} /> Latest Discoveries
                     </h2>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Real-time Feed</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hybrid Discovery Engine Active</span>
                 </div>
                 
                 <CampusPulseFeed 
