@@ -12,27 +12,31 @@ import { useAuth } from './use-auth';
 /**
  * useMarketRecommendations Hook
  * ----------------------------
- * Implements the Final Three-Stage Marketplace Ranking pipeline.
- * Stage 1: Bucketed Candidate Retrieval (300 items)
- * Stage 2: Local Multi-Signal Scoring (Personalization + Reputation + Velocity)
- * Stage 3: Diversity Filter (Vendor & Category Balancing)
+ * The definitive Marketplace Feed Builder.
+ * 
+ * Pipeline:
+ * 1. BUCKETED RETRIEVAL: Pull 300 candidates from current campus.
+ * 2. PROFILE MATCHING: Load user's market intent and vibe profiles.
+ * 3. MULTI-SIGNAL RANKING: Apply scoring logic (Intent + Vibe + Momentum).
+ * 4. DIVERSITY FILTER: Final pass to ensure category & vendor balance.
  */
 export function useMarketRecommendations() {
   const { firestore } = useFirebase();
   const { user, isTokenReady } = useAuth();
   const { profile: vibeProfile, isLoaded: isVibeLoaded } = useVibeProfile();
   
-  // 1. LOAD USER MARKET PROFILE
+  // 1. LOAD USER MARKET PROFILE (Commercial Intent)
   const marketProfileRef = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
     return doc(firestore, 'user_market_profiles', user.id);
   }, [firestore, user?.id]);
   const { data: marketProfile, isLoading: isLoadingProfile } = useDoc<MarketProfile>(marketProfileRef);
 
-  // 2. STAGE 1: CANDIDATE RETRIEVAL
+  // 2. STAGE 1: CANDIDATE RETRIEVAL (Bucketed)
   const candidatesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     
+    // Fetch broad set of high-potential candidates
     return query(
       collection(firestore, 'products'),
       where('campusId', '==', user.campusId),
@@ -43,12 +47,12 @@ export function useMarketRecommendations() {
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 3. STAGE 2 & 3: PERSONALIZED RANKING & DIVERSITY
+  // 3. STAGE 2 & 3: PERSONALIZED RANKING & DIVERSITY (Local Pass)
   const rankedProducts = useMemo(() => {
     if (!candidates) return [];
     if (!marketProfile && !vibeProfile) return candidates;
 
-    // A. Local Scoring Pass (Stage 2)
+    // A. Local Multi-Signal Scoring (Stage 2)
     const scored = [...candidates]
       .map(product => ({
         product,
@@ -57,7 +61,7 @@ export function useMarketRecommendations() {
       .sort((a, b) => b.score - a.score)
       .map(r => r.product);
 
-    // B. Diversity Pass (Stage 3: Max 2 per vendor, 3 per category)
+    // B. Diversity Protocol (Stage 3: Balance Vendors and Categories)
     return enforceMarketDiversity(scored);
   }, [candidates, marketProfile, vibeProfile]);
 
