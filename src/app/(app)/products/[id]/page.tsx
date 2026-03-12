@@ -8,13 +8,16 @@ import { doc } from 'firebase/firestore';
 import type { Product, MarketProfile } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Youtube, AlertTriangle, MapPin, Heart, Share2, TrendingUp, Loader2 } from 'lucide-react';
+import { 
+    ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, 
+    Youtube, AlertTriangle, MapPin, Heart, Share2, TrendingUp, Loader2, UserPlus, CheckCircle2 
+} from 'lucide-react';
 import Image from 'next/image';
 import ReactPlayer from 'react-player';
 import YouTube from 'react-youtube';
 import { OrderConfirmationDialog } from '@/components/orders/OrderConfirmationDialog';
 import { useAuth } from '@/hooks/use-auth';
-import { recordMarketSignal, toggleFavoriteProduct } from '@/lib/market-intelligence';
+import { recordMarketSignal, toggleFavoriteProduct, toggleFollowVendor } from '@/lib/market-intelligence';
 import RelatedProducts from '@/components/market/RelatedProducts';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +38,7 @@ export default function ProductDetailPage() {
   const [isOrderDialogOpen, setIsOrderDialogOpen] = React.useState(false);
   const [isRestricted, setIsRestricted] = useState(false);
   const [isSyncingFavorite, setIsSyncingFavorite] = useState(false);
+  const [isSyncingFollow, setIsSyncingFollow] = useState(false);
 
   const productRef = useMemoFirebase(() => {
     if (!firestore || !id) return null;
@@ -43,7 +47,6 @@ export default function ProductDetailPage() {
 
   const { data: product, isLoading } = useDoc<Product>(productRef);
 
-  // FETCH: Market Profile to check if favorited
   const marketProfileRef = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
     return doc(firestore, 'user_market_profiles', user.id);
@@ -51,8 +54,8 @@ export default function ProductDetailPage() {
   const { data: profile } = useDoc<MarketProfile>(marketProfileRef);
 
   const isFavorited = profile?.favoriteProducts?.includes(id) || false;
+  const isFollowingVendor = user?.followedVendors?.includes(product?.vendorId || '') || false;
 
-  // 🛒 MARKET INTELLIGENCE: Record product view once loaded
   useEffect(() => {
     if (product && user && firestore) {
         recordMarketSignal(firestore, user.id, product, 'view');
@@ -68,6 +71,16 @@ export default function ProductDetailPage() {
         await toggleFavoriteProduct(firestore, user.id, product, isFavorited);
     } finally {
         setIsSyncingFavorite(false);
+    }
+  };
+
+  const handleToggleFollow = async () => {
+    if (!user || !firestore || !product) return;
+    setIsSyncingFollow(true);
+    try {
+        await toggleFollowVendor(firestore, user.id, product.vendorId, isFollowingVendor);
+    } finally {
+        setIsSyncingFollow(false);
     }
   };
 
@@ -174,7 +187,6 @@ export default function ProductDetailPage() {
                <div className="absolute top-0 right-0 p-8 opacity-5">
                   <PlayCircle size={150} />
                </div>
-               
                <div className="flex items-center justify-between mb-6 relative z-10">
                   <div className="flex items-center gap-3">
                     <div className="p-3 bg-white/10 rounded-2xl border border-white/5"><Video size={20} className="text-blue-400" /></div>
@@ -183,41 +195,16 @@ export default function ProductDetailPage() {
                       <h4 className="font-bold text-sm">Product Walkthrough</h4>
                     </div>
                   </div>
-                  {isRestricted && (
-                    <a 
-                      href={product.videoUrl || '#'} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
-                    >
-                      <Youtube size={14} fill="white" /> Watch on YouTube
-                    </a>
-                  )}
                </div>
-
                <div className="aspect-video rounded-[2rem] overflow-hidden bg-black border-4 border-white/5 shadow-inner relative z-10">
                   {youtubeId ? (
-                    isRestricted ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-center p-6 bg-slate-900">
-                            <AlertTriangle className="text-amber-500 mb-2" />
-                            <p className="text-xs text-slate-400">Embedding restricted by owner. Visit YouTube to see the explainer.</p>
-                        </div>
-                    ) : (
-                        <YouTube 
-                            videoId={youtubeId}
-                            opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }}
-                            className="absolute top-0 left-0 w-full h-full"
-                            onError={(e) => { if (e.data === 101 || e.data === 150) setIsRestricted(true); }}
-                        />
-                    )
-                  ) : (
-                    <ReactPlayer 
-                        url={product.nativeVideoUrl || ''} 
-                        width="100%" 
-                        height="100%" 
-                        controls 
-                        className="absolute top-0 left-0"
+                    <YouTube 
+                        videoId={youtubeId}
+                        opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }}
+                        className="absolute top-0 left-0 w-full h-full"
                     />
+                  ) : (
+                    <ReactPlayer url={product.nativeVideoUrl || ''} width="100%" height="100%" controls className="absolute top-0 left-0" />
                   )}
                </div>
             </div>
@@ -254,18 +241,33 @@ export default function ProductDetailPage() {
                </p>
             </div>
 
-            <div className="p-6 bg-white dark:bg-card rounded-[2.5rem] border border-slate-100 dark:border-border shadow-sm flex items-center gap-5 transition-all hover:border-primary/20">
-                <div className="w-16 h-16 rounded-[1.5rem] bg-slate-900 flex items-center justify-center font-black text-2xl text-white shadow-xl shadow-slate-200 dark:shadow-none">
-                    {product.vendorName?.charAt(0).toUpperCase() || 'V'}
-                </div>
-                <div>
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Verified Vendor</p>
-                    <p className="font-black text-xl text-slate-900 dark:text-foreground">{product.vendorName || 'Campus Merchant'}</p>
-                    <div className="flex items-center gap-1 mt-1">
-                        {[...Array(5)].map((_, i) => <Star key={i} size={10} className="fill-amber-400 text-amber-400" />)}
-                        <span className="text-[10px] font-bold text-slate-400 ml-1">Elite Rating</span>
+            <div className="p-6 bg-white dark:bg-card rounded-[2.5rem] border border-slate-100 dark:border-border shadow-sm flex items-center justify-between transition-all hover:border-primary/20">
+                <div className="flex items-center gap-5">
+                    <div className="w-16 h-16 rounded-[1.5rem] bg-slate-900 flex items-center justify-center font-black text-2xl text-white shadow-xl shadow-slate-200 dark:shadow-none">
+                        {product.vendorName?.charAt(0).toUpperCase() || 'V'}
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Verified Vendor</p>
+                        <p className="font-black text-xl text-slate-900 dark:text-foreground">{product.vendorName || 'Campus Merchant'}</p>
+                        <div className="flex items-center gap-1 mt-1">
+                            {[...Array(5)].map((_, i) => <Star key={i} size={10} className="fill-amber-400 text-amber-400" />)}
+                            <span className="text-[10px] font-bold text-slate-400 ml-1">Elite Rating</span>
+                        </div>
                     </div>
                 </div>
+                
+                <Button 
+                    variant="outline" 
+                    onClick={handleToggleFollow}
+                    disabled={isSyncingFollow}
+                    className={cn(
+                        "rounded-xl font-black text-[10px] uppercase tracking-widest h-10 px-4 transition-all",
+                        isFollowingVendor ? "bg-blue-50 border-blue-200 text-blue-600" : "hover:bg-blue-50"
+                    )}
+                >
+                    {isSyncingFollow ? <Loader2 size={12} className="animate-spin mr-2" /> : isFollowingVendor ? <CheckCircle2 size={12} className="mr-2" /> : <UserPlus size={12} className="mr-2" />}
+                    {isFollowingVendor ? 'Following' : 'Follow Shop'}
+                </Button>
             </div>
           </div>
 
@@ -284,15 +286,10 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      {/* PEOPLE ALSO BOUGHT ENGINE */}
       <RelatedProducts productId={id} />
 
       {isOrderDialogOpen && (
-        <OrderConfirmationDialog 
-            product={product}
-            open={isOrderDialogOpen}
-            onOpenChange={setIsOrderDialogOpen}
-        />
+        <OrderConfirmationDialog product={product} open={isOrderDialogOpen} onOpenChange={setIsOrderDialogOpen} />
       )}
     </div>
   );

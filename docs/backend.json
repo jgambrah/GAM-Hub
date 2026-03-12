@@ -30,6 +30,8 @@
         "role": { "type": "string" },
         "firstName": { "type": "string" },
         "lastName": { "type": "string" },
+        "fcmToken": { "type": "string", "description": "Device token for push notifications." },
+        "followedVendors": { "type": "array", "items": { "type": "string" } },
         "qualityScore": { "type": "number", "description": "0-100 reputation score for discovery ranking." }
       },
       "required": ["id", "email", "campusId", "role"]
@@ -79,32 +81,6 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
-    },
-    "ProductTrend": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "ProductTrend",
-      "type": "object",
-      "description": "Aggregate trending signals for products.",
-      "properties": {
-        "productId": { "type": "string" },
-        "campusId": { "type": "string" },
-        "viewCount": { "type": "number" },
-        "cartCount": { "type": "number" },
-        "purchaseCount": { "type": "number" },
-        "shareCount": { "type": "number" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
-      },
-      "required": ["productId", "campusId"]
-    },
-    "MarketLeaderboard": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "MarketLeaderboard",
-      "type": "object",
-      "description": "Pre-computed global or campus-specific trending product list.",
-      "properties": {
-        "productIds": { "type": "array", "items": { "type": "string" } },
-        "lastUpdated": { "type": "string", "format": "date-time" }
-      }
     }
   },
   "auth": {
@@ -113,11 +89,11 @@
   "firestore": {
     "structure": [
       {
-        "path": "/campuses/{campusId}",
+        "path": "/users/{userId}",
         "definition": {
-          "entityName": "Campus",
-          "schema": { "$ref": "#/backend/entities/Campus" },
-          "description": "Top-level collection for university campus definitions."
+          "entityName": "User",
+          "schema": { "$ref": "#/backend/entities/User" },
+          "description": "User profiles with notification tokens."
         }
       },
       {
@@ -137,27 +113,11 @@
         }
       },
       {
-        "path": "/product_trends/{productId}",
+        "path": "/notifications/{notificationId}",
         "definition": {
-          "entityName": "ProductTrend",
-          "schema": { "$ref": "#/backend/entities/ProductTrend" },
-          "description": "Aggregate trending signals for products."
-        }
-      },
-      {
-        "path": "/market_leaderboard/{leaderboardId}",
-        "definition": {
-          "entityName": "MarketLeaderboard",
-          "schema": { "$ref": "#/backend/entities/MarketLeaderboard" },
-          "description": "Pre-computed discovery results for instant loading."
-        }
-      },
-      {
-        "path": "/product_velocity/{productId}/minutes/{minuteId}",
-        "definition": {
-          "entityName": "ProductVelocity",
+          "entityName": "Notification",
           "schema": { "type": "object" },
-          "description": "Time-series commercial signals for trending detection."
+          "description": "Audit log of sent notifications."
         }
       }
     ]
