@@ -14,26 +14,68 @@ setGlobalOptions({maxInstances: 10});
 
 /**
  * 🏎️ REAL-TIME TRENDING ENGINE (REACTIVE)
- * Recalculates trendScore immediately on engagement.
+ * Upgraded with Time-Series Velocity & Multi-Signal Scoring.
  */
 exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
   const oldData = event.data.before.data();
-  if (data.trendScore && !Object.keys(data).some(k => k !== 'trendScore' && data[k] !== oldData[k])) return null;
+  const db = admin.firestore();
+  const postId = event.params.postId;
 
-  const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-  const ageHours = (new Date() - createdAt) / 3600000;
-  const velocity = (data.views || 0) + (data.likes || 0) * 3 + (data.comments || 0) * 5 + (data.shares || 0) * 8 + (data.completions || 0) * 20;
-  
-  // 📉 EXPONENTIAL TREND DECAY (12hr half-life)
-  const decay = Math.exp(-ageHours / 12);
-  let score = (velocity / Math.pow((ageHours + 2), 1.3)) * decay;
-  
-  if (data.views > 500 && ageHours < 2) score *= 1.5;
-  if (data.views > 300 && ((data.completions || 0) / Math.max(data.views, 1)) > 0.6) score = Math.max(score, 50); 
+  // Optimization: Only run if engagement data has actually changed
+  const hasEngagementChanged = ['views', 'likes', 'comments', 'shares', 'completions'].some(k => data[k] !== oldData[k]);
+  if (!hasEngagementChanged) return null;
 
-  if (data.trendScore && Math.abs(data.trendScore - score) < 0.001) return null;
-  return event.data.after.ref.update({ trendScore: score, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  try {
+    // 1. COMPUTE VELOCITY (Last 15 Minutes)
+    const now = new Date();
+    const lookbackMins = 15;
+    const startTime = new Date(now.getTime() - lookbackMins * 60000).toISOString().slice(0, 16);
+    
+    const velocitySnap = await db.collection("post_velocity").doc(postId).collection("minutes")
+      .where("__name__", ">=", startTime)
+      .get();
+
+    let recentEngagement = 0;
+    velocitySnap.forEach(doc => {
+      const v = doc.data();
+      recentEngagement += (v.views || 0) + (v.likes || 0) * 3 + (v.comments || 0) * 5 + (v.shares || 0) * 8;
+    });
+
+    const velocity = recentEngagement / lookbackMins;
+
+    // 2. COMPUTE RATES (Normalized)
+    const totalViews = Math.max(data.views || 1, 1);
+    const engagementRate = ((data.likes || 0) + (data.comments || 0) + (data.shares || 0)) / totalViews;
+    const completionRate = (data.completions || 0) / totalViews;
+
+    // 3. APPLY MASTER TREND FORMULA
+    // trendScore = (velocity * 0.5) + (engagementRate * 0.3) + (completionRate * 0.2)
+    // We scale the rates to match velocity weights
+    let score = (velocity * 0.5) + (engagementRate * 30) + (completionRate * 20);
+
+    // 📉 Momentum Adjustment: Decay old posts
+    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+    const ageHours = (new Date() - createdAt) / 3600000;
+    const decay = Math.exp(-ageHours / 12);
+    score *= decay;
+
+    // 🚀 Super-Viral Boost
+    if (data.views > 1000 && ageHours < 1) score *= 1.5;
+
+    // Only update if change is significant to prevent recursion loops
+    if (data.trendScore && Math.abs(data.trendScore - score) < 0.01) return null;
+
+    return event.data.after.ref.update({ 
+      trendScore: score, 
+      velocity: velocity,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+    });
+
+  } catch (err) {
+    console.error(`Trending Engine Failure for post ${postId}:`, err);
+    return null;
+  }
 });
 
 /**
@@ -71,13 +113,10 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   const completionRate = totalCompletions / divisor;
 
   // 🏛️ LIAISON QUALITY FORMULA (0-100)
-  // Normalization: interaction rates are typically low (e.g. 0.1), so we scale.
   const consistencyBonus = count > 5 ? 10 : 0;
   const violationPenalty = (data.violations || 0) * 20;
 
   let qualityScore = (engagementRate * 200) + (completionRate * 100) + consistencyBonus - violationPenalty;
-  
-  // Final clamp
   qualityScore = Math.min(100, Math.max(0, Math.round(qualityScore)));
 
   // TIER CLASSIFICATION
@@ -97,8 +136,6 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   };
 
   await db.collection("creator_reputation").doc(authorId).set(reputation, { merge: true });
-  
-  // Denormalize to user doc for high-performance ranking in the UI
   return db.collection("users").doc(authorId).set({ qualityScore, creatorTier: tier }, { merge: true });
 });
 
@@ -161,7 +198,6 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
     const lastUsedAt = data.lastUsedAt?.toDate ? data.lastUsedAt.toDate() : now;
     const ageHours = Math.max(0, (now - lastUsedAt) / 3600000);
     
-    // 📉 Formula: (Velocity * 0.6 + EngagementRate * 0.3 + Freshness * 0.1) * Decay
     const decay = Math.exp(-ageHours / 12);
     const trendScore = (velocity * 0.6 + (velocity > 0 ? 0.3 : 0) + (1 / (ageHours * 60 + 1)) * 0.1) * decay;
 
@@ -193,22 +229,12 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
 
 /**
  * 🤖 AI MEDIA CONTENT AUDIT (STORAGE TRIGGER)
- * Flags media for analysis or provides basic metadata tagging.
  */
 exports.onVibeMediaUploaded = onObjectFinalized(async (event) => {
   const filePath = event.data.name;
   if (!filePath.startsWith("social_posts/") && !filePath.startsWith("social_videos/")) return;
 
   const db = admin.firestore();
-  
-  // Note: High-fidelity multi-modal analysis is handled by the high-performance
-  // Genkit flow triggered in ShareVibeModal. This trigger acts as a 
-  // secondary audit layer for the Liaison.
-  
-  console.log(`🤖 AI CONTENT AUDIT: Media detected at ${filePath}. Enqueued for Deep Vibe analysis.`);
-  
-  // For a professional prototype, we mark the post as "Under Intelligent Audit"
-  // once the storage upload is confirmed.
   const fileUrl = `https://firebasestorage.googleapis.com/v0/b/${event.data.bucket}/o/${encodeURIComponent(filePath)}?alt=media`;
   
   const postsSnap = await db.collection("campus_pulse").where("mediaUrl", "==", fileUrl).limit(1).get();
