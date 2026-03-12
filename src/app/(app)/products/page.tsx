@@ -11,6 +11,7 @@ import SponsoredMajorAd from '@/components/market/SponsoredMajorAd';
 import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
 import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot, Trophy, Mic, TrendingUp, Star, Flame, Tag, Megaphone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';

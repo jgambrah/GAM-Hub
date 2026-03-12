@@ -5,7 +5,7 @@
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
  * Upgraded with Notification FCM tokens and Follower Logic.
- * Now includes User Notifications and Detailed Product View tracking.
+ * Now includes Trending Retrieval and Atomic Event Tracking.
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -14,6 +14,73 @@ import { computeTrendScore } from './compute-trend-score';
 import { applyTrendDecay } from './apply-trend-decay';
 
 export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
+
+/**
+ * trackProductEvent
+ * -----------------
+ * Atomic event tracking for the trending engine.
+ */
+export async function trackProductEvent(
+  firestore: Firestore,
+  productId: string,
+  eventType: 'view' | 'cart' | 'purchase' | 'share',
+  campusId: string
+) {
+  const ref = doc(firestore, "product_trends", productId);
+
+  const updates: any = {
+    productId,
+    campusId,
+    lastUpdated: serverTimestamp()
+  };
+
+  if (eventType === "view") updates.viewCount = increment(1);
+  if (eventType === "cart") updates.cartCount = increment(1);
+  if (eventType === "purchase") updates.purchaseCount = increment(1);
+  if (eventType === "share") updates.shareCount = increment(1);
+
+  return setDoc(ref, updates, { merge: true });
+}
+
+/**
+ * getTrendingProducts
+ * -------------------
+ * Retrieves high-velocity products for a specific campus leaderboard.
+ */
+export async function getTrendingProducts(
+  firestore: Firestore,
+  campusId: string
+) {
+  const q = query(
+    collection(firestore, "product_trends"),
+    where("campusId", "==", campusId),
+    limit(100)
+  );
+
+  const snapshot = await getDocs(q);
+  const trends = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ProductTrend));
+
+  const scored = trends.map(trend => {
+    let score = computeTrendScore(trend);
+    
+    // Handle both ISO string and Firestore Timestamp for decay
+    const lastUpdated = trend.lastUpdated?.toDate 
+      ? trend.lastUpdated.toDate() 
+      : new Date(trend.lastUpdated);
+
+    score = applyTrendDecay(score, lastUpdated);
+
+    return {
+      productId: trend.productId,
+      score
+    };
+  });
+
+  // Sort by final decayed score
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, 20);
+}
 
 /**
  * recordMarketSignal
@@ -31,26 +98,20 @@ export async function recordMarketSignal(
 
   const profileRef = doc(firestore, 'user_market_profiles', userId);
   const statsRef = doc(firestore, 'products', product.id);
-  const trendRef = doc(firestore, 'product_trends', product.id);
   
-  const minuteBucket = new Date().toISOString().slice(0, 16); 
-  const velocityRef = doc(firestore, 'product_velocity', product.id, 'minutes', minuteBucket);
+  // Track specifically for the trending engine aggregate
+  const trendingEventType = signal === 'intent' ? 'cart' : (signal as any);
+  if (['view', 'cart', 'purchase', 'share'].includes(trendingEventType)) {
+    trackProductEvent(firestore, product.id, trendingEventType, product.campusId);
+  }
 
   const profileUpdates: any = { updatedAt: serverTimestamp() };
-  const velocityUpdates: any = {};
   const productAggregates: any = {};
-  const trendUpdates: any = {
-    productId: product.id,
-    campusId: product.campusId,
-    lastUpdated: serverTimestamp()
-  };
 
   switch (signal) {
     case 'view':
       profileUpdates[`viewedCategories.${product.category}`] = increment(1);
-      velocityUpdates.views = increment(1);
       productAggregates.viewCount = increment(1);
-      trendUpdates.viewCount = increment(1);
       
       // 🕵️ DETAILED VIEW TRACKING (For Price Drop Alerts)
       addDoc(collection(firestore, 'user_product_views'), {
@@ -61,33 +122,24 @@ export async function recordMarketSignal(
       break;
     case 'favorite':
       profileUpdates.favoriteProducts = arrayUnion(product.id);
-      velocityUpdates.favorites = increment(1);
       productAggregates.favoriteCount = increment(1);
       break;
     case 'share':
-      velocityUpdates.shares = increment(1);
       productAggregates.shareCount = increment(1);
-      trendUpdates.shareCount = increment(1);
       break;
     case 'intent':
       profileUpdates[`intentCategories.${product.category}`] = increment(1);
       profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
-      velocityUpdates.intents = increment(1);
-      trendUpdates.cartCount = increment(1);
       break;
     case 'purchase':
       profileUpdates[`purchasedCategories.${product.category}`] = increment(1);
       profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
-      velocityUpdates.purchases = increment(1);
       productAggregates.salesCount = increment(1);
-      trendUpdates.purchaseCount = increment(1);
       updateCoPurchaseCorrelation(firestore, userId, product.id);
       break;
   }
 
   setDoc(profileRef, profileUpdates, { merge: true }).catch(() => {});
-  setDoc(velocityRef, velocityUpdates, { merge: true }).catch(() => {});
-  setDoc(trendRef, trendUpdates, { merge: true }).catch(() => {});
   if (Object.keys(productAggregates).length > 0) {
     setDoc(statsRef, productAggregates, { merge: true }).catch(() => {});
   }
@@ -136,24 +188,7 @@ export async function saveFcmToken(firestore: Firestore, userId: string, token: 
 }
 
 /**
- * getTrendingProducts (Existing)
- */
-export async function getTrendingProducts(firestore: Firestore, campusId: string) {
-  const q = query(collection(firestore, "product_trends"), where("campusId", "==", campusId), limit(100));
-  const snapshot = await getDocs(q);
-  const trends = snapshot.docs.map(d => d.data() as ProductTrend);
-  const scored = trends.map(trend => {
-    let score = computeTrendScore(trend);
-    const lastUpdated = trend.lastUpdated?.toDate ? trend.lastUpdated.toDate() : new Date(trend.lastUpdated);
-    score = applyTrendDecay(score, lastUpdated);
-    return { productId: trend.productId, score };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 20);
-}
-
-/**
- * toggleFavoriteProduct (Existing)
+ * toggleFavoriteProduct
  */
 export async function toggleFavoriteProduct(firestore: Firestore, userId: string, product: Product, isFavorited: boolean) {
     const profileRef = doc(firestore, 'user_market_profiles', userId);
@@ -169,7 +204,7 @@ export async function toggleFavoriteProduct(firestore: Firestore, userId: string
 }
 
 /**
- * updateCoPurchaseCorrelation (Existing)
+ * updateCoPurchaseCorrelation
  */
 async function updateCoPurchaseCorrelation(firestore: Firestore, userId: string, newProductId: string) {
     try {
@@ -187,7 +222,7 @@ async function updateCoPurchaseCorrelation(firestore: Firestore, userId: string,
 }
 
 /**
- * getRelatedProducts (Existing)
+ * getRelatedProducts
  */
 export async function getRelatedProducts(firestore: Firestore, productId: string) {
     if (!firestore || !productId) return [];

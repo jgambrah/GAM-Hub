@@ -115,6 +115,21 @@
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
     },
+    "ProductTrend": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ProductTrend",
+      "type": "object",
+      "description": "Aggregated momentum signals for trending algorithms.",
+      "properties": {
+        "productId": { "type": "string" },
+        "campusId": { "type": "string" },
+        "viewCount": { "type": "number" },
+        "cartCount": { "type": "number" },
+        "purchaseCount": { "type": "number" },
+        "shareCount": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      }
+    },
     "Notification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Notification",
@@ -194,6 +209,14 @@
           "entityName": "Product",
           "schema": { "$ref": "#/backend/entities/Product" },
           "description": "Marketplace product listings with recommendation metadata."
+        }
+      },
+      {
+        "path": "/product_trends/{productId}",
+        "definition": {
+          "entityName": "ProductTrend",
+          "schema": { "$ref": "#/backend/entities/ProductTrend" },
+          "description": "Aggregated trending signals for real-time leaderboards."
         }
       },
       {
