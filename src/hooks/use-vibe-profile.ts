@@ -1,18 +1,19 @@
 
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { doc, onSnapshot, Firestore } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import type { SocialPost, UserIntelligence, VibeSignal } from '@/lib/types';
 import { recordUnifiedSignal, updateVideoInterest } from '@/lib/user-intelligence';
+import { expandInterests } from '@/lib/knowledge-graph';
 
 /**
  * useVibeProfile Hook
  * -------------------
  * Manages the local state for the Unified User Intelligence Engine.
- * Implements the 2x Personalization Boost for discovery ranking.
+ * Upgraded with Knowledge Graph "Expansion" for smarter discovery.
  */
 export function useVibeProfile() {
   const { firestore } = useFirebase();
@@ -23,6 +24,7 @@ export function useVibeProfile() {
     affinities: { creators: {}, vendors: {} },
     engagementLevel: 0
   });
+  const [expandedInterestsMap, setExpandedInterests] = useState<Record<string, number>>({});
   const [isLoaded, setIsLoaded] = useState(false);
 
   // 🏎️ Real-time Listener for the Unified Brain
@@ -32,9 +34,21 @@ export function useVibeProfile() {
       return;
     }
 
-    const unsub = onSnapshot(doc(firestore, 'user_intelligence', user.id), (snap) => {
+    const unsub = onSnapshot(doc(firestore, 'user_intelligence', user.id), async (snap) => {
       if (snap.exists()) {
-        setIntelligence(snap.data() as UserIntelligence);
+        const data = snap.data() as UserIntelligence;
+        setIntelligence(data);
+
+        // 🕸️ GRAPH EXPANSION: Discover related topics the user might like
+        if (data.interests) {
+            const topDirect = Object.entries(data.interests)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 10)
+                .map(([id]) => id);
+            
+            const expanded = await expandInterests(firestore, topDirect);
+            setExpandedInterests(expanded);
+        }
       }
       setIsLoaded(true);
     }, () => setIsLoaded(true));
@@ -43,29 +57,10 @@ export function useVibeProfile() {
   }, [firestore, user?.id]);
 
   /**
-   * recordSignal
-   * ------------
-   * Relays a social vibe signal to the Unified Intelligence Engine.
-   */
-  const recordSignal = useCallback(async (post: SocialPost, signal: VibeSignal) => {
-    if (!firestore || !user?.id) return;
-
-    // Direct interest update for video watches
-    if (signal === 'watch') {
-        updateVideoInterest(firestore, user.id, post);
-    }
-
-    recordUnifiedSignal(firestore, user.id, signal, {
-      tags: [...(post.tags || []), ...(post.aiTags || [])],
-      creatorId: post.authorId
-    });
-  }, [firestore, user?.id]);
-
-  /**
    * getPersonalScore
    * ----------------
-   * UNIFIED INTEREST SCORING:
-   * Boosts content relevance by 2x for matched interests from the unified brain.
+   * KNOWLEDGE GRAPH DISCOVERY:
+   * Boosts content by 2x for direct matches and 0.8x for graph-expanded matches.
    */
   const getPersonalScore = useCallback((post: SocialPost): number => {
     if (!isLoaded || !intelligence.interests) return 0;
@@ -76,20 +71,24 @@ export function useVibeProfile() {
       ...(post.aiTags || [])
     ].map(t => t.toLowerCase());
 
-    // 🎯 THE BOOST: score += userInterest[tag] * 2
-    // This makes the feed feel extremely personalized based on BOTH social and market signals.
     postTags.forEach(tag => {
-      const interestWeight = intelligence.interests![tag] || 0;
-      score += interestWeight * 2.0; 
+      // 🎯 1. Direct Signal Boost (2x)
+      const directWeight = intelligence.interests![tag] || 0;
+      score += directWeight * 2.0; 
+
+      // 🕸️ 2. Graph Relationship Boost (0.8x)
+      // This surfaces content that is 'near' your interests in the graph
+      const graphWeight = expandedInterestsMap[tag] || 0;
+      score += graphWeight * 0.8;
     });
 
-    // Creator Affinity: High boost for creators the user engages with
+    // Creator Affinity
     if (post.authorId && intelligence.affinities?.creators?.[post.authorId]) {
       score += (intelligence.affinities.creators[post.authorId]) * 1.5;
     }
 
     return score;
-  }, [intelligence, isLoaded]);
+  }, [intelligence, expandedInterestsMap, isLoaded]);
 
   const getTopInterests = useCallback((n = 8): string[] => {
     if (!intelligence.interests) return [];
@@ -102,7 +101,14 @@ export function useVibeProfile() {
   return { 
     profile: intelligence, 
     isLoaded, 
-    recordSignal, 
+    recordSignal: (post: SocialPost, signal: VibeSignal) => {
+        if (!firestore || !user?.id) return;
+        if (signal === 'watch') updateVideoInterest(firestore, user.id, post);
+        recordUnifiedSignal(firestore, user.id, signal, {
+            tags: [...(post.tags || []), ...(post.aiTags || [])],
+            creatorId: post.authorId
+        });
+    },
     getPersonalScore, 
     getTopInterests 
   };

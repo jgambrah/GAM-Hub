@@ -65,6 +65,14 @@ export type UserIntelligence = {
   updatedAt: string;
 };
 
+export type KnowledgeGraphNode = {
+  id: string;
+  type: 'tag' | 'category' | 'creator' | 'vendor' | 'location';
+  name: string;
+  connections: Record<string, { weight: number; lastUpdated: any }>;
+  updatedAt: any;
+};
+
 export type NotificationSettings = {
   userId: string;
   priceDrops: boolean;
@@ -228,3 +236,26 @@ export type PayoutRequest = {
 
 export type MarketplaceSignal = 'view' | 'click' | 'purchase' | 'favorite' | 'intent';
 export type VibeSignal = 'watch' | 'like' | 'share' | 'comment' | 'skip' | 'reaction';
+
+export type DemandSignal = {
+  id: string;
+  item: string;
+  category: string;
+  campusId: string;
+  demandCount: number;
+  lastUpdated: any;
+};
+
+export type MarketRequest = {
+  id: string;
+  userId: string;
+  userName: string;
+  query: string;
+  category: string;
+  tags: string[];
+  condition: 'new' | 'used' | 'any';
+  campusId: string;
+  location: string;
+  createdAt: any;
+  status: 'open' | 'closed';
+};

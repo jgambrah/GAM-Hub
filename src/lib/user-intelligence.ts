@@ -9,6 +9,7 @@
 
 import { doc, setDoc, increment, serverTimestamp, getDoc, Firestore } from 'firebase/firestore';
 import type { UserIntelligence, MarketplaceSignal, VibeSignal, SocialPost, Product } from './types';
+import { recordEdge } from './knowledge-graph';
 
 // LIAISON INTELLIGENCE WEIGHTS
 // Maps signals to their holistic engagement value
@@ -33,7 +34,6 @@ const SIGNAL_VALUES: Record<MarketplaceSignal | VibeSignal, number> = {
  * updateVideoInterest
  * -------------------
  * Updates user interests based on video engagement.
- * (Signal: +1 per tag)
  */
 export async function updateVideoInterest(
   firestore: Firestore,
@@ -50,6 +50,15 @@ export async function updateVideoInterest(
     updates[`interests.${tag.toLowerCase()}`] = increment(1);
   });
 
+  // 🕸️ GRAPH HANDSHAKE: Strengthen relationship between tags found in this video
+  if (tags.length >= 2) {
+      for (let i = 0; i < Math.min(tags.length, 3); i++) {
+          for (let j = i + 1; j < Math.min(tags.length, 4); j++) {
+              recordEdge(firestore, tags[i].toLowerCase(), tags[j].toLowerCase(), 'tag');
+          }
+      }
+  }
+
   return setDoc(ref, updates, { merge: true }).catch(() => {});
 }
 
@@ -57,7 +66,6 @@ export async function updateVideoInterest(
  * updateMarketInterest
  * --------------------
  * Updates user interests based on marketplace behavior.
- * (Signal: Category +3, Tags +2)
  */
 export async function updateMarketInterest(
   firestore: Firestore,
@@ -70,16 +78,19 @@ export async function updateMarketInterest(
   const ref = doc(firestore, 'user_intelligence', userId);
   const updates: any = { updatedAt: serverTimestamp() };
 
-  // Purchases have a multiplier effect on the signal (3x)
   const multiplier = isPurchase ? 3 : 1;
 
-  // 1. Boost Category (Primary Signal)
-  updates[`interests.${product.category.toLowerCase()}`] = increment(3 * multiplier);
+  // 1. Boost Category
+  const categoryId = product.category.toLowerCase();
+  updates[`interests.${categoryId}`] = increment(3 * multiplier);
 
-  // 2. Boost Tags (Secondary Signal)
+  // 2. Boost Tags
   if (product.tags) {
     product.tags.forEach(tag => {
-      updates[`interests.${tag.toLowerCase()}`] = increment(2 * multiplier);
+      const tagId = tag.toLowerCase();
+      updates[`interests.${tagId}`] = increment(2 * multiplier);
+      // 🕸️ GRAPH HANDSHAKE: Link category to its tags
+      recordEdge(firestore, categoryId, tagId, 'category', 2);
     });
   }
 
@@ -95,9 +106,6 @@ export async function updateMarketInterest(
 
 /**
  * recordUnifiedSignal
- * -------------------
- * The primary entry point for behavior logging.
- * Updates the shared interest profile regardless of the signal's origin.
  */
 export async function recordUnifiedSignal(
   firestore: Firestore,
@@ -118,23 +126,19 @@ export async function recordUnifiedSignal(
   
   const updates: any = {
     updatedAt: serverTimestamp(),
-    engagementLevel: increment(score * 0.001) // Normalize level over time
+    engagementLevel: increment(score * 0.001) 
   };
 
-  // 1. Process Tags & Categories (Interests)
   const interestsToBoost = new Set<string>();
   if (context.category) interestsToBoost.add(context.category.toLowerCase());
   if (context.tags) context.tags.forEach(t => interestsToBoost.add(t.toLowerCase()));
 
   interestsToBoost.forEach(interest => {
-    // Determine the interest weight based on the signal origin
     let weight = score;
-    if (type === 'watch') weight = 1; // Align with updateVideoInterest protocol
-    
+    if (type === 'watch') weight = 1; 
     updates[`interests.${interest}`] = increment(weight);
   });
 
-  // 2. Process Affinities (Creators/Vendors)
   if (context.creatorId) {
     updates[`affinities.creators.${context.creatorId}`] = increment(score);
   }
@@ -142,7 +146,6 @@ export async function recordUnifiedSignal(
     updates[`affinities.vendors.${context.vendorId}`] = increment(score);
   }
 
-  // 3. Process Price Sensitivity
   if (context.price && (type === 'view' || type === 'purchase')) {
       const min = context.price * 0.6;
       const max = context.price * 1.8;
@@ -158,8 +161,6 @@ export async function recordUnifiedSignal(
 
 /**
  * getUnifiedProfile
- * -----------------
- * Retrieval for the ranking engines.
  */
 export async function getUnifiedProfile(firestore: Firestore, userId: string): Promise<UserIntelligence | null> {
   if (!firestore || !userId) return null;

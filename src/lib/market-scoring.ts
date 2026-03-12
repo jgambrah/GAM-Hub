@@ -3,7 +3,7 @@
 
 /**
  * @fileOverview Marketplace Ranking Engine.
- * Upgraded to use the Unified User Intelligence profile with high cross-platform weighting.
+ * Upgraded to use the Unified Intelligence Brain + Knowledge Graph expansion.
  */
 
 import type { Product, UserIntelligence, User, MarketIntent } from './types';
@@ -17,8 +17,7 @@ export function computeVendorScore(product: Product) {
 /**
  * computeMarketScore
  * ------------------
- * The commercial discovery formula.
- * Now factors in the 3x multiplier for Unified Intelligence categories.
+ * Commercial Discovery with Knowledge Graph Support.
  */
 export function computeMarketScore(
   product: Product,
@@ -39,14 +38,15 @@ export function computeMarketScore(
     if (product.category.toLowerCase().includes(term)) score += 15;
   }
 
-  // 2. 🧠 UNIFIED BRAIN SIGNALS (Video Engagement + Market History)
+  // 2. 🧠 UNIFIED BRAIN + 🕸️ GRAPH SIGNALS
   if (unifiedIntelligence?.interests) {
-    // 🎯 THE CROSS-PLATFORM BOOST: score += userInterest[category] * 3
-    // This connects video behavior directly to marketplace priority.
-    const catWeight = unifiedIntelligence.interests[product.category.toLowerCase()] || 0;
+    const productCategory = product.category.toLowerCase();
+    
+    // 🎯 Direct Match (3x)
+    const catWeight = unifiedIntelligence.interests[productCategory] || 0;
     score += catWeight * 3.0; 
 
-    // Match product tags (secondary signal)
+    // Match product tags
     if (product.tags) {
         product.tags.forEach(tag => {
             const weight = unifiedIntelligence.interests![tag.toLowerCase()] || 0;
@@ -54,7 +54,7 @@ export function computeMarketScore(
         });
     }
 
-    // Vendor Affinity: High boost for merchants the user interacts with or follows
+    // Vendor Affinity
     if (unifiedIntelligence.affinities?.vendors?.[product.vendorId]) {
         score += (unifiedIntelligence.affinities.vendors[product.vendorId]) * 5;
     }
@@ -64,7 +64,7 @@ export function computeMarketScore(
   if (user && product.campusId === user.campusId) score += 5;
   if (product.trendScore) score += product.trendScore * 0.5;
 
-  // 4. Freshness: Exponential decay for older listings
+  // 4. Freshness
   if (product.createdAt) {
     const date = typeof product.createdAt === 'string' ? new Date(product.createdAt) : product.createdAt.toDate();
     const ageHours = (Date.now() - date.getTime()) / 3600000;

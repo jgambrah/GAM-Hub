@@ -79,44 +79,22 @@
       },
       "required": ["authorId", "content", "campusId"]
     },
-    "Notification": {
+    "KnowledgeGraphNode": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Notification",
+      "title": "KnowledgeGraphNode",
+      "description": "Represents a node in the platform's relationship network.",
       "type": "object",
-      "description": "Push notification record with engagement tracking.",
       "properties": {
         "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "title": { "type": "string" },
-        "body": { "type": "string" },
-        "type": { "type": "string" },
-        "sentAt": { "type": "string", "format": "date-time" },
-        "opened": { "type": "boolean" },
-        "clicked": { "type": "boolean" },
-        "purchased": { "type": "boolean" },
-        "relatedProductId": { "type": "string" }
-      }
-    },
-    "Product": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Product",
-      "type": "object",
-      "description": "Represents a product listed for sale with discovery metadata.",
-      "properties": {
-        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["tag", "category", "creator", "vendor", "location"] },
         "name": { "type": "string" },
-        "price": { "type": "number" },
-        "averagePrice": { "type": "number", "description": "Historical average price for deal detection." },
-        "vendorId": { "type": "string" },
-        "campusId": { "type": "string" },
-        "category": { "type": "string" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "salesCount": { "type": "number" },
-        "viewCount": { "type": "number" },
-        "trendScore": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "connections": { 
+          "type": "object",
+          "description": "Map of target node IDs to weight metadata."
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "campusId", "vendorId", "name", "price"]
+      "required": ["id", "type", "name"]
     },
     "Order": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -162,6 +140,14 @@
           "entityName": "SocialPost",
           "schema": { "$ref": "#/backend/entities/SocialPost" },
           "description": "The unified stream of campus vibrations."
+        }
+      },
+      {
+        "path": "/knowledge_graph/{nodeId}",
+        "definition": {
+          "entityName": "KnowledgeGraphNode",
+          "schema": { "$ref": "#/backend/entities/KnowledgeGraphNode" },
+          "description": "The shared intelligence graph connecting all campus entities."
         }
       },
       {
