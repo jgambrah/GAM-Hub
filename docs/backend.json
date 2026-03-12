@@ -133,6 +133,7 @@
           "entityName": "NotificationSettings",
           "schema": { "$ref": "#/backend/entities/NotificationSettings" },
           "description": "Personalized notification toggles and quiet hours."
+"
         }
       },
       {

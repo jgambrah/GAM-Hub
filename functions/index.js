@@ -1,7 +1,6 @@
 
-const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onDocumentUpdated, onDocumentCreated} = require("firebase-functions/v2/firestore");
-const {onObjectFinalized} = require("firebase-functions/v2/storage");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {setGlobalOptions} = require("firebase-functions");
 const admin = require("firebase-admin");
 
@@ -11,6 +10,12 @@ setGlobalOptions({maxInstances: 10});
 /**
  * 🔔 SMART NOTIFICATION ENGINE: Price Drop & Restock Detector
  * Triggers when a product document is updated.
+ * 
+ * Logic:
+ * 1. Detect if price dropped below previous or historical average (20% threshold).
+ * 2. Find users who viewed this product recently (user_product_views).
+ * 3. Find users who favorited this product (user_market_profiles).
+ * 4. Multicast notification to all interested parties.
  */
 exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async (event) => {
   const before = event.data.before.data();
@@ -19,27 +24,47 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
   const db = admin.firestore();
 
   const isPriceDrop = after.price < before.price;
+  const isSignificantDrop = after.averagePrice && (after.price < after.averagePrice * 0.80); // 20% or more OFF
   const isRestock = after.stock > 0 && before.stock === 0;
 
-  if (!isPriceDrop && !isRestock) return null;
+  if (!isPriceDrop && !isSignificantDrop && !isRestock) return null;
 
   try {
-    // Find users who have favorited this product
+    // 1. Gather Users from Explicit Favorites
     const profilesSnap = await db.collection("user_market_profiles")
       .where("favoriteProducts", "array-contains", productId)
       .get();
+    
+    let interestedUserIds = profilesSnap.docs.map(doc => doc.id);
 
-    if (profilesSnap.empty) return null;
+    // 2. Gather Users from Recent Views (Last 30 days)
+    const viewThreshold = new Date();
+    viewThreshold.setDate(viewThreshold.getDate() - 30);
+    
+    const viewsSnap = await db.collection("user_product_views")
+      .where("productId", "==", productId)
+      .where("viewedAt", ">=", viewThreshold.toISOString())
+      .limit(200)
+      .get();
 
-    const userIds = profilesSnap.docs.map(doc => doc.id);
+    viewsSnap.forEach(vDoc => {
+        const uid = vDoc.data().userId;
+        if (!interestedUserIds.includes(uid)) interestedUserIds.push(uid);
+    });
+
+    if (interestedUserIds.length === 0) return null;
+
+    // 3. Batch Fetch de-duplicated tokens
     const usersSnap = await db.collection("users")
-      .where("__name__", "in", userIds.slice(0, 500)) // Max 500 per batch
+      .where("__name__", "in", interestedUserIds.slice(0, 100)) // FCM batch limit
       .get();
 
     const tokens = [];
     usersSnap.forEach(uDoc => {
-      const token = uDoc.data().fcmToken;
-      if (token) tokens.push(token);
+      const data = uDoc.data();
+      const token = data.fcmToken;
+      // Safety: Don't notify the vendor themselves
+      if (token && data.id !== after.vendorId) tokens.push(token);
     });
 
     if (tokens.length === 0) return null;
@@ -47,12 +72,12 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
     let title = "";
     let body = "";
 
-    if (isPriceDrop) {
-      title = "📉 Price Drop Alert!";
-      body = `${after.name} just dropped from GHS ${before.price} to GHS ${after.price}! 💸`;
+    if (isPriceDrop || isSignificantDrop) {
+      title = isSignificantDrop ? "📉 MASSIVE DEAL ALERT!" : "📉 Price Drop Alert!";
+      body = `${after.name} is now only GHS ${after.price}! 💸`;
     } else if (isRestock) {
-      title = "📦 Restock Alert!";
-      body = `Good news! ${after.name} is back in stock in the Yard. Get it while it lasts!`;
+      title = "📦 Fresh Stock in the Yard!";
+      body = `Good news! ${after.name} is back. Get it while it lasts!`;
     }
 
     const message = {
@@ -112,7 +137,7 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
 });
 
 /**
- * 🛒 PRODUCT TRENDING LEADERBOARD SCHEDULER (Existing)
+ * 🛒 PRODUCT TRENDING LEADERBOARD SCHEDULER
  */
 exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event) => {
   const db = admin.firestore();
@@ -147,7 +172,7 @@ exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event)
 });
 
 /**
- * 🛒 PRODUCT TRENDING ENGINE (V2) - Reactive Sync (Existing)
+ * 🛒 PRODUCT TRENDING ENGINE (V2) - Reactive Sync
  */
 exports.calculateProductTrendingScore = onDocumentUpdated("product_trends/{productId}", async (event) => {
   const data = event.data.after.data();
@@ -174,5 +199,3 @@ exports.calculateProductTrendingScore = onDocumentUpdated("product_trends/{produ
     return null;
   }
 });
-
-// ... [Existing real-time trending engine (social) OMITTED for brevity] ...
