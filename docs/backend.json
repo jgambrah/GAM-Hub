@@ -85,6 +85,7 @@
         "musicGenre": { "type": "string", "description": "Detected music genre if applicable." },
         "detectedObjects": { "type": "array", "items": { "type": "string" }, "description": "Visual objects detected in media." },
         "transcript": { "type": "string", "description": "AI-generated summary of speech or audio content." },
+        "embedding": { "type": "array", "items": { "type": "number" }, "description": "Semantic vector for similarity search." },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "authorId", "content", "createdAt"]

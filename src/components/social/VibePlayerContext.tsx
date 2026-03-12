@@ -82,8 +82,8 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 }
 
 /**
- * 🏗️ MASTER DISCOVERY EQUATION (AI Augmented)
- * Now incorporates mood and visual object matching.
+ * 🏗️ MASTER DISCOVERY EQUATION (ENTERPRISE GRADE)
+ * score = tagSimilarity + interestMatch + creatorQuality + viralBoost + aiTopicMatch + moodMatch + freshness
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -97,7 +97,7 @@ export function computeVibeScore(
 ) {
   let score = 0;
 
-  // 1. Tag Similarity (Content + AI Content understanding)
+  // 1. CONTENT INTELLIGENCE MATCH (Similarity)
   const currentTags = new Set([
     ...(current.tags || []),
     ...(current.aiTags || [])
@@ -108,20 +108,26 @@ export function computeVibeScore(
     ...(candidate.aiTags || [])
   ].map(t => t.toLowerCase());
 
-  const sharedTags = candidateTags.filter(t => currentTags.has(t));
-  score += sharedTags.length * 10;
+  // AI TAG MULTIPLIER: Reward similarity found by vision/audio analysis
+  const aiMatches = candidateTags.filter(t => currentTags.has(t));
+  score += aiMatches.length * 12;
 
-  // 2. AI Topic & Object Match
+  // AI TOPIC & OBJECT MATCH: Reward broad thematic continuity
   const currentTopics = new Set((current.aiTopics || []).map(t => t.toLowerCase()));
   const matchingTopics = (candidate.aiTopics || []).filter(t => currentTopics.has(t.toLowerCase()));
-  score += matchingTopics.length * 15;
+  score += matchingTopics.length * 10;
 
   const currentObjects = new Set((current.detectedObjects || []).map(o => o.toLowerCase()));
   const matchingObjects = (candidate.detectedObjects || []).filter(o => currentObjects.has(o.toLowerCase()));
-  score += matchingObjects.length * 8; // Visual continuity boost
+  score += matchingObjects.length * 8; 
 
-  // 3. Mood Synchronization Boost
-  // Map UI Moods to AI detected mood patterns
+  // 2. VECTOR SIMILARITY (SEMANTIC DISCOVERY)
+  if (current.embedding && candidate.embedding) {
+    const similarity = cosineSimilarity(current.embedding, candidate.embedding);
+    if (similarity > 0.85) score += 20; // High-fidelity semantic link
+  }
+
+  // 3. MOOD SYNCHRONIZATION
   const moodMapping: Record<VibeMood, string[]> = {
     all: [],
     hype: ['energetic', 'hype', 'fast', 'victory', 'exciting'],
@@ -130,37 +136,35 @@ export function computeVibeScore(
     flex: ['proud', 'confident', 'swagger', 'wealthy']
   };
 
-  const activeMoodTerms = moodMapping[activeMoodId];
-  if (candidate.mood && activeMoodTerms.includes(candidate.mood.toLowerCase())) {
-    score += 10; // Positive reinforcement for mood selection
+  if (candidate.mood && activeMoodId !== 'all') {
+    const activeMoodTerms = moodMapping[activeMoodId];
+    if (activeMoodTerms.includes(candidate.mood.toLowerCase())) {
+      score += 8; 
+    }
   }
 
-  // 4. Graph Expansion (Topic Discovery)
+  // 4. GRAPH & TREND SIGNALS
   const relatedMatches = candidateTags.filter(t => relatedTags.has(t));
   score += relatedMatches.length * 5;
 
-  // 5. Interest Graph Match (Profile)
-  score += getPersonalScore(candidate) * 0.3;
-
-  // 6. Exploration Boost (Diversity)
-  score += explorationBoost(candidate);
-
-  // 7. Viral Hashtag Boost (Velocity)
   if (candidateTags.some(t => viralTags.has(t))) score += 25;
   else if (candidateTags.some(t => trendingTags.has(t))) score += 12;
 
-  // 8. Creator Quality Boost (Reputation)
+  // 5. BEHAVIORAL & REPUTATION SIGNALS
+  score += getPersonalScore(candidate) * 0.5;
+  score += explorationBoost(candidate);
+
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
   score += (repData.qualityScore || 50) * 0.5;
 
-  // 9. Freshness Boost (Recency)
+  // 🛡️ SECURITY PENALTY
+  if ((repData.violationScore || 0) > 3) score -= 50;
+
+  // 6. FRESHNESS DECAY
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
     score += exponentialFreshness(date);
   }
-
-  // 10. Security Penalty (Spam Control)
-  if ((repData.violationScore || 0) > 3) score -= 50;
 
   return score;
 }
@@ -192,7 +196,6 @@ function buildReason(current: SocialPost, candidate: SocialPost, getPersonalScor
   const shared = (candidate.tags || []).filter(t => (current.tags || []).includes(t));
   if (shared.length > 0 && parts.length < 2) parts.push(`#${shared[0]}`);
   
-  // AI Topic Reason
   if (parts.length < 2 && candidate.aiTopics && current.aiTopics) {
     const sharedTopic = candidate.aiTopics.find(t => current.aiTopics?.includes(t));
     if (sharedTopic) parts.push(sharedTopic);
@@ -278,19 +281,12 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         setViralTags(viral); setTrendingTags(trending);
     });
 
-    const q = query(
-      collection(firestore, 'creator_reputation'), 
-      orderBy('qualityScore', 'desc'), 
-      limit(200)
-    );
+    const q = query(collection(firestore, 'creator_reputation'), orderBy('qualityScore', 'desc'), limit(200));
     const unsubRep = onSnapshot(q, (snap) => {
       const map: Record<string, any> = {};
       snap.docs.forEach(d => { 
         const data = d.data();
-        map[d.id] = {
-          qualityScore: data.qualityScore || 50,
-          violationScore: data.violationScore || 0
-        }; 
+        map[d.id] = { qualityScore: data.qualityScore || 50, violationScore: data.violationScore || 0 }; 
       });
       setCreatorReputation(map);
     });
