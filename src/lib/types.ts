@@ -140,10 +140,10 @@ export type AdCampaign = {
   totalBudgetGHS?: number;
   totalSpendGHS?: number;
   impressionTarget?: number;
-  clickTarget?: number;
-  impressions: number;
-  clicks: number;
-  adType: 'feed_image' | 'feed_video' | 'vibe_slot';
+  clickTarget?:      number;
+  impressions:      number;
+  clicks:           number;
+  adType:           'feed_image' | 'feed_video' | 'vibe_slot';
   paystackReference?: string;
   paidAt?:          any;
   createdAt:        any;
@@ -207,7 +207,7 @@ export type ArenaPost = {
   mediaUrl?: string;
   mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
   tags?: string[];
-  aiTags?: string[];
+  aiTags?: string[]; // NEW: AI content understanding
   aiTopics?: string[];
   mood?: string;
   embedding?: number[]; // SEMANTIC VECTOR

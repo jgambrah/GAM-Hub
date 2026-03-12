@@ -46,7 +46,8 @@ ANALYSIS GOALS:
 1. **Semantic Hashtags**: Generate 3-5 relevant hashtags that the user might have missed. Focus on campus context, major, or activity.
 2. **Thematic Topics**: Identify broad topics like "Academic Excellence", "Night Market Vibes", "Hostel Life", or "National Pride".
 3. **Mood Signature**: Detect the emotional frequency (e.g., hype, serene, stress, victory).
-4. **Cultural Context**: Use your knowledge of Ghanaian university culture (UG, KNUST, etc.) to detect specific local references.
+4. **Detected Objects**: List the key visual elements (e.g., "Library", "Afrobeats Dance", "Kenkey Party").
+5. **Cultural Context**: Use your knowledge of Ghanaian university culture (UG, KNUST, etc.) to detect specific local references.
 
 Return a high-fidelity metadata profile for this vibration.`,
 });
