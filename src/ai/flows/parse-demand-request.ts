@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview Liaison AI Demand Intent Parser.
@@ -37,7 +36,7 @@ const prompt = ai.definePrompt({
 Extract structured shopping intent from the following student request.
 
 REQUEST:
-"${{query}}"
+"{{{query}}}"
 
 ANALYSIS GOALS:
 1. **Category**: Select the best match from: electronics, fashion, food, stationery, services, home, health.
