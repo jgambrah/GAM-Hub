@@ -82,7 +82,7 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 }
 
 /**
- * 🏗️ MASTER DISCOVERY EQUATION (ENTERPRISE GRADE)
+ * 🏗️ MASTER DISCOVERY EQUATION
  * score = tagSimilarity + interestMatch + creatorQuality + viralBoost + aiTopicMatch + moodMatch + freshness
  */
 export function computeVibeScore(
@@ -97,7 +97,7 @@ export function computeVibeScore(
 ) {
   let score = 0;
 
-  // 1. CONTENT INTELLIGENCE MATCH (Similarity)
+  // 1. CONTENT INTELLIGENCE MATCH
   const currentTags = new Set([
     ...(current.tags || []),
     ...(current.aiTags || [])
@@ -108,11 +108,9 @@ export function computeVibeScore(
     ...(candidate.aiTags || [])
   ].map(t => t.toLowerCase());
 
-  // AI TAG MULTIPLIER: Reward similarity found by vision/audio analysis
   const aiMatches = candidateTags.filter(t => currentTags.has(t));
   score += aiMatches.length * 12;
 
-  // AI TOPIC & OBJECT MATCH: Reward broad thematic continuity
   const currentTopics = new Set((current.aiTopics || []).map(t => t.toLowerCase()));
   const matchingTopics = (candidate.aiTopics || []).filter(t => currentTopics.has(t.toLowerCase()));
   score += matchingTopics.length * 10;
@@ -121,10 +119,10 @@ export function computeVibeScore(
   const matchingObjects = (candidate.detectedObjects || []).filter(o => currentObjects.has(o.toLowerCase()));
   score += matchingObjects.length * 8; 
 
-  // 2. VECTOR SIMILARITY (SEMANTIC DISCOVERY)
+  // 2. VECTOR SIMILARITY
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
-    if (similarity > 0.85) score += 20; // High-fidelity semantic link
+    if (similarity > 0.85) score += 20;
   }
 
   // 3. MOOD SYNCHRONIZATION
@@ -139,7 +137,7 @@ export function computeVibeScore(
   if (candidate.mood && activeMoodId !== 'all') {
     const activeMoodTerms = moodMapping[activeMoodId];
     if (activeMoodTerms.includes(candidate.mood.toLowerCase())) {
-      score += 8; 
+      score += 10; // Mood match boost
     }
   }
 
@@ -147,7 +145,6 @@ export function computeVibeScore(
   const relatedMatches = candidateTags.filter(t => relatedTags.has(t));
   score += relatedMatches.length * 5;
 
-  // 🏎️ TRENDING FEED BOOST
   if (candidate.trendScore && candidate.trendScore > 30) {
     score += 35; 
   } else if (candidateTags.some(t => viralTags.has(t))) {
@@ -163,7 +160,6 @@ export function computeVibeScore(
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
   score += (repData.qualityScore || 50) * 0.5;
 
-  // 🛡️ SECURITY PENALTY
   if ((repData.violationScore || 0) > 3) score -= 50;
 
   // 6. FRESHNESS DECAY
@@ -175,25 +171,62 @@ export function computeVibeScore(
   return score;
 }
 
+/**
+ * 🎨 SMART QUEUE BUILDER WITH TOPIC DIVERSITY
+ */
 export function buildSmartQueue(
   current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
   viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set(),
   creatorReputation: Record<string, any> = {}
 ) {
-  const ranked = [];
   const moodDef = VIBE_MOODS.find(m => m.id === mood);
   const moodTagSet = moodDef && mood !== 'all' ? new Set(moodDef.tags) : new Set<string>();
 
-  for (const p of pool) {
-    if (p.id === current.id) continue;
-    if (moodTagSet.size > 0) {
-      const match = (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) || p.mediaType === 'video';
-      if (!match) continue;
-    }
-    const score = computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags, creatorReputation, mood);
-    ranked.push({ post: p, score });
+  // First pass: Score all items
+  const scored = pool
+    .filter(p => {
+        if (p.id === current.id) return false;
+        if (moodTagSet.size > 0) {
+            return (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) || p.mediaType === 'video';
+        }
+        return true;
+    })
+    .map(p => ({
+        post: p,
+        score: computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags, creatorReputation, mood)
+    }));
+
+  // Sort by base score
+  scored.sort((a, b) => b.score - a.score);
+
+  // Second pass: Apply greedy diversity with cluster penalties
+  const finalRanked = [];
+  const candidates = [...scored];
+  const seenClusters = new Map<string, number>();
+
+  while (candidates.length > 0 && finalRanked.length < 50) {
+      // Re-score top candidates based on what's already selected
+      const window = candidates.slice(0, 10).map(c => {
+          const cluster = (c.post.tags?.[0] || 'none').toLowerCase();
+          const freq = seenClusters.get(cluster) || 0;
+          return { ...c, diverseScore: c.score - (freq * 5) }; // Cluster Penalty
+      });
+
+      window.sort((a, b) => b.diverseScore - a.diverseScore);
+      const best = window[0];
+      
+      finalRanked.push(best);
+      
+      // Update cluster frequency
+      const cluster = (best.post.tags?.[0] || 'none').toLowerCase();
+      seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1);
+
+      // Remove from candidates
+      const idx = candidates.findIndex(c => c.post.id === best.post.id);
+      candidates.splice(idx, 1);
   }
-  return ranked.sort((a, b) => b.score - a.score);
+
+  return finalRanked;
 }
 
 function buildReason(current: SocialPost, candidate: SocialPost, getPersonalScore: (p: SocialPost) => number, userEmbedding?: number[], relatedTags: Set<string> = new Set()): string {
@@ -343,9 +376,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const explorationPool = pool.filter(p => !vectorRanked.some(v => v.id === p.id) && !trendingRanked.some(t => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 20);
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
+    // 🎨 STAGE 1: DIVERSE RANKING (Cluster Penalties)
     const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags, reputations);
     
-    // 🎨 FINAL STAGE: ENFORCE DIVERSITY
+    // 🎨 STAGE 2: FINAL DIVERSITY PASS (Hard Constraints)
     const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 25);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
