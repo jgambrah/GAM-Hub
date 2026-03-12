@@ -9,13 +9,12 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const QueryInputSchema = z.string().describe('The user search query to embed.');
-
 export async function generateQueryEmbedding(query: string): Promise<number[] | null> {
   if (!query || query.trim().length < 2) return null;
 
   try {
-    // Liaison Brain: Generate high-dimensional vector using text-embedding-004
+    // 🧠 LIAISON BRAIN: Generate high-dimensional vector using text-embedding-004
+    // This allows the system to understand 'meaning' rather than just keywords.
     const embedding = await ai.embed({
       model: 'googleai/text-embedding-004',
       content: query.trim(),

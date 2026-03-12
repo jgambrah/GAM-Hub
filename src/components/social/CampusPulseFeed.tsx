@@ -64,10 +64,10 @@ export default function CampusPulseFeed({
                 setQueryVector(null);
             }
 
-            // Bucket 1: RECENT (National Hub)
+            // Bucket 1: RECENT (National Hub) - Increase limit for wider semantic pool during search
             const recentQuery = tagToFilter 
                 ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
-                : query(pulseRef, orderBy('createdAt', 'desc'), limit(200));
+                : query(pulseRef, orderBy('createdAt', 'desc'), limit(250));
 
             // Bucket 2: TRENDING (High Velocity)
             const trendingStatsQuery = query(
@@ -86,7 +86,7 @@ export default function CampusPulseFeed({
                 ? query(pulseRef, where('tags', 'array-contains', tagToFilter), limit(50))
                 : query(pulseRef, where('likes', '<', 10), orderBy('likes', 'asc'), orderBy('createdAt', 'desc'), limit(50));
 
-            // Liaison Handshake: Parallel retrieval (FIXED REFERENCE ERROR)
+            // 🛰️ STAGE 1: Parallel broad candidate retrieval
             const [recentSnap, trendingSnap, campusSnap, explorationSnap] = await Promise.all([
                 getDocs(recentQuery),
                 getDocs(trendingStatsQuery),
@@ -108,7 +108,7 @@ export default function CampusPulseFeed({
             addDocsToMap(campusSnap);
             addDocsToMap(explorationSnap);
 
-            // Hydrate Trending IDs
+            // 🏎️ TRENDING HYDRATION: Fetch post data for IDs in trending stats
             const trendingIds = trendingSnap.docs.map((d: any) => d.id);
             const missingIds = trendingIds.filter((id: string) => !mergedMap.has(id));
             if (missingIds.length > 0) {
@@ -178,16 +178,17 @@ export default function CampusPulseFeed({
 
         let combined = [...mappedSrc, ...posts];
 
-        // 🧠 SEMANTIC RANKING: If we have a query vector, rank results by cosine similarity
+        // 🧠 STAGE 2: SEMANTIC RANKING (Vector Similarity)
+        // If we have a query vector, rank candidate pool by conceptual meaning.
         if (queryVector) {
             combined = combined
                 .map(post => {
                     const similarity = post.embedding ? cosineSimilarity(queryVector, post.embedding) : 0;
-                    // Add a small boost if the keyword also matches exactly in content
-                    const keywordMatch = post.content?.toLowerCase().includes(searchQuery.toLowerCase()) ? 0.1 : 0;
+                    // Boost if exact keyword match found in caption
+                    const keywordMatch = post.content?.toLowerCase().includes(searchQuery.toLowerCase()) ? 0.15 : 0;
                     return { ...post, searchScore: similarity + keywordMatch };
                 })
-                .filter(post => (post as any).searchScore > 0.3) // Sensitivity threshold for semantic matches
+                .filter(post => (post as any).searchScore > 0.35) // CONCEPTUAL RELEVANCE THRESHOLD
                 .sort((a, b) => (b as any).searchScore - (a as any).searchScore);
         } else if (searchQuery.trim() && !searchQuery.startsWith('#')) {
             // Fallback to keyword search if vector generation is still in progress or failed
@@ -224,17 +225,17 @@ export default function CampusPulseFeed({
                         </div>
                         <div>
                             <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tight italic">
-                                Results for "{searchQuery}"
+                                {isEmbedding ? 'Understanding meaning...' : `Results for "${searchQuery}"`}
                             </h3>
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Zap size={10} className="text-indigo-500 fill-indigo-500" /> 
-                                {queryVector ? 'Semantic Search Engine Active' : isEmbedding ? 'Understanding meaning...' : 'Keyword Discovery Active'}
+                                {queryVector ? 'Semantic Intelligence Engine Active' : 'Keyword Discovery Pool'}
                             </p>
                         </div>
                     </div>
                     {queryVector && (
-                        <div className="bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800">
-                            <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Meaning Match</span>
+                        <div className="bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800 animate-in zoom-in">
+                            <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Conceptual Match</span>
                         </div>
                     )}
                 </div>
@@ -246,11 +247,11 @@ export default function CampusPulseFeed({
                         <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">{searchQuery ? 'Smart Search Stream' : 'Blended Discovery'}</h4>
+                        <h4 className="font-black text-sm tracking-tight">{searchQuery ? 'Semantic Search Stream' : 'Blended Discovery'}</h4>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pipeline:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> {searchQuery ? 'Semantic Retrieval' : 'Exploiting + Exploring'}
+                                <TrendingUp size={10} /> {searchQuery ? 'Meaning Retrieval' : 'Exploit + Explore'}
                             </span>
                         </div>
                     </div>
@@ -281,8 +282,8 @@ export default function CampusPulseFeed({
             ) : filteredPosts.length === 0 ? (
                 <div className="p-20 text-center bg-white dark:bg-card rounded-[3rem] border-2 border-dashed">
                     <SearchIcon className="mx-auto h-12 w-12 text-slate-200 mb-4" />
-                    <p className="font-black text-slate-400 uppercase tracking-widest">No matching vibes found</p>
-                    <p className="text-xs text-slate-300 mt-2">Try searching for broader topics like "campus life" or "exam stress".</p>
+                    <p className="font-black text-slate-400 uppercase tracking-widest">The Signal is Quiet</p>
+                    <p className="text-xs text-slate-300 mt-2">No matching vibes found. Try searching for broader topics like "campus life".</p>
                 </div>
             ) : (
                 <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
