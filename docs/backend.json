@@ -102,6 +102,16 @@
         "trendScore": { "type": "number" },
         "lastUpdated": { "type": "string", "format": "date-time" }
       }
+    },
+    "ViralPromotion": {
+      "title": "ViralPromotion",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "trendScore": { "type": "number" },
+        "detectedAt": { "type": "string", "format": "date-time" },
+        "campusId": { "type": "string" }
+      }
     }
   },
   "auth": {
@@ -155,6 +165,14 @@
           "entityName": "VibeStats",
           "schema": { "$ref": "#/backend/entities/VibeStats" },
           "description": "Time-series engagement buckets for viral detection."
+        }
+      },
+      {
+        "path": "/viral_posts/{postId}",
+        "definition": {
+          "entityName": "ViralPromotion",
+          "schema": { "$ref": "#/backend/entities/ViralPromotion" },
+          "description": "Special pool for content that has cleared the high-momentum viral threshold."
         }
       }
     ]

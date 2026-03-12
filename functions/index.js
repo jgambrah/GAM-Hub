@@ -15,6 +15,7 @@ setGlobalOptions({maxInstances: 10});
 /**
  * 🏎️ REAL-TIME TRENDING ENGINE (REACTIVE)
  * Upgraded with Time-Series Velocity & Multi-Signal Scoring.
+ * Calculates velocity (engagement/min) and promotes to Viral Pool.
  */
 exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
@@ -23,7 +24,7 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
   const postId = event.params.postId;
 
   // Optimization: Only run if engagement data has actually changed
-  const hasEngagementChanged = ['views', 'likes', 'comments', 'shares', 'completions'].some(k => data[k] !== oldData[k]);
+  const hasEngagementChanged = ["views", "likes", "comments", "shares", "completions"].some((k) => data[k] !== oldData[k]);
   if (!hasEngagementChanged) return null;
 
   try {
@@ -37,8 +38,9 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
       .get();
 
     let recentEngagement = 0;
-    velocitySnap.forEach(doc => {
+    velocitySnap.forEach((doc) => {
       const v = doc.data();
+      // Weighted velocity: Shares and Comments represent higher intent than simple views
       recentEngagement += (v.views || 0) + (v.likes || 0) * 3 + (v.comments || 0) * 5 + (v.shares || 0) * 8;
     });
 
@@ -50,18 +52,29 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
     const completionRate = (data.completions || 0) / totalViews;
 
     // 3. APPLY MASTER TREND FORMULA
-    // trendScore = (velocity * 0.5) + (engagementRate * 0.3) + (completionRate * 0.2)
-    // We scale the rates to match velocity weights
+    // trendScore = (velocity * 0.5) + (engagementRate * 30) + (completionRate * 20)
+    // We scale the rates to match velocity weights for a meaningful 0-100+ score range
     let score = (velocity * 0.5) + (engagementRate * 30) + (completionRate * 20);
 
-    // 📉 Momentum Adjustment: Decay old posts
+    // 📉 Momentum Adjustment: Decay old posts exponentially
     const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
     const ageHours = (new Date() - createdAt) / 3600000;
-    const decay = Math.exp(-ageHours / 12);
+    const decay = Math.exp(-ageHours / 12); // Halflife of ~8 hours
     score *= decay;
 
     // 🚀 Super-Viral Boost
     if (data.views > 1000 && ageHours < 1) score *= 1.5;
+
+    // 4. VIRAL GRADUATION (Promotion to High-Trust Collection)
+    if (score > 40) {
+      await db.collection("viral_posts").doc(postId).set({
+        postId,
+        trendScore: score,
+        detectedAt: admin.firestore.FieldValue.serverTimestamp(),
+        authorId: data.authorId || null,
+        campusId: data.campusId || "all"
+      }, { merge: true });
+    }
 
     // Only update if change is significant to prevent recursion loops
     if (data.trendScore && Math.abs(data.trendScore - score) < 0.01) return null;
@@ -101,7 +114,7 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   let totalCompletions = 0;
   const count = postsSnap.size;
 
-  postsSnap.forEach(d => {
+  postsSnap.forEach((d) => {
     const p = d.data();
     totalViews += (p.views || 0);
     totalInteractions += (p.likes || 0) + (p.comments || 0) + (p.shares || 0);
@@ -120,10 +133,10 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   qualityScore = Math.min(100, Math.max(0, Math.round(qualityScore)));
 
   // TIER CLASSIFICATION
-  let tier = 'new';
-  if (qualityScore >= 80) tier = 'elite';
-  else if (qualityScore >= 50) tier = 'trusted';
-  else if (qualityScore >= 20) tier = 'rising';
+  let tier = "new";
+  if (qualityScore >= 80) tier = "elite";
+  else if (qualityScore >= 50) tier = "trusted";
+  else if (qualityScore >= 20) tier = "rising";
 
   const reputation = {
     id: authorId,
@@ -148,7 +161,7 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
   const db = admin.firestore();
   const batch = db.batch();
 
-  const statsRef = db.collection('trending_stats').doc(event.params.postId);
+  const statsRef = db.collection("trending_stats").doc(event.params.postId);
   batch.set(statsRef, {
     authorId: data.authorId,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -158,9 +171,9 @@ exports.onVibeCreatedUpdateHashtags = onDocumentCreated("campus_pulse/{postId}",
 
   if (tags.length > 0) {
     const minuteBucket = new Date().toISOString().slice(0, 16);
-    tags.forEach(tag => {
+    tags.forEach((tag) => {
       const normalizedTag = tag.toLowerCase();
-      const tagRef = db.collection('hashtags').doc(normalizedTag);
+      const tagRef = db.collection("hashtags").doc(normalizedTag);
       batch.set(tagRef, {
         tag: normalizedTag,
         postCount: admin.firestore.FieldValue.increment(1),
@@ -216,8 +229,8 @@ exports.updateTrendingHashtags = onSchedule("every 5 minutes", async (event) => 
         const tagA = sorted[i].tag; const tagB = sorted[j].tag;
         const edgeSnap = await db.collection("hashtagGraph").doc(tagA).collection("edges").doc(tagB).get();
         if (edgeSnap.exists() && edgeSnap.data().weight > 20) {
-          const eventId = `EVENT_${[tagA, tagB].sort().join('_')}`;
-          clusterBatch.set(db.collection("trend_events").doc(eventId), { tags: [tagA, tagB], collectiveVelocity: sorted[i].score + sorted[j].score, detectedAt: admin.firestore.FieldValue.serverTimestamp(), status: 'active' }, { merge: true });
+          const eventId = `EVENT_${[tagA, tagB].sort().join("_")}`;
+          clusterBatch.set(db.collection("trend_events").doc(eventId), { tags: [tagA, tagB], collectiveVelocity: sorted[i].score + sorted[j].score, detectedAt: admin.firestore.FieldValue.serverTimestamp(), status: "active" }, { merge: true });
           clusterBatch.update(sorted[i].ref, { activeEventId: eventId });
           clusterBatch.update(sorted[j].ref, { activeEventId: eventId });
         }
@@ -239,6 +252,6 @@ exports.onVibeMediaUploaded = onObjectFinalized(async (event) => {
   
   const postsSnap = await db.collection("campus_pulse").where("mediaUrl", "==", fileUrl).limit(1).get();
   if (!postsSnap.empty) {
-    return postsSnap.docs[0].ref.update({ mediaStatus: 'ready', auditedAt: admin.firestore.FieldValue.serverTimestamp() });
+    return postsSnap.docs[0].ref.update({ mediaStatus: "ready", auditedAt: admin.firestore.FieldValue.serverTimestamp() });
   }
 });

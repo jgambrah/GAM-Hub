@@ -20,7 +20,8 @@ export function recordEngagement(
   const statsRef = doc(firestore, 'trending_stats', postId);
   
   // 🕒 MINUTE BUCKET LOGIC: Detects velocity within a 60-second window
-  const minuteBucket = new Date().toISOString().slice(0, 16); // e.g., "2026-03-12T15:20"
+  // Format: YYYY-MM-DDTHH:mm (Standard ISO minus seconds)
+  const minuteBucket = new Date().toISOString().slice(0, 16); 
   const velocityRef = doc(firestore, 'post_velocity', postId, 'minutes', minuteBucket);
 
   const updates: any = {
@@ -28,6 +29,7 @@ export function recordEngagement(
   };
 
   // 1. Assign Weights based on Liaison Viral Protocol
+  // Comments and Shares carry significantly more weight than simple views
   if (type === 'view') updates.views = increment(1);
   if (type === 'like') updates.likes = increment(1);
   if (type === 'comment') updates.comments = increment(1);
@@ -45,6 +47,7 @@ export function recordEngagement(
   });
 
   // 3. Time-Series Velocity Write: Record specifically for THIS minute
+  // This powers the Velocity Calculation in Cloud Functions
   const velocityData: any = { ...updates };
   setDoc(velocityRef, velocityData, { merge: true }).catch(err => {
     console.warn("Trending Service: Failed to record velocity bucket", err);
@@ -61,7 +64,7 @@ export async function promoteToTrending(firestore: Firestore, post: SocialPost) 
   
   await setDoc(ref, {
     authorId: post.authorId,
-    trendScore: 50, // High base score for promotion
+    trendScore: 50, // High base score for immediate promotion
     manualPromotion: true,
     updatedAt: serverTimestamp(),
     createdAt: post.createdAt
