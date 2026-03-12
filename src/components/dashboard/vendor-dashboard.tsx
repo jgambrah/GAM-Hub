@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -7,6 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Skeleton } from '../ui/skeleton';
 import { VendorOnboardingForm } from '../auth/vendor-onboarding-form';
 import VendorWallet from './vendor-wallet';
+import DemandFeed from '../vendor/DemandFeed';
 
 export default function VendorDashboard() {
   const { user } = useAuth();
@@ -31,10 +33,23 @@ export default function VendorDashboard() {
         </Card>
       );
     }
-    // Default to showing the onboarding form if status is 'needs_submission' or not set
     return <VendorOnboardingForm />;
   }
 
-  // Verified vendor, show the wallet as their main dashboard
-  return <VendorWallet vendorData={user} />;
+  // Verified vendor dashboard
+  return (
+    <div className="space-y-12">
+        <VendorWallet vendorData={user} />
+        
+        <div className="grid grid-cols-1 gap-10">
+            <div className="space-y-4">
+                <div className="px-2">
+                    <h2 className="text-2xl font-black text-foreground tracking-tight">Market Intelligence</h2>
+                    <p className="text-sm text-muted-foreground font-medium italic">Data-driven sourcing opportunities</p>
+                </div>
+                <DemandFeed campusId={user.campusId} />
+            </div>
+        </div>
+    </div>
+  );
 }

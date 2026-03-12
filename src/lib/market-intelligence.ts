@@ -9,11 +9,30 @@
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import type { Product, Order, ProductTrend, NotificationSettings, MarketRequest } from './types';
+import type { Product, Order, ProductTrend, NotificationSettings, MarketRequest, DemandSignal } from './types';
 import { computeTrendScore } from './compute-trend-score';
 import { applyTrendDecay } from './apply-trend-decay';
 
 export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
+
+/**
+ * getHighDemandItems
+ * -------------------
+ * Retrieves the top demand signals for a specific campus.
+ */
+export async function getHighDemandItems(firestore: Firestore, campusId: string) {
+  if (!firestore || !campusId) return [];
+  
+  const q = query(
+    collection(firestore, "demand_signals"),
+    where("campusId", "==", campusId),
+    orderBy("demandCount", "desc"),
+    limit(20)
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DemandSignal));
+}
 
 /**
  * updateDemandSignal
@@ -23,7 +42,8 @@ export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'sh
 export async function updateDemandSignal(
   firestore: Firestore,
   item: string,
-  campusId: string
+  campusId: string,
+  category: string
 ) {
   const normalizedItem = item.toLowerCase().trim();
   const signalId = `${normalizedItem}_${campusId}`;
@@ -32,6 +52,7 @@ export async function updateDemandSignal(
   return setDoc(ref, {
     item: normalizedItem,
     campusId,
+    category: category.toLowerCase(),
     demandCount: increment(1),
     lastUpdated: serverTimestamp()
   }, { merge: true });
@@ -68,17 +89,14 @@ export async function createMarketRequest(
   const docRef = await addDoc(ref, requestData);
   
   // 🧠 1. AGGREGATE DEMAND: Increment count for the specific item on this campus
-  // We use the primary AI-extracted tag as the "Item" for clustering
   const primaryItem = aiMetadata.tags?.[0] || aiMetadata.category || 'item';
-  updateDemandSignal(firestore, primaryItem, campusId).catch(e => console.error("Aggregation failed:", e));
+  updateDemandSignal(firestore, primaryItem, campusId, requestData.category).catch(e => console.error("Aggregation failed:", e));
 
   return docRef;
 }
 
 /**
  * trackProductEvent
- * -----------------
- * Atomic event tracking for the trending engine.
  */
 export async function trackProductEvent(
   firestore: Firestore,
@@ -104,8 +122,6 @@ export async function trackProductEvent(
 
 /**
  * getTrendingProducts
- * -------------------
- * Retrieves high-velocity products for a specific campus leaderboard.
  */
 export async function getTrendingProducts(
   firestore: Firestore,
@@ -122,31 +138,19 @@ export async function getTrendingProducts(
 
   const scored = trends.map(trend => {
     let score = computeTrendScore(trend);
-    
-    // Handle both ISO string and Firestore Timestamp for decay
     const lastUpdated = trend.lastUpdated?.toDate 
       ? trend.lastUpdated.toDate() 
       : new Date(trend.lastUpdated);
-
     score = applyTrendDecay(score, lastUpdated);
-
-    return {
-      productId: trend.productId,
-      score
-    };
+    return { productId: trend.productId, score };
   });
 
-  // Sort by final decayed score
   scored.sort((a, b) => b.score - a.score);
-
   return scored.slice(0, 20);
 }
 
 /**
  * recordMarketSignal
- * ------------------
- * Logs a behavioral event to the user's market profile and the product's velocity bucket.
- * Now logs detailed product views for personalized notifications.
  */
 export async function recordMarketSignal(
   firestore: Firestore,
@@ -159,7 +163,6 @@ export async function recordMarketSignal(
   const profileRef = doc(firestore, 'user_market_profiles', userId);
   const statsRef = doc(firestore, 'products', product.id);
   
-  // Track specifically for the trending engine aggregate
   const trendingEventType = signal === 'intent' ? 'cart' : (signal as any);
   if (['view', 'cart', 'purchase', 'share'].includes(trendingEventType)) {
     trackProductEvent(firestore, product.id, trendingEventType, product.campusId);
@@ -172,8 +175,6 @@ export async function recordMarketSignal(
     case 'view':
       profileUpdates[`viewedCategories.${product.category}`] = increment(1);
       productAggregates.viewCount = increment(1);
-      
-      // 🕵️ DETAILED VIEW TRACKING (For Price Drop Alerts)
       addDoc(collection(firestore, 'user_product_views'), {
         userId,
         productId: product.id,
@@ -207,8 +208,6 @@ export async function recordMarketSignal(
 
 /**
  * updateNotificationSettings
- * --------------------------
- * Persists user notification preferences.
  */
 export async function updateNotificationSettings(
     firestore: Firestore,
@@ -221,8 +220,6 @@ export async function updateNotificationSettings(
 
 /**
  * toggleFollowVendor
- * -----------------
- * Subscribes or unsubscribes a user from a specific vendor's updates.
  */
 export async function toggleFollowVendor(firestore: Firestore, userId: string, vendorId: string, isFollowing: boolean) {
     const userRef = doc(firestore, 'users', userId);
@@ -239,8 +236,6 @@ export async function toggleFollowVendor(firestore: Firestore, userId: string, v
 
 /**
  * saveFcmToken
- * ------------
- * Persists the user's notification token to their profile.
  */
 export async function saveFcmToken(firestore: Firestore, userId: string, token: string) {
     const userRef = doc(firestore, 'users', userId);

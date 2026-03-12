@@ -29,15 +29,12 @@ async function checkThrottlingAndNotify(userId, payload, db) {
 
     // 1. Throttling Checks
     if (lastSent) {
-      // Rule A: Min 2 Hour Gap
       const diffHours = (now - lastSent) / 3600000;
       if (diffHours < 2) return null;
 
-      // Rule B: Daily Cap (Max 3)
       const isSameDay = lastSent.toDateString() === now.toDateString();
       if (isSameDay && (prefs.dailyCount || 0) >= 3) return null;
       
-      // Reset count if new day
       if (!isSameDay) {
         prefs.dailyCount = 0;
       }
@@ -57,8 +54,6 @@ async function checkThrottlingAndNotify(userId, payload, db) {
       dailyCount: (prefs.dailyCount || 0) + 1
     }, { merge: true });
 
-    // 📈 NOTIFICATION ANALYTICS SUITE
-    // Initialize opened/clicked/purchased as false for ROI tracking
     batch.add(db.collection("notifications"), {
       userId,
       title: payload.notification.title,
@@ -81,12 +76,9 @@ async function checkThrottlingAndNotify(userId, payload, db) {
 
 /**
  * 🛰️ LIAISON NOTIFICATION SERVICE: Helper to send multicast messages
- * Filters recipients by individual throttling rules before sending.
  */
 async function sendSmartMulticast(recipients, payload, db) {
   if (!recipients || recipients.length === 0) return null;
-  
-  // We process individually to respect per-user throttling
   const deliveryPromises = recipients.map(uid => checkThrottlingAndNotify(uid, payload, db));
   return Promise.all(deliveryPromises);
 }
@@ -101,21 +93,18 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
   const db = admin.firestore();
 
   const isPriceDrop = after.price < before.price;
-  const isSignificantDrop = after.averagePrice && (after.price < after.averagePrice * 0.80); // 20% or more OFF
+  const isSignificantDrop = after.averagePrice && (after.price < after.averagePrice * 0.80); 
   const isRestock = after.stock > 0 && before.stock === 0;
 
   if (!isPriceDrop && !isSignificantDrop && !isRestock) return null;
 
   try {
     const interestedUserIds = new Set();
-
-    // 1. Explicit Favorites
     const profilesSnap = await db.collection("user_market_profiles")
       .where("favoriteProducts", "array-contains", productId)
       .get();
     profilesSnap.docs.forEach(doc => interestedUserIds.add(doc.id));
 
-    // 2. Recent Views (Last 30 days)
     const viewThreshold = new Date();
     viewThreshold.setDate(viewThreshold.getDate() - 30);
     const viewsSnap = await db.collection("user_product_views")
@@ -163,7 +152,6 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
       .get();
 
     if (followersSnap.empty) return null;
-
     const uids = followersSnap.docs.map(doc => doc.id);
 
     return sendSmartMulticast(uids, {
@@ -177,6 +165,42 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
   } catch (err) {
     console.error("Vendor Update Notification Error:", err);
     return null;
+  }
+});
+
+/**
+ * 🔔 SMART NOTIFICATION ENGINE: Demand Spike Detector
+ * Threshold: At least 5 students looking for the same item on a campus.
+ */
+exports.onDemandSignalUpdatedNotify = onDocumentUpdated("demand_signals/{signalId}", async (event) => {
+  const before = event.data.before.data();
+  const after = event.data.after.data();
+  const db = admin.firestore();
+
+  // Condition: Crosses the "5 Request" threshold
+  if (after.demandCount >= 5 && (before.demandCount || 0) < 5) {
+    try {
+      const vendorsSnap = await db.collection("users")
+        .where("role", "==", "vendor")
+        .where("campusId", "==", after.campusId)
+        .where("vendorCategory", "==", after.category || 'General')
+        .get();
+
+      if (vendorsSnap.empty) return null;
+      const uids = vendorsSnap.docs.map(doc => doc.id);
+
+      return sendSmartMulticast(uids, {
+        notification: {
+          title: "📈 Student Demand Rising!",
+          body: `Students are looking for: ${after.item.toUpperCase()}. High sourcing priority!`
+        },
+        data: { item: after.item, type: "demand_spike" }
+      }, db);
+
+    } catch (err) {
+      console.error("Demand Spike Alert Error:", err);
+      return null;
+    }
   }
 });
 
@@ -217,41 +241,29 @@ exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event)
 
 /**
  * 🧠 SMART TIMING: DAILY RECOMMENDATIONS SCHEDULER
- * Best Windows: 8:00 AM (Morning Pick), 1:00 PM (Midday Break), 9:00 PM (Night Shopping)
- * This specific task runs at 8:00 AM daily.
  */
 exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
   const db = admin.firestore();
-  
   try {
-    // 1. Get users with active tokens
     const usersSnap = await db.collection("users").where("fcmToken", "!=", null).limit(500).get();
     if (usersSnap.empty) return null;
 
     for (const uDoc of usersSnap.docs) {
       const userId = uDoc.id;
       const userData = uDoc.data();
-
-      // 2. Fetch User Market Profile to identify top category
       const profileSnap = await db.collection("user_market_profiles").doc(userId).get();
       if (!profileSnap.exists) continue;
       
       const profile = profileSnap.data();
       const viewedCategories = profile.viewedCategories || {};
-      
-      // Find highest interest category
       let topCategory = null;
       let maxViews = 0;
       Object.entries(viewedCategories).forEach(([cat, count]) => {
-        if (count > maxViews) {
-          maxViews = count;
-          topCategory = cat;
-        }
+        if (count > maxViews) { maxViews = count; topCategory = cat; }
       });
 
       if (!topCategory) continue;
 
-      // 3. Find a fresh product in that category (Top trending)
       const productsSnap = await db.collection("products")
         .where("campusId", "==", userData.campusId)
         .where("category", "==", topCategory)
@@ -262,7 +274,6 @@ exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
       if (productsSnap.empty) continue;
       const topPick = productsSnap.docs[0].data();
 
-      // 4. Send with Throttling check
       await checkThrottlingAndNotify(userId, {
         notification: {
           title: "🧠 Morning Pick for You",
@@ -271,7 +282,6 @@ exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
         data: { productId: topPick.id, type: "daily_recommendation" }
       }, db);
     }
-
     return null;
   } catch (err) {
     console.error("Daily Recommendations Engine Error:", err);
