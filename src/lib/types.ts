@@ -69,6 +69,12 @@ export type ProductCoPurchase = {
   count: number;
 };
 
+export type ProductPriceHistory = {
+  id: string;
+  price: number;
+  timestamp: any;
+};
+
 export type CreatorReputation = {
   id: string;
   qualityScore: number;
@@ -102,6 +108,7 @@ export type Product = {
   name: string;
   description: string;
   price: number;
+  averagePrice?: number; // NEW: Historical average for deal detection
   imageUrl: string;
   imageHint: string;
   videoUrl?: string | null; // YouTube link

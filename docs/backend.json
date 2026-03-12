@@ -63,6 +63,7 @@
         "id": { "type": "string" },
         "name": { "type": "string" },
         "price": { "type": "number" },
+        "averagePrice": { "type": "number", "description": "Historical average price for deal detection." },
         "vendorId": { "type": "string" },
         "campusId": { "type": "string" },
         "category": { "type": "string" },
@@ -76,15 +77,13 @@
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
     },
-    "ProductCoPurchase": {
+    "ProductPriceHistory": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "ProductCoPurchase",
+      "title": "ProductPriceHistory",
       "type": "object",
-      "description": "Maps the correlation between two products frequently bought together.",
       "properties": {
-        "productA": { "type": "string" },
-        "productB": { "type": "string" },
-        "count": { "type": "number" }
+        "price": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
       }
     }
   },
@@ -110,14 +109,6 @@
         }
       },
       {
-        "path": "/product_velocity/{productId}/minutes/{minuteId}",
-        "definition": {
-          "entityName": "ProductVelocity",
-          "schema": { "type": "object", "properties": { "views": { "type": "number" }, "intents": { "type": "number" }, "purchases": { "type": "number" } } },
-          "description": "Time-series commercial velocity tracking."
-        }
-      },
-      {
         "path": "/products/{productId}",
         "definition": {
           "entityName": "Product",
@@ -126,11 +117,11 @@
         }
       },
       {
-        "path": "/product_co_purchases/{correlationId}",
+        "path": "/products/{productId}/product_price_history/{historyId}",
         "definition": {
-          "entityName": "ProductCoPurchase",
-          "schema": { "$ref": "#/backend/entities/ProductCoPurchase" },
-          "description": "Purchase correlation graph for 'People Also Bought' logic."
+          "entityName": "ProductPriceHistory",
+          "schema": { "$ref": "#/backend/entities/ProductPriceHistory" },
+          "description": "Historical price points for AI deal detection."
         }
       }
     ]

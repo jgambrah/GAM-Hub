@@ -4,10 +4,10 @@
 /**
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
- * Upgraded with Co-Purchase Correlation ("People Also Bought").
+ * Upgraded with Co-Purchase Correlation and Price History.
  */
 
-import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc } from 'firebase/firestore';
 import type { Product, Order } from './types';
 
 /**
@@ -88,6 +88,21 @@ export async function recordMarketSignal(
 }
 
 /**
+ * recordPricePoint
+ * ----------------
+ * Tracks historical price points for AI Deal Detection.
+ */
+export async function recordPricePoint(firestore: Firestore, productId: string, price: number) {
+  if (!firestore || !productId) return;
+  
+  const historyRef = collection(firestore, 'products', productId, 'product_price_history');
+  await addDoc(historyRef, {
+    price,
+    timestamp: serverTimestamp()
+  });
+}
+
+/**
  * updateCoPurchaseCorrelation
  * ----------------------------
  * Finds the user's last few purchases and increments the correlation weight
@@ -143,7 +158,6 @@ export async function getRelatedProducts(firestore: Firestore, productId: string
     try {
         // Check both sides of the pair (productA OR productB)
         // Since we standardized the ID, we need two queries or a complex index.
-        // For simplicity, we query where productA == target OR productB == target
         const qA = query(
             collection(firestore, 'product_co_purchases'),
             where('productA', '==', productId),

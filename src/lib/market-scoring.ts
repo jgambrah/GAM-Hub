@@ -4,7 +4,7 @@
 /**
  * @fileOverview Marketplace Ranking Logic.
  * Implements the professional multi-signal product scoring equation.
- * Upgraded with AI Search Ranking, Campus Intelligence, and Smart Vendor Ranking.
+ * Upgraded with AI Search Ranking, Vendor Trust, and Price Intelligence.
  */
 
 import type { Product, MarketProfile, User } from './types';
@@ -14,22 +14,18 @@ import type { VibeProfile } from '@/hooks/use-vibe-profile';
  * computeVendorScore
  * -------------------
  * Calculates a reliability score for the merchant based on historical performance.
- * Formula: (Rating * 0.4) + (DeliveryRate * 25) + (log(Sales+1) * 3) + (1/ResponseTime * 10)
  */
 export function computeVendorScore(product: Product) {
   // 1. Quality Signal (40% Weight)
   const rating = (product.vendorRating || product.rating || 5) * 0.4;
   
   // 2. Reliability Signal (25% Weight)
-  // Assuming deliveryRate is 0-1 (e.g. 0.98 for 98% success)
   const delivery = (product.vendorDeliveryRate || 0.95) * 25;
   
   // 3. Sales Volume (20% Weight - Logarithmic)
-  // Rewards established businesses without extreme outlier bias
   const sales = Math.log((product.vendorSalesCount || product.salesCount || 0) + 1) * 3;
   
   // 4. Response Speed (15% Weight - Inverse)
-  // capped min response time at 0.5 hours to avoid spikes
   const responseTime = Math.max(product.vendorResponseTime || 2, 0.5);
   const response = (1 / responseTime) * 10;
 
@@ -37,11 +33,22 @@ export function computeVendorScore(product: Product) {
 }
 
 /**
+ * computeDealBoost
+ * ----------------
+ * Detects when a product becomes a good deal based on price history.
+ * formula: (averagePrice - currentPrice) * 0.3
+ */
+export function computeDealBoost(avgPrice: number, currentPrice: number) {
+  const discount = avgPrice - currentPrice;
+  if (discount <= 0) return 0;
+  return discount * 0.3;
+}
+
+/**
  * computeMarketScore
  * ------------------
  * The professional marketplace recommendation formula.
- * Combines category interest, tag matching, vendor affinity, and campus intelligence.
- * Now featuring the Smart Vendor Boost (VendorScore * 2).
+ * Now featuring the AI Price Intelligence deal boost.
  */
 export function computeMarketScore(
   product: Product,
@@ -63,21 +70,25 @@ export function computeMarketScore(
     if (categoryMatch) score += 10;
     if (descMatch) score += 5;
 
-    // Semantic tag matching for search
     const tags = product.tags || [];
     if (tags.some(t => t.toLowerCase().includes(term))) {
         score += 12;
     }
   }
 
-  // 🎯 2. SMART VENDOR RELIABILITY BOOST (Weight: 2x Vendor Score)
-  // Ensures high-performing, trusted vendors lead the Yard feed.
+  // 🎯 2. SMART VENDOR RELIABILITY BOOST (Weight: 1.5x rating + reliability)
   const vendorScore = computeVendorScore(product);
-  score += vendorScore * 2;
+  score += vendorScore * 1.5;
+
+  // 💰 3. AI PRICE INTELLIGENCE (Deal Boost)
+  if (product.averagePrice && product.price < product.averagePrice) {
+    const dealBoost = computeDealBoost(product.averagePrice, product.price);
+    score += dealBoost;
+  }
 
   if (!marketProfile && !user) return score;
 
-  // 3. CATEGORY INTEREST (User Weight: 3x Views, 6x Intent, 12x Purchase)
+  // 4. CATEGORY INTEREST (User Weight: 3x Views, 6x Intent, 12x Purchase)
   if (marketProfile) {
     const views = marketProfile.viewedCategories?.[product.category] || 0;
     const intents = marketProfile.intentCategories?.[product.category] || 0;
@@ -88,27 +99,16 @@ export function computeMarketScore(
     score += purchases * 12;
   }
 
-  // 4. CAMPUS-SPECIFIC INTELLIGENCE (Weight: Location & Faculty)
+  // 5. CAMPUS-SPECIFIC INTELLIGENCE
   if (user) {
-    // Same Campus Boost (+10)
-    if (product.campusId === user.campusId) {
-        score += 10;
-    }
-
-    // Academic Alignment Boost (+5): Matching major/department
+    if (product.campusId === user.campusId) score += 10;
     const userMajor = (user.major || '').toLowerCase();
     const productTags = (product.tags || []).map(t => t.toLowerCase());
-    if (userMajor && productTags.includes(userMajor)) {
-        score += 5;
-    }
-    
-    // Proximity Ranking: Location Match
-    if (product.campusAcronym === user.campusAcronym) {
-        score += 4;
-    }
+    if (userMajor && productTags.includes(userMajor)) score += 5;
+    if (product.campusAcronym === user.campusAcronym) score += 4;
   }
 
-  // 5. THE VIBE BRIDGE (Tag Match - User Weight: 2x)
+  // 6. THE VIBE BRIDGE (Tag Match - User Weight: 2x)
   if (vibeProfile && product.tags) {
     product.tags.forEach(tag => {
       const weight = vibeProfile.tagWeights[tag.toLowerCase()] || 0;
@@ -116,21 +116,12 @@ export function computeMarketScore(
     });
   }
 
-  // 6. VENDOR AFFINITY
-  if (marketProfile) {
-    const vendorHits = marketProfile.favoriteVendors?.[product.vendorId] || 0;
-    if (vendorHits > 0) {
-      score += 5;
-      score += Math.min(vendorHits * 2, 15);
-    }
-  }
-
-  // 7. TRENDING BOOST (Weight: 2x Velocity)
+  // 7. TRENDING BOOST (Weight: 2x velocity)
   if (product.trendScore) {
     score += product.trendScore * 2;
   }
 
-  // 8. PRICE RANGE MATCH (Max 15 pts)
+  // 8. PRICE RANGE MATCH
   if (marketProfile?.pricePreference) {
     const { min, max } = marketProfile.pricePreference;
     if (product.price >= min && product.price <= max) {
