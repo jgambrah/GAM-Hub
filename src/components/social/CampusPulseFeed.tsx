@@ -7,9 +7,10 @@ import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from '
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash, Search as SearchIcon, Loader2 } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash, Search as SearchIcon, Loader2, UserCheck } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer, cosineSimilarity } from './VibePlayerContext';
+import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
@@ -19,7 +20,7 @@ import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
  * CampusPulseFeed Component
  * 
  * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
- * Now upgraded with Hybrid Semantic Search (Vector Similarity + Hashtag Matching).
+ * Upgraded with Personalized Hybrid Semantic Search (Vector Similarity + Hashtag Matching + Interest Boost).
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -35,6 +36,7 @@ export default function CampusPulseFeed({
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
     const { isContinuous, setIsContinuous, addToQueue } = useVibePlayer();
+    const { getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
     
     const [posts, setPosts] = useState<SocialPost[]>();
     const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
@@ -192,47 +194,55 @@ export default function CampusPulseFeed({
 
         let combined = [...mappedSrc, ...posts];
 
-        // 🧠 STAGE 2: HYBRID RANKING (Semantic + Keyword + Trend + Quality)
-        if (queryVector) {
+        // 🧠 STAGE 2: HYBRID PERSONALIZED RANKING (Semantic + Keyword + Trend + Quality + Interest)
+        if (queryVector || (searchQuery.trim() && !searchQuery.startsWith('#'))) {
+            const userInterests = new Set(getTopInterests(20).map(t => t.toLowerCase()));
+            
             combined = combined
                 .map(post => {
-                    // A. Semantic Similarity (0.6 weight)
-                    const similarity = post.embedding ? cosineSimilarity(queryVector, post.embedding) : 0;
+                    // 1. Semantic Similarity (0.6 weight)
+                    const similarity = (queryVector && post.embedding) ? cosineSimilarity(queryVector, post.embedding) : 0;
                     
-                    // B. Exact Hashtag Match (0.2 weight)
-                    const queryWords = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+                    // 2. Exact Keyword Match (0.2 weight)
+                    const term = searchQuery.toLowerCase().trim();
+                    const queryWords = term.split(/\s+/).filter(w => w.length > 2);
                     const postTags = new Set([
                         ...(post.tags || []),
                         ...(post.aiTags || [])
                     ].map(t => t.toLowerCase()));
+                    
                     const tagMatchCount = queryWords.filter(w => postTags.has(w)).length;
                     const hashtagMatch = Math.min(tagMatchCount / Math.max(queryWords.length, 1), 1);
+                    const contentMatch = post.content?.toLowerCase().includes(term) ? 0.2 : 0;
 
-                    // C. Trending Boost (0.1 weight)
+                    // 3. Trending Boost (0.1 weight)
                     const trendingBoost = post.trendScore ? Math.min(post.trendScore / 100, 1) : 0;
 
-                    // D. Creator Quality (0.1 weight)
+                    // 4. Creator Quality (0.1 weight)
                     const creatorScore = post.authorQualityScore ? post.authorQualityScore / 100 : 0.5;
 
-                    // Compute Professional Hybrid Score
-                    const finalScore = (similarity * 0.6) + (hashtagMatch * 0.2) + (trendingBoost * 0.1) + (creatorScore * 0.1);
+                    // 🎯 5. PERSONALIZATION BOOST (0.15 weight)
+                    let personalizationBoost = 0;
+                    const matchesInterest = Array.from(postTags).some(t => userInterests.has(t));
+                    if (matchesInterest) {
+                        personalizationBoost = 0.15;
+                    }
 
-                    return { ...post, searchScore: finalScore };
+                    // Compute Professional Hybrid Personalized Score
+                    const finalScore = (similarity * 0.6) + (Math.max(hashtagMatch, contentMatch) * 0.2) + (trendingBoost * 0.1) + (creatorScore * 0.1) + personalizationBoost;
+
+                    return { ...post, searchScore: finalScore, matchesInterest };
                 })
-                .filter(post => (post as any).searchScore > 0.25) // Conceptual Relevance Threshold
+                .filter(post => {
+                    if (queryVector) return (post as any).searchScore > 0.25;
+                    const term = searchQuery.toLowerCase().trim();
+                    return post.content?.toLowerCase().includes(term) || post.authorName?.toLowerCase().includes(term) || (post as any).searchScore > 0.3;
+                })
                 .sort((a, b) => (b as any).searchScore - (a as any).searchScore);
-        } else if (searchQuery.trim() && !searchQuery.startsWith('#')) {
-            // Fallback to keyword search
-            const term = searchQuery.toLowerCase().trim();
-            combined = combined.filter(post => {
-                const contentMatch = post.content?.toLowerCase().includes(term);
-                const authorMatch = post.authorName?.toLowerCase().includes(term);
-                return contentMatch || authorMatch;
-            });
         }
 
         return combined;
-    }, [posts, srcPosts, searchQuery, queryVector]);
+    }, [posts, srcPosts, searchQuery, queryVector, getTopInterests]);
 
     return (
         <div className="space-y-8 pb-20">
@@ -260,13 +270,14 @@ export default function CampusPulseFeed({
                             </h3>
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Zap size={10} className="text-indigo-500 fill-indigo-500" /> 
-                                {queryVector ? 'Hybrid Discovery Engine Active' : 'Keyword Discovery Pool'}
+                                {queryVector ? 'Hybrid Personalized Engine Active' : 'Keyword Discovery Pool'}
                             </p>
                         </div>
                     </div>
                     {queryVector && (
-                        <div className="bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800 animate-in zoom-in">
-                            <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Semantic Match</span>
+                        <div className="bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800 animate-in zoom-in flex items-center gap-2">
+                            <UserCheck size={10} className="text-indigo-600" />
+                            <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Interest Matched</span>
                         </div>
                     )}
                 </div>
@@ -278,11 +289,11 @@ export default function CampusPulseFeed({
                         <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">{searchQuery ? 'Hybrid Search Stream' : 'Blended Discovery'}</h4>
+                        <h4 className="font-black text-sm tracking-tight">{searchQuery ? 'Personalized Search Stream' : 'Blended Discovery'}</h4>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Algorithm:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> {searchQuery ? 'Semantic + Keyword' : 'Exploit + Explore'}
+                                <TrendingUp size={10} /> {searchQuery ? 'Semantic + Profile' : 'Exploit + Explore'}
                             </span>
                         </div>
                     </div>
