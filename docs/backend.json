@@ -55,13 +55,19 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Product",
       "type": "object",
-      "description": "Represents a product listed for sale.",
+      "description": "Represents a product listed for sale with discovery metadata.",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
         "price": { "type": "number" },
         "vendorId": { "type": "string" },
-        "campusId": { "type": "string" }
+        "campusId": { "type": "string" },
+        "category": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "salesCount": { "type": "number" },
+        "viewCount": { "type": "number" },
+        "rating": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
     },
@@ -149,6 +155,14 @@
           "entityName": "CampusPulse",
           "schema": { "$ref": "#/backend/entities/CampusPulse" },
           "description": "Unified social post feed with AI-driven discovery metadata."
+        }
+      },
+      {
+        "path": "/products/{productId}",
+        "definition": {
+          "entityName": "Product",
+          "schema": { "$ref": "#/backend/entities/Product" },
+          "description": "Marketplace product listings with recommendation metadata."
         }
       },
       {

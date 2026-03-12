@@ -92,6 +92,10 @@ export type Product = {
   campusId: string;
   campusAcronym: string;
   category: string;
+  tags?: string[]; // NEW: For recommendation matching
+  salesCount?: number; // NEW: Popularity signal
+  viewCount?: number; // NEW: Popularity signal
+  rating?: number; // NEW: Trust signal
   targetAudience: 'all' | 'student' | 'staff';
   isSponsored?: boolean;
   sponsoredMajor?: string; // Kept for backward compatibility

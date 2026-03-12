@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -29,7 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { addDocumentNonBlocking, useFirebase } from '@/firebase';
-import { Loader2, PlusCircle, Upload, X, ShieldCheck, Package, Video, Youtube, CheckCircle2, ShoppingBag, Landmark } from 'lucide-react';
+import { Loader2, PlusCircle, Upload, X, ShieldCheck, Package, Video, Youtube, CheckCircle2, ShoppingBag, Landmark, Tag } from 'lucide-react';
 import { collection, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
@@ -40,6 +41,7 @@ const productSchema = z.object({
   description: z.string().min(10, 'Description must be at least 10 characters.'),
   category: z.string().min(2, 'Category is required.'),
   targetAudience: z.enum(['all', 'student', 'staff']),
+  tagsInput: z.string().optional(), // For internal use
   imageHint: z.string().optional(),
   videoUrl: z.string().optional().or(z.literal('')),
   // Physical Fields
@@ -74,6 +76,7 @@ export function AddProductDialog() {
       price: 0,
       stock: 1,
       category: 'General',
+      tagsInput: '',
       imageHint: '',
       targetAudience: 'all',
       videoUrl: '',
@@ -128,14 +131,18 @@ export function AddProductDialog() {
         await uploadBytes(imgRef, imageFile);
         const imageUrl = await getDownloadURL(imgRef);
 
-        // 2. Handle Multimedia (Permanent Storage for Products)
+        // 2. Handle Multimedia
         let nativeVideoUrl = null;
         if (multimediaTab === 'upload' && videoFile) {
-            // CRITICAL: We save to 'product_videos/' so it's not deleted by the 30-day social cleanup
             const vidRef = ref(storage, `product_videos/${user.campusId}/${Date.now()}_${videoFile.name}`);
             await uploadBytes(vidRef, videoFile);
             nativeVideoUrl = await getDownloadURL(vidRef);
         }
+
+        // 3. Process Tags
+        const tags = data.tagsInput 
+            ? data.tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t.length > 0)
+            : [];
 
         const newProduct = {
           ...data,
@@ -144,6 +151,10 @@ export function AddProductDialog() {
           stock: isFinancial ? 0 : (data.stock || 0),
           interestRate: isFinancial ? data.interestRate : null,
           actionLabel: isFinancial ? data.actionLabel : null,
+          tags: tags,
+          salesCount: 0,
+          viewCount: 0,
+          rating: 5.0,
           vendorId: user.id,
           vendorName: user.name || "Verified Vendor",
           campusId: user.campusId,
@@ -160,7 +171,7 @@ export function AddProductDialog() {
 
         toast({
           title: 'Listing Launched!',
-          description: `${data.name} is now live in the Yard with multimedia vibes.`,
+          description: `${data.name} is now live in the Yard with recommendation metadata.`,
         });
         
         setOpen(false);
@@ -188,7 +199,7 @@ export function AddProductDialog() {
       <DialogTrigger asChild>
         <Button className="rounded-xl font-black bg-slate-900 text-white hover:bg-slate-800 shadow-lg">
           <PlusCircle className="mr-2 h-4 w-4" />
-          Add Multimedia Listing
+          Add Smart Listing
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-4xl flex flex-col max-h-[90vh] p-0 rounded-[2.5rem] overflow-hidden border-none shadow-2xl">
@@ -198,8 +209,8 @@ export function AddProductDialog() {
                   {isFinancial ? <Landmark size={28}/> : <ShoppingBag size={28}/>}
                 </div>
                 <div>
-                  <DialogTitle className="text-2xl font-black">Multimedia Hub Listing</DialogTitle>
-                  <DialogDescription className="font-medium text-muted-foreground">Add high-trust visuals to showcase your offering.</DialogDescription>
+                  <DialogTitle className="text-2xl font-black">Smart Market Listing</DialogTitle>
+                  <DialogDescription className="font-medium text-muted-foreground">Add metadata to enable personalized campus recommendations.</DialogDescription>
                 </div>
             </div>
         </DialogHeader>
@@ -212,7 +223,7 @@ export function AddProductDialog() {
                     {/* LEFT SIDE: MULTIMEDIA SUITE */}
                     <div className="space-y-8">
                         <div className="space-y-3">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Primary Cover visual</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Primary visual</label>
                             <div className="relative aspect-square w-full rounded-[2.5rem] border-4 border-muted-foreground/10 bg-muted/30 flex flex-col items-center justify-center overflow-hidden group transition-all">
                                 {previewUrl ? (
                                     <>
@@ -232,58 +243,17 @@ export function AddProductDialog() {
                         {/* PRODUCT MULTIMEDIA SECTION */}
                         <div className="p-6 bg-slate-50 dark:bg-muted/30 rounded-[2.5rem] border-2 border-primary/5 space-y-6">
                             <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-black text-primary uppercase tracking-widest px-2">Product Multimedia</label>
-                                {isYoutubeDetected && multimediaTab === 'youtube' && (
-                                    <Badge className="bg-red-50 text-red-600 border-red-100 flex items-center gap-1 animate-in zoom-in">
-                                        <Youtube size={10} fill="currentColor"/> Video Detected
-                                    </Badge>
-                                )}
+                                <label className="text-[10px] font-black text-primary uppercase tracking-widest px-2">Discovery Tags</label>
+                                <Tag size={14} className="text-primary" />
                             </div>
-                            
-                            <div className="flex gap-2 bg-muted p-1 rounded-2xl">
-                                {(['none', 'youtube', 'upload'] as const).map(type => (
-                                    <button 
-                                        key={type} type="button"
-                                        onClick={() => setMultimediaTab(type)}
-                                        className={cn(
-                                            "flex-1 py-2 rounded-xl text-[10px] font-black uppercase transition-all", 
-                                            multimediaTab === type ? "bg-background shadow-md text-primary" : "text-muted-foreground hover:text-foreground"
-                                        )}
-                                    >
-                                        {type === 'none' ? 'No Video' : type}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {multimediaTab === 'youtube' && (
-                                <FormField control={form.control} name="videoUrl" render={({ field }) => (
-                                    <FormItem className="animate-in slide-in-from-top-2 duration-300">
-                                        <div className="relative">
-                                            <FormControl><Input placeholder="Paste YouTube Link..." {...field} className="p-4 pl-12 h-auto rounded-2xl bg-white dark:bg-slate-900 border-none font-bold text-xs shadow-sm" /></FormControl>
-                                            <Youtube className="absolute left-4 top-1/2 -translate-y-1/2 text-red-400" size={18} />
-                                        </div>
-                                        {isYoutubeDetected && <p className="text-[9px] text-green-600 font-bold px-4 italic">*Liaison validated: Ready for playback.</p>}
-                                    </FormItem>
-                                )}/>
-                            )}
-
-                            {multimediaTab === 'upload' && (
-                                <div className="animate-in slide-in-from-top-2 duration-300">
-                                    {videoPreview ? (
-                                        <div className="relative aspect-video rounded-[2rem] overflow-hidden border-2 border-primary bg-black shadow-xl">
-                                            <video src={videoPreview} controls className="w-full h-full" />
-                                            <Button type="button" variant="destructive" size="icon" onClick={() => {setVideoPreview(null); setVideoFile(null);}} className="absolute top-2 right-2 h-8 w-8 rounded-full border border-white"><X size={16} /></Button>
-                                        </div>
-                                    ) : (
-                                        <label htmlFor="video-upload" className="cursor-pointer p-8 rounded-[2.2rem] border-2 border-dashed border-primary/20 bg-primary/5 flex flex-col items-center gap-2 hover:bg-primary/10 transition-all group">
-                                            <div className="p-3 bg-white dark:bg-card rounded-xl group-hover:scale-110 transition-transform"><Video className="text-primary" /></div>
-                                            <span className="text-[10px] font-black uppercase text-primary tracking-widest">Upload Short (Max 15MB)</span>
-                                            <p className="text-[8px] font-bold text-muted-foreground text-center">Permanent product showcase</p>
-                                            <Input id="video-upload" type="file" className="hidden" accept="video/mp4,video/x-m4v,video/*" onChange={handleVideoChange} />
-                                        </label>
-                                    )}
-                                </div>
-                            )}
+                            <FormField control={form.control} name="tagsInput" render={({ field }) => (
+                                <FormItem>
+                                    <FormControl>
+                                        <Input placeholder="earbuds, bluetooth, student-deal" {...field} className="rounded-xl border-none bg-white dark:bg-slate-900 font-bold text-xs shadow-sm" />
+                                    </FormControl>
+                                    <p className="text-[9px] text-muted-foreground px-2 italic">Comma separated. Helps match your product to student video interests.</p>
+                                </FormItem>
+                            )}/>
                         </div>
                     </div>
 
@@ -318,11 +288,14 @@ export function AddProductDialog() {
                                 <FormControl><Input type="number" {...field} className="p-4 h-auto rounded-2xl bg-slate-50 dark:bg-muted/50 border-none font-black text-lg text-primary shadow-sm" /></FormControl> 
                               </FormItem>
                           )}/>
-                          <FormField control={form.control} name="stock" render={({ field }) => (
-                              <FormItem> 
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Inventory Units</label>
-                                <FormControl><Input type="number" {...field} className="p-4 h-auto rounded-2xl bg-slate-50 dark:bg-muted/50 border-none font-bold text-lg shadow-sm" /></FormControl> 
-                              </FormItem>
+                          <FormField control={form.control} name="targetAudience" render={({ field }) => (
+                            <FormItem> 
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Audience Scope</label>
+                              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormControl><SelectTrigger className="p-4 h-auto rounded-2xl bg-slate-50 dark:bg-muted/50 border-none font-bold text-xs shadow-sm"><SelectValue /></SelectTrigger></FormControl>
+                                <SelectContent className="rounded-2xl shadow-xl border-none"><SelectItem value="all">Entire Yard</SelectItem><SelectItem value="student">Students Only</SelectItem><SelectItem value="staff">Staff Lounge</SelectItem></SelectContent>
+                              </Select>
+                            </FormItem>
                           )}/>
                         </div>
                       ) : (
@@ -347,8 +320,8 @@ export function AddProductDialog() {
 
                       <FormField control={form.control} name="description" render={({ field }) => (
                           <FormItem> 
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Description & Fine Print</label>
-                            <FormControl><Textarea placeholder="Share the specs, terms, and delivery vibes..." {...field} className="min-h-[150px] rounded-[2rem] bg-slate-50 dark:bg-muted/50 border-none font-medium leading-relaxed shadow-inner no-scrollbar" /></FormControl> 
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Description</label>
+                            <FormControl><Textarea placeholder="Share the specs, terms, and delivery vibes..." {...field} className="min-h-[120px] rounded-[2rem] bg-slate-50 dark:bg-muted/50 border-none font-medium leading-relaxed shadow-inner no-scrollbar" /></FormControl> 
                           </FormItem>
                       )}/>
                     </div>
@@ -360,13 +333,13 @@ export function AddProductDialog() {
         <DialogFooter className="p-8 border-t bg-muted/20 flex-shrink-0 items-center">
           <div className="flex-1 flex items-center gap-3 text-slate-400">
              <div className="p-2 bg-white dark:bg-card rounded-xl shadow-sm"><ShieldCheck size={18} className="text-primary"/></div>
-             <span className="text-[10px] font-black uppercase tracking-widest">Permanent Verified Listing</span>
+             <span className="text-[10px] font-black uppercase tracking-widest">Liaison discovery Active</span>
           </div>
           <div className="flex gap-3">
             <Button type="button" variant="ghost" onClick={() => setOpen(false)} className="rounded-xl font-bold px-6">Cancel</Button>
             <Button type="submit" form="add-product-form" disabled={isLoading} className="rounded-xl px-10 h-14 font-black bg-slate-900 text-white shadow-2xl active:scale-95 transition-all">
                 {isLoading ? <Loader2 className="mr-2 animate-spin" /> : <Package className="mr-2 h-5 w-5" />}
-                Launch to Yard
+                Launch Smart Listing
             </Button>
           </div>
         </DialogFooter>
