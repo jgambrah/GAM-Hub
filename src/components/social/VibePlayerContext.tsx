@@ -115,10 +115,6 @@ export function computeVibeScore(
   const matchingTopics = (candidate.aiTopics || []).filter(t => currentTopics.has(t.toLowerCase()));
   score += matchingTopics.length * 10;
 
-  const currentObjects = new Set((current.detectedObjects || []).map(o => o.toLowerCase()));
-  const matchingObjects = (candidate.detectedObjects || []).filter(o => currentObjects.has(o.toLowerCase()));
-  score += matchingObjects.length * 8; 
-
   // 2. VECTOR SIMILARITY
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
@@ -137,7 +133,7 @@ export function computeVibeScore(
   if (candidate.mood && activeMoodId !== 'all') {
     const activeMoodTerms = moodMapping[activeMoodId];
     if (activeMoodTerms.includes(candidate.mood.toLowerCase())) {
-      score += 10; // Mood match boost
+      score += 10;
     }
   }
 
@@ -149,8 +145,6 @@ export function computeVibeScore(
     score += 35; 
   } else if (candidateTags.some(t => viralTags.has(t))) {
     score += 25;
-  } else if (candidateTags.some(t => trendingTags.has(t))) {
-    score += 12;
   }
 
   // 5. BEHAVIORAL & REPUTATION SIGNALS
@@ -159,8 +153,6 @@ export function computeVibeScore(
 
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
   score += (repData.qualityScore || 50) * 0.5;
-
-  if ((repData.violationScore || 0) > 3) score -= 50;
 
   // 6. FRESHNESS DECAY
   if (candidate.createdAt) {
@@ -172,37 +164,28 @@ export function computeVibeScore(
 }
 
 /**
- * 🎨 SMART QUEUE BUILDER WITH TOPIC DIVERSITY
+ * 🎨 SMART QUEUE BUILDER WITH DIVERSITY-AWARE SCORING
  */
 export function buildSmartQueue(
   current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
   viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set(),
   creatorReputation: Record<string, any> = {}
 ) {
-  const moodDef = VIBE_MOODS.find(m => m.id === mood);
-  const moodTagSet = moodDef && mood !== 'all' ? new Set(moodDef.tags) : new Set<string>();
-
-  // First pass: Score all items
   const scored = pool
-    .filter(p => {
-        if (p.id === current.id) return false;
-        if (moodTagSet.size > 0) {
-            return (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) || p.mediaType === 'video';
-        }
-        return true;
-    })
+    .filter(p => p.id !== current.id)
     .map(p => ({
         post: p,
         score: computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags, creatorReputation, mood)
     }));
 
-  // Sort by base score
   scored.sort((a, b) => b.score - a.score);
 
-  // Second pass: Apply greedy diversity with cluster penalties & Creator Rotation
   const finalRanked = [];
   const candidates = [...scored];
+  
+  // Trackers for greedy selection
   const seenClusters = new Map<string, number>();
+  const creatorSessionCount = new Map<string, number>();
   const lastCreatorPositions = new Map<string, number>();
   
   const MIN_CREATOR_GAP = 4;
@@ -210,19 +193,21 @@ export function buildSmartQueue(
   while (candidates.length > 0 && finalRanked.length < 50) {
       const currentIndex = finalRanked.length;
       
-      // Re-score top candidates based on what's already selected
-      const window = candidates.slice(0, 15).map(c => {
+      const window = candidates.slice(0, 20).map(c => {
           const cluster = (c.post.tags?.[0] || 'none').toLowerCase();
           const creatorId = c.post.authorId;
           
           const clusterFreq = seenClusters.get(cluster) || 0;
+          const creatorFreq = creatorSessionCount.get(creatorId) || 0;
           const lastPos = lastCreatorPositions.get(creatorId);
           
-          let diverseScore = c.score - (clusterFreq * 5); // Cluster Penalty
+          // 🛡️ DIVERSITY-AWARE SCORING: Apply penalties for repetition
+          let diverseScore = c.score;
+          diverseScore -= (clusterFreq * 6); // Topic Penalty
+          diverseScore -= (creatorFreq * 8); // Session Creator Penalty
           
-          // CRITICAL: Creator Rotation Penalty
           if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) {
-              diverseScore -= 40; // Heavy penalty for bunching creators
+              diverseScore -= 40; // Heavy Gap Penalty
           }
           
           return { ...c, diverseScore };
@@ -236,32 +221,14 @@ export function buildSmartQueue(
       // Update trackers
       const cluster = (best.post.tags?.[0] || 'none').toLowerCase();
       seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1);
+      creatorSessionCount.set(best.post.authorId, (creatorSessionCount.get(best.post.authorId) || 0) + 1);
       lastCreatorPositions.set(best.post.authorId, currentIndex);
 
-      // Remove from candidates
       const idx = candidates.findIndex(c => c.post.id === best.post.id);
       candidates.splice(idx, 1);
   }
 
   return finalRanked;
-}
-
-function buildReason(current: SocialPost, candidate: SocialPost, getPersonalScore: (p: SocialPost) => number, userEmbedding?: number[], relatedTags: Set<string> = new Set()): string {
-  const parts: string[] = [];
-  if (userEmbedding && candidate.embedding && cosineSimilarity(userEmbedding, candidate.embedding) > 0.88) parts.push('Personal Taste');
-  const shared = (candidate.tags || []).filter(t => (current.tags || []).includes(t));
-  if (shared.length > 0 && parts.length < 2) parts.push(`#${shared[0]}`);
-  
-  if (parts.length < 2 && candidate.aiTopics && current.aiTopics) {
-    const sharedTopic = candidate.aiTopics.find(t => current.aiTopics?.includes(t));
-    if (sharedTopic) parts.push(sharedTopic);
-  }
-
-  const candidateTags = (candidate.tags || []).map(t => t.toLowerCase());
-  if (parts.length < 2 && candidateTags.some(t => relatedTags.has(t))) parts.push(`Related: #${candidateTags.find(t => relatedTags.has(t))}`);
-  if (parts.length < 2 && getPersonalScore(candidate) > 15) parts.push('Based on history');
-  if (parts.length === 0) parts.push('Trending now');
-  return parts.slice(0, 2).join(' · ');
 }
 
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
@@ -375,7 +342,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
-    const userEmbedding = userEmbeddingRef.current;
     const viral = viralTagsRef.current;
     const trending = trendingTagsRef.current;
     const reputations = creatorReputationRef.current;
@@ -388,41 +354,28 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         } catch (e) { console.warn("Graph lookup failed"); }
     }
     
-    // 🛰️ STAGE 1: BUCKETED RETRIEVAL (70/20/10 Ratio Logic)
-    const vectorRanked = userEmbedding ? rankByEmbedding(pool, userEmbedding).slice(0, 140) : pool.slice(0, 140);
+    // 🏗️ ELITE PIPELINE: Bucketed Retrieval -> Diverse Ranking -> Final Diversity Pass
+    const vectorRanked = userEmbeddingRef.current ? rankByEmbedding(pool, userEmbeddingRef.current).slice(0, 140) : pool.slice(0, 140);
     const trendingRanked = pool.filter(p => !vectorRanked.some(v => v.id === p.id)).sort((a, b) => (b.likes || 0) - (a.likes || 0)).slice(0, 40);
     const explorationPool = pool.filter(p => !vectorRanked.some(v => v.id === p.id) && !trendingRanked.some(t => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 20);
     const blendedPool = [...vectorRanked, ...trendingRanked, ...explorationPool];
 
-    // 🎨 STAGE 2: DIVERSE RANKING (Cluster Penalties & Creator Rotation)
     const rankedResults = buildSmartQueue(current, blendedPool, mood, scorer, viral, trending, relatedTags, reputations);
     
-    // 🎨 STAGE 3: FINAL DIVERSITY PASS (Hard Constraints & Exploration Injection)
+    // 🎨 FINAL DIVERSITY PASS (Hard Constraints & Rotation)
     const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 30);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
         score: computeVibeScore(current, p, scorer, viral, trending, relatedTags, reputations, mood),
-        reason: buildReason(current, p, scorer, userEmbedding, relatedTags),
+        reason: 'Recommended for you',
       }));
 
     setQueue([current, ...diversePool]);
     setUpNext(makeUpNext(diversePool));
     setIsLoadingQueue(false);
-
-    try {
-      const recommendation = await getRecommendedVibes({
-        currentPostContent: current.content,
-        userInterests: getTopInterests(10),
-        availablePosts: diversePool.map(p => ({ id: p.id, content: p.content, tags: p.tags || [] })),
-      });
-      const postMap = new Map<string, SocialPost>(); pool.forEach(p => postMap.set(p.id, p));
-      const aiPosts = recommendation.recommendedPostIds.filter(id => postMap.has(id)).map(id => postMap.get(id)!);
-      const combined = [...aiPosts, ...diversePool.filter(p => !recommendation.recommendedPostIds.includes(p.id))];
-      setQueue([current, ...combined]); setUpNext(makeUpNext(combined));
-    } catch (err) { console.warn('Liaison AI bypassed'); }
-  }, [getTopInterests, firestore]);
+  }, [firestore]);
 
   const pushToHistory = useCallback((post: SocialPost) => {
     setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX));
