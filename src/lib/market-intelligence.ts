@@ -8,7 +8,7 @@
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import type { Product, Order, MarketplaceSignal, NotificationSettings, MarketRequest, DemandSignal } from './types';
-import { recordUnifiedSignal } from './user-intelligence';
+import { recordUnifiedSignal, updateMarketInterest } from './user-intelligence';
 
 /**
  * recordMarketSignal
@@ -28,6 +28,9 @@ export async function recordMarketSignal(
   const productAggregates: any = { updatedAt: serverTimestamp() };
 
   // 2. Relay to Unified Intelligence Brain 🧠
+  // We use the specific updateMarketInterest for deep interest mapping
+  updateMarketInterest(firestore, userId, product, signal === 'purchase');
+
   const unifiedSignalType: MarketplaceSignal = signal === 'share' ? 'click' : signal;
   recordUnifiedSignal(firestore, userId, unifiedSignalType, {
     category: product.category,
@@ -36,7 +39,7 @@ export async function recordMarketSignal(
     price: product.price
   });
 
-  // Handle specific product aggregation
+  // Handle legacy specific product aggregation
   switch (signal) {
     case 'view':
       productAggregates.viewCount = increment(1);

@@ -11,6 +11,7 @@ import { doc, setDoc, increment, serverTimestamp, getDoc, Firestore } from 'fire
 import type { UserIntelligence, MarketplaceSignal, VibeSignal, SocialPost, Product } from './types';
 
 // LIAISON INTELLIGENCE WEIGHTS
+// Maps signals to their holistic engagement value
 const SIGNAL_VALUES: Record<MarketplaceSignal | VibeSignal, number> = {
   // Social Vibrations
   'watch': 1,
@@ -27,6 +28,70 @@ const SIGNAL_VALUES: Record<MarketplaceSignal | VibeSignal, number> = {
   'favorite': 12,
   'purchase': 25, // Strongest possible intent
 };
+
+/**
+ * updateVideoInterest
+ * -------------------
+ * Updates user interests based on video engagement.
+ * (Signal: +1 per tag)
+ */
+export async function updateVideoInterest(
+  firestore: Firestore,
+  userId: string,
+  post: SocialPost
+) {
+  if (!firestore || !userId) return;
+
+  const ref = doc(firestore, 'user_intelligence', userId);
+  const updates: any = { updatedAt: serverTimestamp() };
+
+  const tags = [...(post.tags || []), ...(post.aiTags || [])];
+  tags.forEach(tag => {
+    updates[`interests.${tag.toLowerCase()}`] = increment(1);
+  });
+
+  return setDoc(ref, updates, { merge: true }).catch(() => {});
+}
+
+/**
+ * updateMarketInterest
+ * --------------------
+ * Updates user interests based on marketplace behavior.
+ * (Signal: Category +3, Tags +2)
+ */
+export async function updateMarketInterest(
+  firestore: Firestore,
+  userId: string,
+  product: Product,
+  isPurchase: boolean = false
+) {
+  if (!firestore || !userId) return;
+
+  const ref = doc(firestore, 'user_intelligence', userId);
+  const updates: any = { updatedAt: serverTimestamp() };
+
+  // Purchases have a multiplier effect on the signal
+  const multiplier = isPurchase ? 3 : 1;
+
+  // 1. Boost Category (Primary Signal)
+  updates[`interests.${product.category.toLowerCase()}`] = increment(3 * multiplier);
+
+  // 2. Boost Tags (Secondary Signal)
+  if (product.tags) {
+    product.tags.forEach(tag => {
+      updates[`interests.${tag.toLowerCase()}`] = increment(2 * multiplier);
+    });
+  }
+
+  // 3. Update Price preference
+  if (product.price) {
+      const min = product.price * 0.7;
+      const max = product.price * 1.5;
+      updates.pricePreference = { min, max };
+  }
+
+  return setDoc(ref, updates, { merge: true }).catch(() => {});
+}
 
 /**
  * recordUnifiedSignal
@@ -62,7 +127,11 @@ export async function recordUnifiedSignal(
   if (context.tags) context.tags.forEach(t => interestsToBoost.add(t.toLowerCase()));
 
   interestsToBoost.forEach(interest => {
-    updates[`interests.${interest}`] = increment(score);
+    // Determine the interest weight based on the signal origin
+    let weight = score;
+    if (type === 'watch') weight = 1; // Align with updateVideoInterest logic
+    
+    updates[`interests.${interest}`] = increment(weight);
   });
 
   // 2. Process Affinities (Creators/Vendors)
@@ -73,10 +142,11 @@ export async function recordUnifiedSignal(
     updates[`affinities.vendors.${context.vendorId}`] = increment(score);
   }
 
-  // 3. Process Price Sensitivity (Purchases/Views)
+  // 3. Process Price Sensitivity
   if (context.price && (type === 'view' || type === 'purchase')) {
-    // Dynamically adjust price preference min/max based on behavior
-    // This is handled via a merge so we don't overwrite if existing
+      const min = context.price * 0.6;
+      const max = context.price * 1.8;
+      updates.pricePreference = { min, max };
   }
 
   try {

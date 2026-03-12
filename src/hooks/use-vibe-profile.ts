@@ -1,12 +1,12 @@
 
 'use client';
 
-import { useCallback, useEffect, useState, useRef } from 'react';
-import { doc, getDoc, onSnapshot, Firestore } from 'firebase/firestore';
+import { useCallback, useEffect, useState } from 'react';
+import { doc, onSnapshot, Firestore } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import type { SocialPost, UserIntelligence, VibeSignal } from '@/lib/types';
-import { recordUnifiedSignal } from '@/lib/user-intelligence';
+import { recordUnifiedSignal, updateVideoInterest } from '@/lib/user-intelligence';
 
 /**
  * useVibeProfile Hook
@@ -49,6 +49,11 @@ export function useVibeProfile() {
    */
   const recordSignal = useCallback(async (post: SocialPost, signal: VibeSignal) => {
     if (!firestore || !user?.id) return;
+
+    // Direct interest update for video watches
+    if (signal === 'watch') {
+        updateVideoInterest(firestore, user.id, post);
+    }
 
     recordUnifiedSignal(firestore, user.id, signal, {
       tags: [...(post.tags || []), ...(post.aiTags || [])],
