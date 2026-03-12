@@ -14,8 +14,7 @@ setGlobalOptions({maxInstances: 10});
 
 /**
  * 🏎️ REAL-TIME TRENDING ENGINE (REACTIVE)
- * Upgraded with Time-Series Velocity & Multi-Signal Scoring.
- * Calculates velocity (engagement/min) and promotes to Viral Pool.
+ * Upgraded with Exponential Trend Decay (6-hour Half-Life).
  */
 exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
@@ -40,7 +39,6 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
     let recentEngagement = 0;
     velocitySnap.forEach((doc) => {
       const v = doc.data();
-      // Weighted velocity: Shares and Comments represent higher intent than simple views
       recentEngagement += (v.views || 0) + (v.likes || 0) * 3 + (v.comments || 0) * 5 + (v.shares || 0) * 8;
     });
 
@@ -52,20 +50,19 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
     const completionRate = (data.completions || 0) / totalViews;
 
     // 3. APPLY MASTER TREND FORMULA
-    // trendScore = (velocity * 0.5) + (engagementRate * 30) + (completionRate * 20)
-    // We scale the rates to match velocity weights for a meaningful 0-100+ score range
     let score = (velocity * 0.5) + (engagementRate * 30) + (completionRate * 20);
 
-    // 📉 Momentum Adjustment: Decay old posts exponentially
+    // 📉 TREND DECAY SYSTEM: Aggressive 6-hour Half-Life
     const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
     const ageHours = (new Date() - createdAt) / 3600000;
-    const decay = Math.exp(-ageHours / 12); // Halflife of ~8 hours
+    const halfLife = 6; 
+    const decay = Math.exp(-ageHours / halfLife); 
     score *= decay;
 
-    // 🚀 Super-Viral Boost
+    // 🚀 Super-Viral Boost for fresh content
     if (data.views > 1000 && ageHours < 1) score *= 1.5;
 
-    // 4. VIRAL GRADUATION (Promotion to High-Trust Collection)
+    // 4. VIRAL GRADUATION
     if (score > 40) {
       await db.collection("viral_posts").doc(postId).set({
         postId,
@@ -76,7 +73,6 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
       }, { merge: true });
     }
 
-    // Only update if change is significant to prevent recursion loops
     if (data.trendScore && Math.abs(data.trendScore - score) < 0.01) return null;
 
     return event.data.after.ref.update({ 
@@ -92,8 +88,51 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 });
 
 /**
+ * 🕒 SCHEDULED TREND DECAY AUDITOR
+ * Ensures that even inactive posts are decayed so the Pulse stays fresh.
+ */
+exports.applyGlobalTrendDecay = onSchedule("every 1 hour", async (event) => {
+  const db = admin.firestore();
+  const now = new Date();
+  const halfLife = 6;
+
+  // Only audit active trends from the last 48 hours to save ops
+  const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+  
+  const activeTrendsSnap = await db.collection("trending_stats")
+    .where("updatedAt", ">=", fortyEightHoursAgo)
+    .get();
+
+  if (activeTrendsSnap.empty) return null;
+
+  const batch = db.batch();
+  activeTrendsSnap.forEach((docSnap) => {
+    const data = docSnap.data();
+    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : now;
+    const ageHours = (now - createdAt) / 3600000;
+    
+    // Recalculate decay based on current time
+    const decay = Math.exp(-ageHours / halfLife);
+    
+    // Base score (without previous decay) is estimated from raw stats
+    const totalViews = Math.max(data.views || 1, 1);
+    const engagementRate = ((data.likes || 0) + (data.comments || 0) + (data.shares || 0)) / totalViews;
+    const completionRate = (data.completions || 0) / totalViews;
+    
+    let baseScore = (engagementRate * 30) + (completionRate * 20);
+    let newScore = baseScore * decay;
+
+    batch.update(docSnap.ref, { 
+      trendScore: newScore,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  });
+
+  return batch.commit();
+});
+
+/**
  * 🏆 CREATOR REPUTATION & TIER ENGINE
- * Aggregates performance across all posts to assign a 0-100 tier score.
  */
 exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
@@ -102,7 +141,6 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
 
   const db = admin.firestore();
   
-  // Optimization: Only update reputation on every 5th engagement event per post
   const totalEngagement = (data.views || 0) + (data.likes || 0) + (data.comments || 0);
   if (totalEngagement % 5 !== 0) return null;
 
@@ -125,14 +163,12 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   const engagementRate = totalInteractions / divisor;
   const completionRate = totalCompletions / divisor;
 
-  // 🏛️ LIAISON QUALITY FORMULA (0-100)
   const consistencyBonus = count > 5 ? 10 : 0;
   const violationPenalty = (data.violations || 0) * 20;
 
   let qualityScore = (engagementRate * 200) + (completionRate * 100) + consistencyBonus - violationPenalty;
   qualityScore = Math.min(100, Math.max(0, Math.round(qualityScore)));
 
-  // TIER CLASSIFICATION
   let tier = "new";
   if (qualityScore >= 80) tier = "elite";
   else if (qualityScore >= 50) tier = "trusted";
