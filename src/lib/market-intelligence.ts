@@ -4,7 +4,7 @@
 /**
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
- * Upgraded with Weighted Trending Signals and Correlation Graph.
+ * Upgraded with Weighted Trending Signals, Correlation Graph, and Product Trend Document.
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -29,6 +29,7 @@ export async function recordMarketSignal(
 
   const profileRef = doc(firestore, 'user_market_profiles', userId);
   const statsRef = doc(firestore, 'products', product.id);
+  const trendRef = doc(firestore, 'product_trends', product.id);
   
   // 🕒 MINUTE BUCKET LOGIC: Detects velocity within a 60-second window
   const minuteBucket = new Date().toISOString().slice(0, 16); 
@@ -41,6 +42,11 @@ export async function recordMarketSignal(
 
   const velocityUpdates: any = {};
   const productAggregates: any = {};
+  const trendUpdates: any = {
+    productId: product.id,
+    campusId: product.campusId,
+    lastUpdated: serverTimestamp()
+  };
 
   // WEIGHT ASSIGNMENT
   switch (signal) {
@@ -48,6 +54,7 @@ export async function recordMarketSignal(
       profileUpdates[`viewedCategories.${product.category}`] = increment(1);
       velocityUpdates.views = increment(1);
       productAggregates.viewCount = increment(1);
+      trendUpdates.viewCount = increment(1);
       break;
     case 'favorite':
       profileUpdates.favoriteProducts = arrayUnion(product.id);
@@ -57,17 +64,20 @@ export async function recordMarketSignal(
     case 'share':
       velocityUpdates.shares = increment(1);
       productAggregates.shareCount = increment(1);
+      trendUpdates.shareCount = increment(1);
       break;
     case 'intent':
       profileUpdates[`intentCategories.${product.category}`] = increment(1);
       profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
       velocityUpdates.intents = increment(1);
+      trendUpdates.cartCount = increment(1); // Maps 'intent' to 'cart' for trends
       break;
     case 'purchase':
       profileUpdates[`purchasedCategories.${product.category}`] = increment(1);
       profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
       velocityUpdates.purchases = increment(1);
       productAggregates.salesCount = increment(1);
+      trendUpdates.purchaseCount = increment(1);
       
       // 🔥 LIAISON UPGRADE: Update Co-Purchase Graph
       updateCoPurchaseCorrelation(firestore, userId, product.id);
@@ -77,6 +87,7 @@ export async function recordMarketSignal(
   // 🛰️ BATCHED NON-BLOCKING HANDSHAKE
   setDoc(profileRef, profileUpdates, { merge: true }).catch(() => {});
   setDoc(velocityRef, velocityUpdates, { merge: true }).catch(() => {});
+  setDoc(trendRef, trendUpdates, { merge: true }).catch(() => {});
   
   if (Object.keys(productAggregates).length > 0) {
     setDoc(statsRef, productAggregates, { merge: true }).catch(() => {});
@@ -99,6 +110,35 @@ export async function recordMarketSignal(
       console.warn("Market Intel: Price sync interrupted.");
     }
   }
+}
+
+/**
+ * trackProductEvent
+ * -----------------
+ * Specific event tracker for product trends as requested.
+ * Acts as a wrapper for recordMarketSignal where applicable.
+ */
+export async function trackProductEvent(
+  firestore: Firestore,
+  productId: string,
+  eventType: 'view' | 'cart' | 'purchase' | 'share',
+  campusId: string
+) {
+  const ref = doc(firestore, 'product_trends', productId);
+  const updates: any = {
+    productId,
+    campusId,
+    lastUpdated: serverTimestamp()
+  };
+
+  if (eventType === "view") updates.viewCount = increment(1);
+  if (eventType === "cart") updates.cartCount = increment(1);
+  if (eventType === "purchase") updates.purchaseCount = increment(1);
+  if (eventType === "share") updates.shareCount = increment(1);
+
+  await setDoc(ref, updates, { merge: true }).catch(err => {
+    console.error("Trend Tracking Failed:", err);
+  });
 }
 
 /**

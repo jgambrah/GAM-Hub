@@ -71,6 +71,16 @@ export type MarketIntent = {
   intent?: string;
 };
 
+export type ProductTrend = {
+  productId: string;
+  campusId: string;
+  viewCount: number;
+  cartCount: number;
+  purchaseCount: number;
+  shareCount: number;
+  lastUpdated: any;
+};
+
 export type ProductCoPurchase = {
   id: string;
   productA: string;

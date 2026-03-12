@@ -79,6 +79,22 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
+    },
+    "ProductTrend": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ProductTrend",
+      "type": "object",
+      "description": "Aggregate trending signals for products.",
+      "properties": {
+        "productId": { "type": "string" },
+        "campusId": { "type": "string" },
+        "viewCount": { "type": "number" },
+        "cartCount": { "type": "number" },
+        "purchaseCount": { "type": "number" },
+        "shareCount": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "campusId"]
     }
   },
   "auth": {
@@ -108,6 +124,14 @@
           "entityName": "Product",
           "schema": { "$ref": "#/backend/entities/Product" },
           "description": "Marketplace product listings with recommendation metadata."
+        }
+      },
+      {
+        "path": "/product_trends/{productId}",
+        "definition": {
+          "entityName": "ProductTrend",
+          "schema": { "$ref": "#/backend/entities/ProductTrend" },
+          "description": "Aggregate trending signals for products."
         }
       },
       {

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -5,8 +6,10 @@ import { usePaystackPayment } from 'react-paystack';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { CreditCard } from 'lucide-react';
-import type { Order, User } from '@/lib/types';
+import type { Order, User, Product } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { recordMarketSignal } from '@/lib/market-intelligence';
+import { useFirebase } from '@/firebase';
 
 interface CommunityPaymentButtonProps {
     order: Order;
@@ -16,6 +19,7 @@ interface CommunityPaymentButtonProps {
 
 export default function CommunityPaymentButton({ order, userProfile, onSuccessAction }: CommunityPaymentButtonProps) {
     const { toast } = useToast();
+    const { firestore } = useFirebase();
     const isStaff = userProfile?.role === 'staff';
 
     const config = {
@@ -30,6 +34,20 @@ export default function CommunityPaymentButton({ order, userProfile, onSuccessAc
     const initializePayment = usePaystackPayment(config);
 
     const onSuccess = (reference: any) => {
+        // 🏎️ MARKET INTELLIGENCE: Record the 'purchase' signal immediately
+        // This surges the product's trend score in real-time
+        if (firestore) {
+            const productPlaceholder = {
+                id: order.productId,
+                category: order.category,
+                vendorId: order.vendorId,
+                campusId: order.campusId,
+                price: order.amount
+            } as Product;
+            
+            recordMarketSignal(firestore, userProfile.id, productPlaceholder, 'purchase');
+        }
+
         toast({
             title: isStaff ? "Payment Authorized" : "Payment Successful!",
             description: isStaff ? "Your order is now secured in Escrow, Professor." : "Your GHS is safe with the Liaison. We'll confirm the transaction shortly.",
@@ -38,7 +56,8 @@ export default function CommunityPaymentButton({ order, userProfile, onSuccessAc
         if (onSuccessAction) {
             onSuccessAction(reference);
         } else {
-            window.location.reload();
+            // Give time for the signal to process before refreshing
+            setTimeout(() => window.location.reload(), 1500);
         }
     };
 
