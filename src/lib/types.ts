@@ -190,19 +190,7 @@ export type SocialPost = {
   trendScore?: number; 
   authorQualityScore?: number; 
   productTags?: string[];
-};
-
-export type Notification = {
-  id: string;
-  userId: string;
-  title: string;
-  body: string;
-  type: string;
-  sentAt: string;
-  opened?: boolean;
-  clicked?: boolean;
-  purchased?: boolean;
-  relatedProductId?: string;
+  commerceClicks?: number; // Conversion metric
 };
 
 export type Order = {
@@ -228,6 +216,16 @@ export type Order = {
     longitude?: number;
   };
   createdAt: string;
+  affiliateCreatorId?: string; // Originating video creator
+  commissionRate?: number; // Affiliate percentage
+};
+
+export type VideoProductClick = {
+  id: string;
+  videoId: string;
+  productId: string;
+  userId: string;
+  timestamp: string;
 };
 
 export type Campus = {
@@ -246,182 +244,6 @@ export type Campus = {
   radioStreamUrl?: string;
 };
 
-export type AdCampaign = {
-  id: string;
-  advertiserName: string;
-  headline: string;
-  ctaLabel: string;
-  ctaUrl: string;
-  mediaType: 'image' | 'video';
-  mediaUrl: string;
-  status: 'active' | 'paused' | 'pending_review';
-  impressions: number;
-  clicks: number;
-};
-
-export type Chat = {
-  id: string;
-  users: [string, string];
-  lastMessage?: string;
-  updatedAt: string;
-  userAInfo?: { id: string; name: string; avatarUrl: string };
-  userBInfo?: { id: string; name: string; avatarUrl: string };
-  type?: 'private' | 'support';
-};
-
-export type Message = {
-  id: string;
-  senderId: string;
-  senderName: string;
-  text?: string;
-  type: 'text' | 'image' | 'video' | 'file';
-  createdAt: string;
-  mediaUrl?: string;
-  isForwarded?: boolean;
-  replyTo?: { messageId: string; text: string; senderName: string } | null;
-};
-
-export type SpotlightItem = {
-  id: string;
-  type: 'vendor' | 'student' | 'vlog' | 'announcement';
-  title?: string;
-  content?: string;
-  category?: string;
-  sourceType?: string;
-  campusId?: string;
-  image?: string | null;
-  imageHint?: string;
-  vibeColor?: string;
-  isOfficial?: boolean;
-  updatedAt?: string;
-  data?: any;
-  authorCampus?: string;
-  score?: number;
-};
-
-export type PickupPoint = {
-  id: string;
-  campusId: string;
-  name: string;
-  description: string;
-  latitude: number;
-  longitude: number;
-  status: 'active' | 'inactive';
-};
-
-export type Group = {
-  id: string;
-  name: string;
-  description?: string;
-  campusId: string;
-  members: string[];
-  admins: string[];
-  type: 'social' | 'class' | 'department' | 'staff-only';
-  isPrivate: boolean;
-  isMainRoom?: boolean;
-  createdBy: string;
-  createdAt: string;
-};
-
-export type GroupRequest = {
-  id: string;
-  groupId: string;
-  userId: string;
-  userName: string;
-  userCampusId: string;
-  userAvatarUrl: string;
-  status: 'pending' | 'approved' | 'rejected';
-  createdAt: string;
-  approvedAt?: any;
-};
-
-export type RegistryPost = {
-  id: string;
-  title: string;
-  content: string;
-  isUrgent: boolean;
-  campusId: string;
-  targetAudience: 'all' | 'staff' | 'student';
-  attachments?: string[];
-  createdAt: string;
-  authorId: string;
-};
-
-export type SrcPost = {
-  id: string;
-  title: string;
-  content: string;
-  campusId: string;
-  authorId: string;
-  createdAt: any;
-  mediaUrls?: string[];
-};
-
-export type LiveBroadcast = {
-  id: string;
-  status: 'live' | 'off-air';
-  videoUrl: string;
-  currentTime: number;
-  hostName: string;
-  hostId: string;
-  title: string;
-  viewerCount: number;
-  updatedAt?: any;
-};
-
-export type StudyRoom = {
-  id: string;
-  title: string;
-  major: string;
-  campusId: string;
-  content: string;
-  authorId: string;
-  authorName: string;
-  participants: string[];
-  isOfficial?: boolean;
-  isPrivate?: boolean;
-  creatorRole?: string;
-  createdAt: any;
-};
-
-export type ArenaPost = {
-  id: string;
-  authorId: string;
-  authorName: string;
-  authorAvatarUrl?: string;
-  authorCampus: string;
-  authorColor: string;
-  vibeType: 'shade' | 'celebration';
-  content: string;
-  stats: {
-    likes: number;
-    burns: number;
-  };
-  createdAt: any;
-  mediaUrl?: string;
-  mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
-  isArenaEntry: boolean;
-  campusId: string;
-  targetCampus?: string;
-  comebackCount?: number;
-  status?: 'active' | 'blocked';
-  moderationNote?: string;
-};
-
-export type ArenaComeback = {
-  id: string;
-  text: string;
-  authorId: string;
-  authorName: string;
-  authorCampus: string;
-  authorColor: string;
-  isCounter: boolean;
-  createdAt: any;
-  isBot?: boolean;
-  mediaUrl?: string;
-  mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
-};
-
 export type NavItem = {
   href: string;
   label: string;
@@ -438,13 +260,6 @@ export type Connection = {
     status: 'pending' | 'accepted' | 'rejected';
     createdAt: string;
     isInterCampus?: boolean;
-}
-
-export type HallOfFameEntry = {
-  id: string;
-  campusId: string;
-  totalBurns: number;
-  weekEnding: any;
 }
 
 export type LeadPrice = {

@@ -9,8 +9,10 @@ import Image from 'next/image';
 import { ShoppingCart, ChevronRight, Sparkles, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import { trackVideoProductClick } from '@/lib/market-intelligence';
 
 interface VibeShopOverlayProps {
+  postId: string;
   productIds: string[];
   isActive: boolean;
 }
@@ -20,16 +22,15 @@ interface VibeShopOverlayProps {
  * 
  * Part of the Creator-Commerce Engine.
  * Displays a premium floating "Featured Products" shelf over vibrations.
+ * Now integrated with Click Tracking for ROI analysis.
  */
-export default function VibeShopOverlay({ productIds, isActive }: VibeShopOverlayProps) {
-  const { firestore } = useFirebase();
+export default function VibeShopOverlay({ postId, productIds, isActive }: VibeShopOverlayProps) {
+  const { firestore, user } = useFirebase();
   const router = useRouter();
 
   // 🏎️ COMMERCE HANDSHAKE: Fetch all tagged products in one efficient query
   const productsQuery = useMemoFirebase(() => {
     if (!firestore || !productIds || productIds.length === 0) return null;
-    // Note: Firestore 'in' queries are restricted to 10 items, 
-    // but our creator policy restricts tagging to 3 items per vibe.
     return query(
         collection(firestore, 'products'), 
         where(documentId(), 'in', productIds.slice(0, 10))
@@ -37,6 +38,26 @@ export default function VibeShopOverlay({ productIds, isActive }: VibeShopOverla
   }, [firestore, productIds]);
 
   const { data: products, isLoading } = useCollection<Product>(productsQuery);
+
+  const handleProductClick = async (product: Product) => {
+    if (!firestore || !user) {
+        router.push(`/products/${product.id}`);
+        return;
+    }
+
+    // 📊 CONVERSION TRACKING: Record the click context
+    // This provides the data for the Video -> Commerce Ranking Boost
+    try {
+        // Store video ID in session storage to track conversion if purchase happens
+        sessionStorage.setItem('last_video_source', postId);
+        
+        await trackVideoProductClick(firestore, postId, product.id, user.id);
+    } catch (e) {
+        console.warn("Liaison Analytics: Conversion log failed.");
+    }
+
+    router.push(`/products/${product.id}`);
+  };
 
   if (isLoading || !products || products.length === 0) return null;
 
@@ -58,7 +79,7 @@ export default function VibeShopOverlay({ productIds, isActive }: VibeShopOverla
                     key={product.id}
                     onClick={(e) => {
                         e.stopPropagation();
-                        router.push(`/products/${product.id}`);
+                        handleProductClick(product);
                     }}
                     className="flex-shrink-0 flex items-center gap-4 bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl p-3 rounded-[2rem] border-2 border-white/30 shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:scale-105 active:scale-95 transition-all text-left group"
                 >

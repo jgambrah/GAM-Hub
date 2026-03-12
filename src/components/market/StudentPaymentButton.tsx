@@ -22,6 +22,10 @@ export default function CommunityPaymentButton({ order, userProfile, onSuccessAc
     const { firestore } = useFirebase();
     const isStaff = userProfile?.role === 'staff';
 
+    // 🏎️ CREATOR-COMMERCE HANDSHAKE:
+    // Check if this user recently came from a tagged video.
+    const affiliateCreatorId = typeof window !== 'undefined' ? sessionStorage.getItem('last_video_source') : null;
+
     const config = {
         reference: `GAM_${order.id}_${new Date().getTime()}`,
         email: userProfile.email,
@@ -29,13 +33,17 @@ export default function CommunityPaymentButton({ order, userProfile, onSuccessAc
         publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY as string,
         currency: 'GHS',
         channels: ['mobile_money'], // Force MoMo only
+        metadata: {
+            custom_fields: [
+                { display_name: "Affiliate ID", variable_name: "affiliate_id", value: affiliateCreatorId || "none" }
+            ]
+        }
     };
 
     const initializePayment = usePaystackPayment(config);
 
     const onSuccess = (reference: any) => {
         // 🏎️ MARKET INTELLIGENCE: Record the 'purchase' signal immediately
-        // This surges the product's trend score in real-time
         if (firestore) {
             const productPlaceholder = {
                 id: order.productId,
@@ -46,6 +54,9 @@ export default function CommunityPaymentButton({ order, userProfile, onSuccessAc
             } as Product;
             
             recordMarketSignal(firestore, userProfile.id, productPlaceholder, 'purchase');
+
+            // If this was an affiliate sale, we'd normally trigger a function here.
+            // For now, the metadata in the paystack reference is sufficient for audit.
         }
 
         toast({

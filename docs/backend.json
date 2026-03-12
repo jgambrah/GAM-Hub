@@ -48,7 +48,8 @@
         "mediaType": { "type": "string", "enum": ["youtube", "tiktok", "image", "text", "video"] },
         "mediaUrl": { "type": "string" },
         "productTags": { "type": "array", "items": { "type": "string" } },
-        "campusId": { "type": "string" }
+        "campusId": { "type": "string" },
+        "commerceClicks": { "type": "number", "description": "Total clicks driven to tagged products." }
       },
       "required": ["authorId", "content", "campusId"]
     },
@@ -131,71 +132,34 @@
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
     },
-    "ProductTrend": {
+    "Order": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "ProductTrend",
+      "title": "Order",
       "type": "object",
-      "description": "Aggregated momentum signals for trending algorithms.",
-      "properties": {
-        "productId": { "type": "string" },
-        "campusId": { "type": "string" },
-        "viewCount": { "type": "number" },
-        "cartCount": { "type": "number" },
-        "purchaseCount": { "type": "number" },
-        "shareCount": { "type": "number" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
-      }
-    },
-    "Notification": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Notification",
-      "type": "object",
-      "description": "Audit record of a sent push notification with analytics tracking.",
-      "properties": {
-        "userId": { "type": "string" },
-        "title": { "type": "string" },
-        "body": { "type": "string" },
-        "type": { "type": "string" },
-        "sentAt": { "type": "string", "format": "date-time" },
-        "opened": { "type": "boolean" },
-        "clicked": { "type": "boolean" },
-        "purchased": { "type": "boolean" },
-        "relatedProductId": { "type": "string" }
-      }
-    },
-    "MarketRequest": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "MarketRequest",
-      "type": "object",
-      "description": "A signal of student demand for an item not currently found in the marketplace.",
+      "description": "A transaction record for a product or service.",
       "properties": {
         "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "query": { "type": "string" },
-        "category": { "type": "string" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "condition": { "type": "string" },
-        "campusId": { "type": "string" },
-        "location": { "type": "string", "description": "Specific Hall or Block where demand exists." },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "status": { "type": "string", "enum": ["open", "fulfilled", "expired"] },
-        "matchCount": { "type": "number" }
-      },
-      "required": ["id", "userId", "query", "campusId"]
+        "buyerId": { "type": "string" },
+        "vendorId": { "type": "string" },
+        "productId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string" },
+        "affiliateCreatorId": { "type": "string", "description": "ID of the creator who drove this sale via tagged video." },
+        "commissionRate": { "type": "number", "description": "Percentage earned by the affiliate." }
+      }
     },
-    "DemandSignal": {
+    "VideoProductClick": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "DemandSignal",
+      "title": "VideoProductClick",
       "type": "object",
-      "description": "Aggregated student demand for a specific item on a specific campus.",
+      "description": "Tracks conversion from video engagement to marketplace discovery.",
       "properties": {
-        "item": { "type": "string" },
-        "campusId": { "type": "string" },
-        "demandCount": { "type": "number" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
+        "videoId": { "type": "string" },
+        "productId": { "type": "string" },
+        "userId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["item", "campusId", "demandCount"]
+      "required": ["videoId", "productId", "userId"]
     }
   },
   "auth": {
@@ -220,67 +184,19 @@
         }
       },
       {
-        "path": "/user_notifications/{userId}",
+        "path": "/orders/{orderId}",
         "definition": {
-          "entityName": "NotificationSettings",
-          "schema": { "$ref": "#/backend/entities/NotificationSettings" },
-          "description": "Personalized notification toggles and quiet hours."
+          "entityName": "Order",
+          "schema": { "$ref": "#/backend/entities/Order" },
+          "description": "Marketplace transaction records."
         }
       },
       {
-        "path": "/user_product_views/{viewId}",
+        "path": "/video_product_clicks/{clickId}",
         "definition": {
-          "entityName": "ProductView",
-          "schema": { "$ref": "#/backend/entities/ProductView" },
-          "description": "Time-stamped log of product interest."
-        }
-      },
-      {
-        "path": "/user_market_profiles/{userId}",
-        "definition": {
-          "entityName": "MarketProfile",
-          "schema": { "$ref": "#/backend/entities/MarketProfile" },
-          "description": "Stores behavioral commercial intelligence for each user."
-        }
-      },
-      {
-        "path": "/products/{productId}",
-        "definition": {
-          "entityName": "Product",
-          "schema": { "$ref": "#/backend/entities/Product" },
-          "description": "Marketplace product listings with recommendation metadata."
-        }
-      },
-      {
-        "path": "/product_trends/{productId}",
-        "definition": {
-          "entityName": "ProductTrend",
-          "schema": { "$ref": "#/backend/entities/ProductTrend" },
-          "description": "Aggregated trending signals for real-time leaderboards."
-        }
-      },
-      {
-        "path": "/notifications/{notificationId}",
-        "definition": {
-          "entityName": "Notification",
-          "schema": { "$ref": "#/backend/entities/Notification" },
-          "description": "Audit log of sent notifications with ROI tracking."
-        }
-      },
-      {
-        "path": "/market_requests/{requestId}",
-        "definition": {
-          "entityName": "MarketRequest",
-          "schema": { "$ref": "#/backend/entities/MarketRequest" },
-          "description": "Student-initiated requests for items currently missing from supply."
-        }
-      },
-      {
-        "path": "/demand_signals/{signalId}",
-        "definition": {
-          "entityName": "DemandSignal",
-          "schema": { "$ref": "#/backend/entities/DemandSignal" },
-          "description": "Aggregated signals of student demand for market sourcing."
+          "entityName": "VideoProductClick",
+          "schema": { "$ref": "#/backend/entities/VideoProductClick" },
+          "description": "Audit trail of commerce conversions from social content."
         }
       }
     ]

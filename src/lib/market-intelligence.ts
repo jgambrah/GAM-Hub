@@ -1,10 +1,10 @@
+
 'use client';
 
 /**
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
- * Upgraded with Notification FCM tokens and Follower Logic.
- * Now includes Trending Retrieval, Atomic Event Tracking, and Demand Aggregation.
+ * Upgraded with Commerce Click Tracking and Affiliate Infrastructure.
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -13,6 +13,37 @@ import { computeTrendScore } from './compute-trend-score';
 import { applyTrendDecay } from './apply-trend-decay';
 
 export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
+
+/**
+ * trackVideoProductClick
+ * -----------------------
+ * Logs a commercial conversion from a video vibe to a product listing.
+ * Automatically boosts the video's search score in the Pulse.
+ */
+export async function trackVideoProductClick(
+  firestore: Firestore,
+  videoId: string,
+  productId: string,
+  userId: string
+) {
+  if (!firestore || !videoId || !productId) return;
+
+  const clickRef = collection(firestore, "video_product_clicks");
+  const postRef = doc(firestore, "campus_pulse", videoId);
+
+  // 1. Audit Trail
+  await addDoc(clickRef, {
+    videoId,
+    productId,
+    userId,
+    timestamp: new Date().toISOString()
+  });
+
+  // 2. 🚀 RANKING BOOST: Increment commerce clicks for the video
+  return setDoc(postRef, {
+    commerceClicks: increment(1)
+  }, { merge: true });
+}
 
 /**
  * searchMarketplaceProducts
@@ -89,7 +120,6 @@ export async function updateDemandSignal(
  * createMarketRequest
  * -------------------
  * Logic to persist a student's marketplace request (Demand Signal).
- * Now triggers atomic aggregation for the Demand Engine.
  */
 export async function createMarketRequest(
   firestore: Firestore,
@@ -313,7 +343,7 @@ export async function getRelatedProducts(firestore: Firestore, productId: string
         const qA = query(collection(firestore, 'product_co_purchases'), where('productA', '==', productId), orderBy('count', 'desc'), limit(10));
         const qB = query(collection(firestore, 'product_co_purchases'), where('productB', '==', productId), orderBy('count', 'desc'), limit(10));
         const [snapA, snapB] = await Promise.all([getDocs(qA), getDocs(qB)]);
-        const results = [...snapA.docs, ...snapB.docs].map(d => {
+        results = [...snapA.docs, ...snapB.docs].map(d => {
             const data = d.data();
             return { id: data.productA === productId ? data.productB : data.productA, count: data.count };
         }).sort((a, b) => b.count - a.count).slice(0, 10);

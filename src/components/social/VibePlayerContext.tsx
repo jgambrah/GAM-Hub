@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -84,6 +85,7 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
  * computeVibeScore
  * ---------------
  * The multi-signal discovery equation.
+ * Upgraded with Commerce-Boost logic.
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -133,14 +135,20 @@ export function computeVibeScore(
     score += 25;
   }
 
-  // 🎯 5. BEHAVIORAL SIGNALS (PERSONALIZATION)
+  // 🛍️ 5. COMMERCE-CONVERSION BOOST
+  // Reward videos that drive commercial traffic
+  if (candidate.commerceClicks) {
+      score += Math.min(candidate.commerceClicks * 5, 50);
+  }
+
+  // 🎯 6. BEHAVIORAL SIGNALS (PERSONALIZATION)
   score += getPersonalScore(candidate);
   score += explorationBoost(candidate);
 
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
   score += (repData.qualityScore || 50) * 0.5;
 
-  // 6. FRESHNESS DECAY
+  // 7. FRESHNESS DECAY
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
     score += exponentialFreshness(date);
@@ -228,7 +236,7 @@ interface VibePlayerContextType {
   reactionCounts: Record<string, Record<VibeReaction, number>>; isMiniPlayerVisible: boolean;
   sortFeedByProfile: (posts: SocialPost[]) => SocialPost[]; isProfileLoaded: boolean;
   recordPlay: (post: SocialPost) => void; recordWatchedToEnd: (post: SocialPost) => void;
-  recordLike: (post: SocialPost) => void; recordUnlike: (post: SocialPost) => void; recordSkip: (post: SocialPost) => void;
+  recordLike: (post: SocialPost) => void; recordUnlike: (post: SocialPost) => void; recordLikeSignal: (post: SocialPost) => void; recordSkip: (post: SocialPost) => void;
 }
 
 const VibePlayerContext = createContext<VibePlayerContextType | undefined>(undefined);
@@ -334,7 +342,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(false);
   }, [firestore]);
 
-  // 🚀 REBUILD TRIGGER: Re-evaluate queue when session signals or pivots occur
   useEffect(() => {
     if (activePost && allPosts.length > 0) {
         const timer = setTimeout(() => {
@@ -439,7 +446,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     <VibePlayerContext.Provider value={{
       activePostId, activePost, queue, upNext, isContinuous, isLoadingQueue, setActivePost, setIsContinuous, playNext, playPrev, addToQueue,
       activeMood, setActiveMood, history, clearHistory: () => setHistory([]), reactionBursts, sendReaction, reactionCounts,
-      isMiniPlayerVisible, sortFeedByProfile, isProfileLoaded, recordPlay, recordWatchedToEnd, recordLike, recordUnlike, recordSkip,
+      isMiniPlayerVisible, sortFeedByProfile, isProfileLoaded, recordPlay, recordWatchedToEnd, recordLike, recordUnlike, recordLikeSignal: recordLike, recordSkip,
     }}>
       {children}
     </VibePlayerContext.Provider>

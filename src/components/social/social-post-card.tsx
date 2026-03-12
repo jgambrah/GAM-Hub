@@ -379,6 +379,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           {/* 🛍️ COMMERCE OVERLAY: Shop the Vibe */}
           {post.productTags && post.productTags.length > 0 && (
             <VibeShopOverlay 
+                postId={post.id}
                 productIds={post.productTags} 
                 isActive={isActiveVibe} 
             />
@@ -580,7 +581,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               onClick={handleShare}
               className={cn('bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90', isActiveVibe ? 'p-3' : 'p-2')}
             >
-              <Share2 size={isActiveVibe ? 22 : 18} />
+              <Share2 size={22} />
             </button>
           </div>
         </div>
