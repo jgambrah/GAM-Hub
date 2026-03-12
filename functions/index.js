@@ -32,12 +32,11 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 });
 
 /**
- * 🏆 CREATOR REPUTATION ENGINE
+ * 🏆 CREATOR REPUTATION ENGINE (PROFESSIONAL UPGRADE)
  * Aggregates performance across all posts to assign a quality score.
  * 
- * Metrics:
- * - Engagement Rate: (Likes + Comments + Shares) / Views
- * - Completion Rate: Completions / Views
+ * Formula:
+ * (engagementRate * 40) + (completionRate * 50) + (consistencyBonus * 10) - (violations * 20)
  */
 exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}", async (event) => {
   const data = event.data.after.data();
@@ -66,27 +65,33 @@ exports.calculateCreatorReputation = onDocumentUpdated("trending_stats/{postId}"
   });
 
   const divisor = Math.max(totalViews, 1);
-  const creatorEngagementRate = totalInteractions / divisor;
-  const creatorCompletionRate = totalCompletions / divisor;
+  const engagementRate = totalInteractions / divisor;
+  const completionRate = totalCompletions / divisor;
 
   // 🏛️ LIAISON QUALITY FORMULA
-  // Base 40 + (ER * 300) + (CR * 40)
-  // Ensures high-retention, high-interaction creators dominate.
-  let qualityScore = 40 + (creatorEngagementRate * 300) + (creatorCompletionRate * 40);
-  qualityScore = Math.min(100, Math.max(10, qualityScore));
+  // We scale engagementRate by 200 and completionRate by 100 
+  // to translate typically low decimals (e.g. 0.1 ER, 0.4 CR) 
+  // into a meaningful 0-100 range.
+  const consistencyBonus = count > 5 ? 10 : 0;
+  const violationPenalty = (data.violations || 0) * 20;
+
+  let qualityScore = (engagementRate * 200) + (completionRate * 100) + consistencyBonus - violationPenalty;
+  
+  // Final clamp to ensure elite professional range
+  qualityScore = Math.min(100, Math.max(10, Math.round(qualityScore)));
 
   const reputation = {
     id: authorId,
     qualityScore,
-    engagementRate: creatorEngagementRate,
-    completionRate: creatorCompletionRate,
+    engagementRate,
+    completionRate,
     postCount: count,
     lastUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
   };
 
   await db.collection("creator_reputation").doc(authorId).set(reputation, { merge: true });
   
-  // Denormalize to user doc for high-performance ranking
+  // Denormalize to user doc for high-performance ranking in the UI
   return db.collection("users").doc(authorId).set({ qualityScore }, { merge: true });
 });
 
