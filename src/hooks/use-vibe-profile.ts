@@ -24,6 +24,9 @@ export function useVibeProfile() {
     affinities: { creators: {}, vendors: {} },
     engagementLevel: 0
   });
+  
+  // 🕸️ THE GRAPH EXPANSION CACHE
+  // Stores related topics discovered via graph traversal
   const [expandedInterestsMap, setExpandedInterests] = useState<Record<string, number>>({});
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -43,11 +46,15 @@ export function useVibeProfile() {
         if (data.interests) {
             const topDirect = Object.entries(data.interests)
                 .sort(([, a], [, b]) => b - a)
-                .slice(0, 10)
+                .slice(0, 15) // Expand from top 15 direct interests
                 .map(([id]) => id);
             
-            const expanded = await expandInterests(firestore, topDirect);
-            setExpandedInterests(expanded);
+            try {
+                const expanded = await expandInterests(firestore, topDirect);
+                setExpandedInterests(expanded);
+            } catch (e) {
+                console.warn("Graph expansion drifted.");
+            }
         }
       }
       setIsLoaded(true);
@@ -59,7 +66,7 @@ export function useVibeProfile() {
   /**
    * getPersonalScore
    * ----------------
-   * KNOWLEDGE GRAPH DISCOVERY:
+   * KNOWLEDGE GRAPH DISCOVERY Formula:
    * Boosts content by 2x for direct matches and 0.8x for graph-expanded matches.
    */
   const getPersonalScore = useCallback((post: SocialPost): number => {
@@ -72,17 +79,18 @@ export function useVibeProfile() {
     ].map(t => t.toLowerCase());
 
     postTags.forEach(tag => {
-      // 🎯 1. Direct Signal Boost (2x)
+      // 🎯 1. Direct Signal Boost (2x Weight)
       const directWeight = intelligence.interests![tag] || 0;
       score += directWeight * 2.0; 
 
-      // 🕸️ 2. Graph Relationship Boost (0.8x)
+      // 🕸️ 2. Graph Relationship Boost (0.8x Weight)
       // This surfaces content that is 'near' your interests in the graph
+      // e.g. You like #sneakers -> Boost #fashion and #style
       const graphWeight = expandedInterestsMap[tag] || 0;
       score += graphWeight * 0.8;
     });
 
-    // Creator Affinity
+    // Creator Affinity (Engagement weight)
     if (post.authorId && intelligence.affinities?.creators?.[post.authorId]) {
       score += (intelligence.affinities.creators[post.authorId]) * 1.5;
     }

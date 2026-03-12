@@ -62,7 +62,7 @@ export function cosineSimilarity(a: number[], b: number[]) {
 
 function exponentialFreshness(date: Date) {
   const ageHours = (Date.now() - date.getTime()) / 3600000;
-  return 10 * Math.exp(-ageHours / 12);
+  return 10 * Math.exp(-hours / 12);
 }
 
 export function explorationBoost(post: SocialPost) {
@@ -76,7 +76,7 @@ export function explorationBoost(post: SocialPost) {
  * computeVibeScore
  * ---------------
  * The multi-signal discovery equation.
- * Grounded in the Unified Intelligence Brain.
+ * Upgraded with GRAPH DISCOVERY: Uses expanded tastes to find related vibes.
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -90,12 +90,11 @@ export function computeVibeScore(
 ) {
   let score = 0;
 
-  // 🎯 1. UNIFIED PERSONALIZATION (Highest Weight)
-  // This uses the shared user_intelligence model. 
-  // score += userInterest[tag] * 2.0 (Includes Social + Market signals)
+  // 🎯 1. GRAPH-ENHANCED PERSONALIZATION (Highest Weight)
+  // This score now factors in expanded interests (e.g. You like #fashion -> Boost #shoes)
   score += getPersonalScore(candidate);
 
-  // 2. CONTENT INTELLIGENCE MATCH (Contextual relevance)
+  // 2. CONTENT INTELLIGENCE MATCH
   const currentTags = new Set([
     ...(current.tags || []),
     ...(current.aiTags || [])
@@ -107,7 +106,7 @@ export function computeVibeScore(
   ].map(t => t.toLowerCase());
 
   const aiMatches = candidateTags.filter(t => currentTags.has(t));
-  score += aiMatches.length * 12;
+  score += aiMatches.length * 15; // Increased weight for content matching
 
   // 3. VECTOR SIMILARITY (Semantic depth)
   if (current.embedding && candidate.embedding) {
@@ -121,10 +120,7 @@ export function computeVibeScore(
     if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
   }
 
-  // 5. GRAPH & TREND SIGNALS
-  const relatedMatches = candidateTags.filter(t => relatedTags.has(t));
-  score += relatedMatches.length * 5;
-
+  // 5. GLOBAL TREND SIGNALS
   if (candidate.trendScore && candidate.trendScore > 30) {
     score += 35; 
   } else if (candidateTags.some(t => viralTags.has(t))) {
@@ -132,7 +128,6 @@ export function computeVibeScore(
   }
 
   // 🛍️ 6. COMMERCE-CONVERSION BOOST
-  // Prioritize videos that have proven to drive marketplace traffic
   if (candidate.commerceClicks) {
       score += Math.min(candidate.commerceClicks * 5, 50);
   }
@@ -344,17 +339,17 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
 
   const recordPlay = useCallback((p: SocialPost) => {
-    recordSignal(p, 'play');
+    recordSignal(p, 'watch');
     if (firestore) recordEngagement(firestore, p.id, 'view', p.authorId, p.createdAt);
   }, [recordSignal, firestore]);
 
   const recordWatchedToEnd = useCallback((p: SocialPost) => {
-    recordSignal(p, 'watched_to_end');
+    recordSignal(p, 'watch');
     if (firestore) recordEngagement(firestore, p.id, 'completion', p.authorId, p.createdAt);
   }, [recordSignal, firestore]);
 
   const recordLike = useCallback((p: SocialPost) => recordSignal(p, 'like'), [recordSignal]);
-  const recordUnlike = useCallback((p: SocialPost) => recordSignal(p, 'unlike'), [recordSignal]);
+  const recordUnlike = useCallback((p: SocialPost) => recordSignal(p, 'like'), [recordSignal]);
   const recordSkip = useCallback((p: SocialPost) => recordSignal(p, 'skip'), [recordSignal]);
 
   const sortFeedByProfile = useCallback((posts: SocialPost[]): SocialPost[] => {

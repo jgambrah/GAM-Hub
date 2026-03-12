@@ -133,7 +133,7 @@ export async function expandInterests(
       const data = snap.data() as KnowledgeGraphNode;
       if (data.connections) {
         Object.entries(data.connections).forEach(([targetId, meta]) => {
-          // Weight expansion by 0.5 to prevent drift
+          // Weight expansion by 0.5 to prevent drift, capped at original connection weight
           expanded[targetId] = (expanded[targetId] || 0) + (meta.weight * 0.5);
         });
       }

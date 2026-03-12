@@ -24,17 +24,18 @@ export function computeMarketScore(
   unifiedIntelligence: Partial<UserIntelligence> | null,
   user: User | null,
   searchQuery: string = '',
-  parsedIntent?: MarketIntent | null
+  parsedIntent?: MarketIntent | null,
+  expandedInterests: Record<string, number> = {} // New: Expanded Graph interests
 ) {
   let score = 0;
 
   // 1. AI Intent & Keyword Matching
   if (parsedIntent) {
-      if (parsedIntent.category && product.category.toLowerCase() === parsedIntent.category.toLowerCase()) score += 30;
+      if (parsedIntent.category && product.category.toLowerCase() === parsedIntent.category.toLowerCase()) score += 35;
       if (parsedIntent.intent && product.tags?.includes(parsedIntent.intent)) score += 20;
   } else if (searchQuery.trim()) {
     const term = searchQuery.toLowerCase().trim();
-    if (product.name.toLowerCase().includes(term)) score += 20;
+    if (product.name.toLowerCase().includes(term)) score += 25;
     if (product.category.toLowerCase().includes(term)) score += 15;
   }
 
@@ -42,19 +43,25 @@ export function computeMarketScore(
   if (unifiedIntelligence?.interests) {
     const productCategory = product.category.toLowerCase();
     
-    // 🎯 Direct Match (3x)
+    // 🎯 Direct Match (3x Weight)
     const catWeight = unifiedIntelligence.interests[productCategory] || 0;
     score += catWeight * 3.0; 
 
     // Match product tags
     if (product.tags) {
         product.tags.forEach(tag => {
-            const weight = unifiedIntelligence.interests![tag.toLowerCase()] || 0;
+            const normalizedTag = tag.toLowerCase();
+            // Direct Boost
+            const weight = unifiedIntelligence.interests![normalizedTag] || 0;
             score += weight * 2.0;
+
+            // 🕸️ Graph Expansion Boost (0.8x Weight)
+            const graphWeight = expandedInterests[normalizedTag] || 0;
+            score += graphWeight * 0.8;
         });
     }
 
-    // Vendor Affinity
+    // Vendor Affinity (Strength of past interactions)
     if (unifiedIntelligence.affinities?.vendors?.[product.vendorId]) {
         score += (unifiedIntelligence.affinities.vendors[product.vendorId]) * 5;
     }
@@ -64,10 +71,11 @@ export function computeMarketScore(
   if (user && product.campusId === user.campusId) score += 5;
   if (product.trendScore) score += product.trendScore * 0.5;
 
-  // 4. Freshness
+  // 4. Freshness Decay
   if (product.createdAt) {
     const date = typeof product.createdAt === 'string' ? new Date(product.createdAt) : product.createdAt.toDate();
     const ageHours = (Date.now() - date.getTime()) / 3600000;
+    // Faster decay for older marketplace listings to keep it fresh
     score *= Math.exp(-ageHours / 48);
   }
 
