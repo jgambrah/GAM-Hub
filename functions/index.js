@@ -13,7 +13,56 @@ admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🏎️ REAL-TIME TRENDING ENGINE (REACTIVE)
+ * 🛒 PRODUCT TRENDING ENGINE (V2)
+ * Implements the Weighted Score Formula + 24-hour Exponential Decay.
+ * WEIGHTS: view=1, cart=4, purchase=8, share=3
+ */
+exports.calculateProductTrendingScore = onDocumentUpdated("product_trends/{productId}", async (event) => {
+  const data = event.data.after.data();
+  const db = admin.firestore();
+  const productId = event.params.productId;
+
+  try {
+    // 1. COMPUTE WEIGHTED RAW SCORE
+    // trendScore = (viewCount * 1) + (cartCount * 4) + (purchaseCount * 8) + (shareCount * 3)
+    const rawScore = 
+      (data.viewCount || 0) * 1 +
+      (data.cartCount || 0) * 4 +
+      (data.purchaseCount || 0) * 8 +
+      (data.shareCount || 0) * 3;
+
+    // 2. APPLY TIME DECAY (24-hour window)
+    const now = new Date();
+    const lastUpdated = data.lastUpdated?.toDate ? data.lastUpdated.toDate() : now;
+    const hoursSinceUpdate = (now - lastUpdated) / 3600000;
+    
+    // decayFactor = Math.exp(-hours / 24)
+    const decayFactor = Math.exp(-hoursSinceUpdate / 24);
+    const finalTrendScore = rawScore * decayFactor;
+
+    // 3. PUSH TO PRODUCT DOCUMENT FOR RANKING
+    // We only update if the score delta is significant to save ops
+    const productRef = db.collection("products").doc(productId);
+    const productSnap = await productRef.get();
+    
+    if (productSnap.exists()) {
+      const currentScore = productSnap.data().trendScore || 0;
+      if (Math.abs(currentScore - finalTrendScore) > 0.1) {
+        return productRef.update({
+          trendScore: finalTrendScore,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error(`Liaison Trending Error for ${productId}:`, err);
+    return null;
+  }
+});
+
+/**
+ * 🏎️ REAL-TIME TRENDING ENGINE (SOCIAL)
  * Upgraded with Exponential Trend Decay (6-hour Half-Life).
  */
 exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", async (event) => {
@@ -22,12 +71,10 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
   const db = admin.firestore();
   const postId = event.params.postId;
 
-  // Optimization: Only run if engagement data has actually changed
   const hasEngagementChanged = ["views", "likes", "comments", "shares", "completions"].some((k) => data[k] !== oldData[k]);
   if (!hasEngagementChanged) return null;
 
   try {
-    // 1. COMPUTE VELOCITY (Last 15 Minutes)
     const now = new Date();
     const lookbackMins = 15;
     const startTime = new Date(now.getTime() - lookbackMins * 60000).toISOString().slice(0, 16);
@@ -44,25 +91,20 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 
     const velocity = recentEngagement / lookbackMins;
 
-    // 2. COMPUTE RATES (Normalized)
     const totalViews = Math.max(data.views || 1, 1);
     const engagementRate = ((data.likes || 0) + (data.comments || 0) + (data.shares || 0)) / totalViews;
     const completionRate = (data.completions || 0) / totalViews;
 
-    // 3. APPLY MASTER TREND FORMULA
     let score = (velocity * 0.5) + (engagementRate * 30) + (completionRate * 20);
 
-    // 📉 TREND DECAY SYSTEM: Aggressive 6-hour Half-Life
     const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
     const ageHours = (new Date() - createdAt) / 3600000;
     const halfLife = 6; 
     const decay = Math.exp(-ageHours / halfLife); 
     score *= decay;
 
-    // 🚀 Super-Viral Boost for fresh content
     if (data.views > 1000 && ageHours < 1) score *= 1.5;
 
-    // 4. VIRAL GRADUATION
     if (score > 40) {
       await db.collection("viral_posts").doc(postId).set({
         postId,
@@ -88,67 +130,6 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 });
 
 /**
- * 🛒 PRODUCT TRENDING ENGINE
- * Monitors weighted commercial velocity to surface hot campus items.
- * WEIGHTS: view=1, favorite=2, share=3, intent=4, purchase=8
- */
-exports.calculateProductTrendingScore = onDocumentUpdated("products/{productId}", async (event) => {
-  const data = event.data.after.data();
-  const oldData = event.data.before.data();
-  const db = admin.firestore();
-  const productId = event.params.productId;
-
-  // Optimization: Only run if trending counts changed
-  const hasChanged = [
-    "viewCount", "favoriteCount", "shareCount", "salesCount"
-  ].some(k => data[k] !== oldData[k]);
-  
-  if (!hasChanged) return null;
-
-  try {
-    const now = new Date();
-    const lookbackMins = 15;
-    const startTime = new Date(now.getTime() - lookbackMins * 60000).toISOString().slice(0, 16);
-    
-    const velocitySnap = await db.collection("product_velocity").doc(productId).collection("minutes")
-      .where("__name__", ">=", startTime)
-      .get();
-
-    let weightedRecentVelocity = 0;
-    velocitySnap.forEach((doc) => {
-      const v = doc.data();
-      // WEIGHTS APPLIED: view=1, favorite=2, share=3, intent=4, purchase=8
-      weightedRecentVelocity += (v.views || 0) * 1;
-      weightedRecentVelocity += (v.favorites || 0) * 2;
-      weightedRecentVelocity += (v.shares || 0) * 3;
-      weightedRecentVelocity += (v.intents || 0) * 4;
-      weightedRecentVelocity += (v.purchases || 0) * 8;
-    });
-
-    // Score combines velocity and a baseline popularity boost
-    const velocity = weightedRecentVelocity / lookbackMins;
-    
-    // DECAY LOGIC: Trending items must be fresh
-    const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
-    const ageHours = (new Date() - createdAt) / 3600000;
-    const halfLife = 48; // 2-day decay for products
-    const decay = Math.exp(-ageHours / halfLife);
-    
-    const score = velocity * decay;
-
-    if (data.trendScore && Math.abs(data.trendScore - score) < 0.01) return null;
-
-    return event.data.after.ref.update({ 
-      trendScore: score,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp() 
-    });
-  } catch (err) {
-    console.error(`Product Trending Failure for ${productId}:`, err);
-    return null;
-  }
-});
-
-/**
  * 🕒 SCHEDULED TREND DECAY AUDITOR
  * Ensures that even inactive posts are decayed so the Pulse stays fresh.
  */
@@ -157,7 +138,6 @@ exports.applyGlobalTrendDecay = onSchedule("every 1 hour", async (event) => {
   const now = new Date();
   const halfLife = 6;
 
-  // Only audit active trends from the last 48 hours to save ops
   const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
   
   const activeTrendsSnap = await db.collection("trending_stats")
@@ -172,10 +152,8 @@ exports.applyGlobalTrendDecay = onSchedule("every 1 hour", async (event) => {
     const createdAt = data.createdAt?.toDate ? data.createdAt.toDate() : now;
     const ageHours = (now - createdAt) / 3600000;
     
-    // Recalculate decay based on current time
     const decay = Math.exp(-ageHours / halfLife);
     
-    // Base score (without previous decay) is estimated from raw stats
     const totalViews = Math.max(data.views || 1, 1);
     const engagementRate = ((data.likes || 0) + (data.comments || 0) + (data.shares || 0)) / totalViews;
     const completionRate = (data.completions || 0) / totalViews;

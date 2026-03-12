@@ -117,7 +117,6 @@ export function computeMarketScore(
   }
 
   // 🛡️ 2. VENDOR TRUST SCORE (The Reputational Pillar)
-  // Reliability score from computeVendorScore, with a 2x multiplier for impact
   const vendorScore = computeVendorScore(product);
   score += vendorScore * 2;
 
@@ -125,7 +124,8 @@ export function computeMarketScore(
   const dealBoost = computeDealBoost(product.averagePrice, product.price);
   score += dealBoost;
 
-  // 🏎️ 4. TRENDING VELOCITY (The Momentum Pillar)
+  // 🏎️ 4. TRENDING MOMENTUM (The Momentum Pillar)
+  // trendScore = (viewCount * 1) + (cartCount * 4) + (purchaseCount * 8) + (shareCount * 3)
   if (product.trendScore) {
     score += product.trendScore * 2;
   }
@@ -181,7 +181,10 @@ export function computeMarketScore(
   if (product.createdAt) {
     const createdAt = typeof product.createdAt === 'string' ? new Date(product.createdAt) : (product.createdAt.toDate ? product.createdAt.toDate() : new Date(product.createdAt));
     const ageHours = (Date.now() - createdAt.getTime()) / 3600000;
-    score += 10 * Math.exp(-ageHours / 48);
+    
+    // Apply 24-hour decay factor
+    const decayFactor = Math.exp(-ageHours / 24);
+    score *= decayFactor;
   }
 
   return score;
