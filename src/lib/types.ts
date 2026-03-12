@@ -137,6 +137,11 @@ export type Product = {
   actionLabel?: string;
   externalLink?: string;
   has_fuel?: boolean; // Hides service if vendor is out of leads
+  // NEW VENDOR RELIABILITY METRICS
+  vendorRating?: number;
+  vendorDeliveryRate?: number;
+  vendorSalesCount?: number;
+  vendorResponseTime?: number;
 };
 
 export type AdCampaign = {
