@@ -3,13 +3,15 @@
 import type { SocialPost } from "./types";
 
 /**
- * 🎨 SMART FEED DIVERSITY ENGINE - ELITE EDITION
+ * 🎨 SMART FEED DIVERSIFY ENGINE - ELITE EDITION
  * 
  * Final stage filtering to prevent the "Repetition Trap".
  * Enforces balance across creators, topics (tags), and media types.
- * This runs after the AI ranking engine has produced a sorted list.
+ * 
+ * Update: Increased limits to ensure students see more of the pool
+ * while still maintaining variety.
  */
-export function enforceDiversity(posts: SocialPost[], windowSize = 30): SocialPost[] {
+export function enforceDiversity(posts: SocialPost[], windowSize = 100): SocialPost[] {
   if (!posts || posts.length === 0) return [];
 
   const result: SocialPost[] = [];
@@ -24,11 +26,11 @@ export function enforceDiversity(posts: SocialPost[], windowSize = 30): SocialPo
   // Track consecutive types to prevent streaks
   let consecutiveType = { type: '', count: 0 };
 
-  // Professional Thresholds
-  const MAX_PER_CREATOR = 3;
-  const MIN_CREATOR_GAP = 4; // Prevent one creator from dominating
-  const MAX_PER_TAG_CLUSTER = 3;
-  const MAX_SAME_TYPE_STREAK = 3; // e.g., max 3 music videos in a row
+  // Professional Thresholds - Relaxed for better visibility
+  const MAX_PER_CREATOR = 6; 
+  const MIN_CREATOR_GAP = 3; 
+  const MAX_PER_TAG_CLUSTER = 5;
+  const MAX_SAME_TYPE_STREAK = 4; 
 
   let currentIndex = 0;
 
@@ -48,10 +50,10 @@ export function enforceDiversity(posts: SocialPost[], windowSize = 30): SocialPo
       const lastPos = lastCreatorPositions.get(creatorId);
       const satisfiesGap = lastPos === undefined || (currentIndex - lastPos >= MIN_CREATOR_GAP);
 
-      // 🛰️ EXPLORATION SLOT: Every 6th post, we skip the top matches 
+      // 🛰️ EXPLORATION SLOT: Every 8th post (relaxed from 6th), we skip the top matches 
       // to surface something different from deeper in the pool.
-      const isExplorationSlot = (result.length + 1) % 6 === 0;
-      if (isExplorationSlot && i < 10 && pool.length > 20) {
+      const isExplorationSlot = (result.length + 1) % 8 === 0;
+      if (isExplorationSlot && i < 10 && pool.length > 30) {
           continue;
       }
 

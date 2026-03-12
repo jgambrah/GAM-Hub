@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -68,14 +67,13 @@ export default function CampusPulseFeed({
                 setQueryVector(null);
             }
 
-            // Bucket 1: RECENT (National Hub)
+            // Bucket 1: RECENT (National Hub) - Expanded to ensure better coverage
             let recentQuery = tagToFilter 
-                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
-                : query(pulseRef, orderBy('createdAt', 'desc'), limit(250));
+                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(200))
+                : query(pulseRef, orderBy('createdAt', 'desc'), limit(400));
 
             if (tab === 'shoppable') {
-                // Specialized shoppable query (Note: requires composite index, falling back to local filter if needed)
-                recentQuery = query(pulseRef, orderBy('createdAt', 'desc'), limit(300));
+                recentQuery = query(pulseRef, orderBy('createdAt', 'desc'), limit(400));
             }
 
             // Bucket 2: TRENDING (High Velocity)
@@ -87,20 +85,20 @@ export default function CampusPulseFeed({
 
             // Bucket 3: LOCAL CAMPUS
             const campusQuery = tagToFilter
-                ? query(pulseRef, where('campusId', '==', activeCampusId), where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(100))
-                : query(pulseRef, where('campusId', '==', activeCampusId), orderBy('createdAt', 'desc'), limit(100));
+                ? query(pulseRef, where('campusId', '==', activeCampusId), where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
+                : query(pulseRef, where('campusId', '==', activeCampusId), orderBy('createdAt', 'desc'), limit(150));
 
             // Bucket 4: EXPLORATION
             const explorationQuery = tagToFilter
-                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), limit(50))
-                : query(pulseRef, where('likes', '<', 10), orderBy('likes', 'asc'), orderBy('createdAt', 'desc'), limit(50));
+                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), limit(100))
+                : query(pulseRef, where('likes', '<', 10), orderBy('likes', 'asc'), orderBy('createdAt', 'desc'), limit(100));
 
             // 🛰️ STAGE 1: Parallel broad candidate retrieval
             const [recentSnap, trendingSnap, campusSnap, explorationSnap] = await Promise.all([
                 getDocs(recentQuery),
                 getDocs(trendingStatsQuery),
                 getDocs(campusQuery),
-                getDocs(explorationQuery)
+                getDocs(explorationSnap || explorationQuery)
             ]);
 
             const trendingDocs = trendingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
