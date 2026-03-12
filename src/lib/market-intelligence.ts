@@ -4,11 +4,12 @@
 /**
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Now synchronized with the Unified User Intelligence Engine.
+ * Features Cross-Discovery retrieval for high-conversion vibes.
  */
 
-import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove, documentId } from 'firebase/firestore';
 import type { Product, Order, MarketplaceSignal, NotificationSettings, MarketRequest, DemandSignal } from './types';
-import { recordUnifiedSignal, updateMarketInterest } from './user-intelligence';
+import { recordUnifiedSignal, updateMarketInterest, getUnifiedProfile } from './user-intelligence';
 
 /**
  * recordMarketSignal
@@ -28,7 +29,6 @@ export async function recordMarketSignal(
   const productAggregates: any = { updatedAt: serverTimestamp() };
 
   // 2. Relay to Unified Intelligence Brain 🧠
-  // We use the specific updateMarketInterest for deep interest mapping
   updateMarketInterest(firestore, userId, product, signal === 'purchase');
 
   const unifiedSignalType: MarketplaceSignal = signal === 'share' ? 'click' : signal;
@@ -56,6 +56,32 @@ export async function recordMarketSignal(
   }
 
   return setDoc(statsRef, productAggregates, { merge: true }).catch(() => {});
+}
+
+/**
+ * crossRecommendProducts
+ * ----------------------
+ * Performs discovery based on the user's top engagement category (Unified Brain).
+ */
+export async function crossRecommendProducts(firestore: Firestore, userId: string): Promise<Product[]> {
+  const profile = await getUnifiedProfile(firestore, userId);
+  if (!profile || !profile.interests) return [];
+
+  // Find the strongest interest category
+  const topInterest = Object.keys(profile.interests)
+    .sort((a, b) => profile.interests[b] - profile.interests[a])[0];
+
+  if (!topInterest) return [];
+
+  // Fetch products in this category that the user might have missed
+  const q = query(
+    collection(firestore, "products"),
+    where("category", "==", topInterest.charAt(0).toUpperCase() + topInterest.slice(1)), 
+    limit(10)
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Product));
 }
 
 /**

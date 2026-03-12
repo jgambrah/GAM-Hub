@@ -3,13 +3,19 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, orderBy, limit, doc, Query, DocumentData } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, doc } from 'firebase/firestore';
 import type { Product, UserIntelligence, MarketIntent } from '@/lib/types';
 import { computeMarketScore } from '@/lib/market-scoring';
 import { enforceMarketDiversity } from '@/lib/market-diversity';
 import { useAuth } from './use-auth';
 import { parseMarketIntent } from '@/ai/flows/market-intent-parser';
 
+/**
+ * useMarketRecommendations Hook
+ * ----------------------------
+ * The primary discovery engine for the marketplace.
+ * Synchronizes with the Unified User Intelligence brain.
+ */
 export function useMarketRecommendations(searchQuery: string = '') {
   const { firestore } = useFirebase();
   const { user, isTokenReady } = useAuth();
@@ -18,14 +24,14 @@ export function useMarketRecommendations(searchQuery: string = '') {
   const [isParsing, setIsParsing] = useState(false);
   const [isExplaining, setIsExplaining] = useState(false);
 
-  // 1. LOAD UNIFIED BRAIN
+  // 1. LOAD UNIFIED BRAIN 🧠
   const intelRef = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
     return doc(firestore, 'user_intelligence', user.id);
   }, [firestore, user?.id]);
   const { data: unifiedIntelligence, isLoading: isLoadingProfile } = useDoc<UserIntelligence>(intelRef);
 
-  // 2. RETRIEVAL
+  // 2. RETRIEVAL (Broad Candidate Fetch)
   const candidatesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     return query(
@@ -38,11 +44,11 @@ export function useMarketRecommendations(searchQuery: string = '') {
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 3. RANKING, SEGMENTATION & DIVERSITY
+  // 3. 🏎️ HYBRID PERSONALIZED RANKING
   const processed = useMemo(() => {
     if (!candidates) return { ranked: [], trending: [], deals: [], topRated: [] };
     
-    // Sort for the primary feed
+    // Sort for the primary feed using the 3x Unified Interest multiplier
     const scored = candidates
       .map(product => ({
         product,
@@ -52,7 +58,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
 
     const ranked = enforceMarketDiversity(scored.map(r => r.product));
 
-    // Specialized Discovery Segments (for isBrowsing mode)
+    // Specialized Discovery Segments
     const trending = candidates
       .filter(p => (p.trendScore || 0) > 5)
       .sort((a, b) => (b.trendScore || 0) - (a.trendScore || 0))
