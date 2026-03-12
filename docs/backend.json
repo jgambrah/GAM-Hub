@@ -112,6 +112,19 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
+    },
+    "Notification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Notification",
+      "type": "object",
+      "description": "Audit record of a sent push notification.",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "type": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -133,7 +146,6 @@
           "entityName": "NotificationSettings",
           "schema": { "$ref": "#/backend/entities/NotificationSettings" },
           "description": "Personalized notification toggles and quiet hours."
-"
         }
       },
       {
@@ -164,7 +176,7 @@
         "path": "/notifications/{notificationId}",
         "definition": {
           "entityName": "Notification",
-          "schema": { "type": "object" },
+          "schema": { "$ref": "#/backend/entities/Notification" },
           "description": "Audit log of sent notifications."
         }
       }

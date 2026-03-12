@@ -8,14 +8,31 @@ admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 /**
+ * 🛰️ LIAISON NOTIFICATION SERVICE: Helper to send multicast messages
+ * Respects user tokens and handles batching.
+ */
+async function sendMulticastNotification(tokens, payload) {
+  if (!tokens || tokens.length === 0) return null;
+  
+  // FCM Multicast limit is 500 per call
+  const chunks = [];
+  for (let i = 0; i < tokens.length; i += 500) {
+    chunks.push(tokens.slice(i, i + 500));
+  }
+
+  const results = await Promise.all(chunks.map(chunk => {
+    const message = {
+      ...payload,
+      tokens: chunk
+    };
+    return admin.messaging().sendEachForMulticast(message);
+  }));
+
+  return results;
+}
+
+/**
  * 🔔 SMART NOTIFICATION ENGINE: Price Drop & Restock Detector
- * Triggers when a product document is updated.
- * 
- * Logic:
- * 1. Detect if price dropped below previous or historical average (20% threshold).
- * 2. Find users who viewed this product recently (user_product_views).
- * 3. Find users who favorited this product (user_market_profiles).
- * 4. Multicast notification to all interested parties.
  */
 exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async (event) => {
   const before = event.data.before.data();
@@ -54,18 +71,36 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
 
     if (interestedUserIds.length === 0) return null;
 
-    // 3. Batch Fetch de-duplicated tokens
+    // 3. Filter by Preferences (Price Drops)
+    const tokens = [];
+    const now = new Date();
+    const hour = now.getHours();
+
+    // Batch fetch user data and preferences
     const usersSnap = await db.collection("users")
-      .where("__name__", "in", interestedUserIds.slice(0, 100)) // FCM batch limit
+      .where("__name__", "in", interestedUserIds.slice(0, 100))
       .get();
 
-    const tokens = [];
-    usersSnap.forEach(uDoc => {
-      const data = uDoc.data();
-      const token = data.fcmToken;
-      // Safety: Don't notify the vendor themselves
-      if (token && data.id !== after.vendorId) tokens.push(token);
-    });
+    for (const uDoc of usersSnap.docs) {
+      const userData = uDoc.data();
+      const prefSnap = await db.collection("user_notifications").doc(uDoc.id).get();
+      const prefs = prefSnap.exists() ? prefSnap.data() : { priceDrops: true, quietHours: { start: 22, end: 7 } };
+
+      // Check Preference & Quiet Hours
+      if (!prefs.priceDrops) continue;
+      if (prefs.quietHours) {
+        const { start, end } = prefs.quietHours;
+        if (start > end) { // Wraps around midnight
+          if (hour >= start || hour < end) continue;
+        } else {
+          if (hour >= start && hour < end) continue;
+        }
+      }
+
+      if (userData.fcmToken && userData.id !== after.vendorId) {
+        tokens.push(userData.fcmToken);
+      }
+    }
 
     if (tokens.length === 0) return null;
 
@@ -80,13 +115,10 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
       body = `Good news! ${after.name} is back. Get it while it lasts!`;
     }
 
-    const message = {
+    return sendMulticastNotification(tokens, {
       notification: { title, body },
-      data: { productId, type: isPriceDrop ? "price_drop" : "restock" },
-      tokens: tokens
-    };
-
-    return admin.messaging().sendEachForMulticast(message);
+      data: { productId, type: isPriceDrop ? "price_drop" : "restock" }
+    });
 
   } catch (err) {
     console.error(`Liaison Notification Engine Error for ${productId}:`, err);
@@ -96,7 +128,6 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
 
 /**
  * 🔔 SMART NOTIFICATION ENGINE: Vendor New Post Alert
- * Triggers when a new product is listed.
  */
 exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async (event) => {
   const product = event.data.data();
@@ -104,7 +135,6 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
   const db = admin.firestore();
 
   try {
-    // Find users who follow this vendor
     const followersSnap = await db.collection("users")
       .where("followedVendors", "array-contains", vendorId)
       .get();
@@ -119,16 +149,13 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
 
     if (tokens.length === 0) return null;
 
-    const message = {
+    return sendMulticastNotification(tokens, {
       notification: {
         title: "📦 New Arrival!",
         body: `${product.vendorName} just listed a new vibe: ${product.name}`
       },
-      data: { productId: event.params.productId, type: "vendor_new_post" },
-      tokens: tokens
-    };
-
-    return admin.messaging().sendEachForMulticast(message);
+      data: { productId: event.params.productId, type: "vendor_new_post" }
+    });
 
   } catch (err) {
     console.error("Vendor Update Notification Error:", err);
@@ -172,12 +199,13 @@ exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event)
 });
 
 /**
- * 🛒 PRODUCT TRENDING ENGINE (V2) - Reactive Sync
+ * 🛒 PRODUCT TRENDING ENGINE (V2) - Reactive Sync & Notification Trigger
  */
 exports.calculateProductTrendingScore = onDocumentUpdated("product_trends/{productId}", async (event) => {
   const data = event.data.after.data();
   const db = admin.firestore();
   const productId = event.params.productId;
+  
   try {
     const rawScore = (data.viewCount || 0) * 1 + (data.cartCount || 0) * 4 + (data.purchaseCount || 0) * 8 + (data.shareCount || 0) * 3;
     const now = new Date();
@@ -185,14 +213,56 @@ exports.calculateProductTrendingScore = onDocumentUpdated("product_trends/{produ
     const hoursSinceUpdate = (now - lastUpdated) / 3600000;
     const decayFactor = Math.exp(-hoursSinceUpdate / 24);
     const finalTrendScore = rawScore * decayFactor;
+
     const productRef = db.collection("products").doc(productId);
     const productSnap = await productRef.get();
-    if (productSnap.exists()) {
-      const currentScore = productSnap.data().trendScore || 0;
-      if (Math.abs(currentScore - finalTrendScore) > 0.1) {
-        return productRef.update({ trendScore: finalTrendScore, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    
+    if (!productSnap.exists()) return null;
+    const product = productSnap.data();
+
+    // 🏎️ Update the trendScore on the main product document for ranking
+    const currentScore = product.trendScore || 0;
+    if (Math.abs(currentScore - finalTrendScore) > 0.1) {
+      await productRef.update({ trendScore: finalTrendScore, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    }
+
+    // 🔥 TRENDING NOTIFICATION TRIGGER (Threshold: 50 points)
+    if (finalTrendScore >= 50 && currentScore < 50) {
+      // Find users interested in this category
+      const interestedProfilesSnap = await db.collection("user_market_profiles")
+        .where(`viewedCategories.${product.category}`, ">", 5)
+        .limit(100)
+        .get();
+
+      const userIds = interestedProfilesSnap.docs.map(doc => doc.id);
+      if (userIds.length === 0) return null;
+
+      const usersSnap = await db.collection("users")
+        .where("__name__", "in", userIds)
+        .get();
+
+      const tokens = [];
+      for (const uDoc of usersSnap.docs) {
+        const userData = uDoc.data();
+        const prefSnap = await db.collection("user_notifications").doc(uDoc.id).get();
+        const prefs = prefSnap.exists() ? prefSnap.data() : { trendingProducts: true };
+
+        if (prefs.trendingProducts && userData.fcmToken) {
+          tokens.push(userData.fcmToken);
+        }
+      }
+
+      if (tokens.length > 0) {
+        return sendMulticastNotification(tokens, {
+          notification: {
+            title: "🔥 Trending on Campus",
+            body: `${product.name} is the new vibe! Check what everyone is buying.`
+          },
+          data: { productId, type: "trending_alert" }
+        });
       }
     }
+
     return null;
   } catch (err) {
     console.error(`Liaison Trending Error for ${productId}:`, err);
