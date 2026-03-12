@@ -62,6 +62,13 @@ export type MarketProfile = {
   updatedAt: string;
 };
 
+export type ProductCoPurchase = {
+  id: string;
+  productA: string;
+  productB: string;
+  count: number;
+};
+
 export type CreatorReputation = {
   id: string;
   qualityScore: number;

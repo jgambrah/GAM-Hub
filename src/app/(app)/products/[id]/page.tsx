@@ -15,6 +15,7 @@ import YouTube from 'react-youtube';
 import { OrderConfirmationDialog } from '@/components/orders/OrderConfirmationDialog';
 import { useAuth } from '@/hooks/use-auth';
 import { recordMarketSignal } from '@/lib/market-intelligence';
+import RelatedProducts from '@/components/market/RelatedProducts';
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;
@@ -218,6 +219,9 @@ export default function ProductDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* PEOPLE ALSO BOUGHT ENGINE */}
+      <RelatedProducts productId={id} />
 
       {isOrderDialogOpen && (
         <OrderConfirmationDialog 

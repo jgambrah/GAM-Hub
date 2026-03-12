@@ -75,6 +75,17 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
+    },
+    "ProductCoPurchase": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "ProductCoPurchase",
+      "type": "object",
+      "description": "Maps the correlation between two products frequently bought together.",
+      "properties": {
+        "productA": { "type": "string" },
+        "productB": { "type": "string" },
+        "count": { "type": "number" }
+      }
     }
   },
   "auth": {
@@ -112,6 +123,14 @@
           "entityName": "Product",
           "schema": { "$ref": "#/backend/entities/Product" },
           "description": "Marketplace product listings with recommendation metadata."
+        }
+      },
+      {
+        "path": "/product_co_purchases/{correlationId}",
+        "definition": {
+          "entityName": "ProductCoPurchase",
+          "schema": { "$ref": "#/backend/entities/ProductCoPurchase" },
+          "description": "Purchase correlation graph for 'People Also Bought' logic."
         }
       }
     ]

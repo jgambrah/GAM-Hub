@@ -4,17 +4,16 @@
 /**
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
- * Upgraded with Dual-Write Velocity Tracking for real-time trending detection.
+ * Upgraded with Co-Purchase Correlation ("People Also Bought").
  */
 
-import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp } from 'firebase/firestore';
-import type { Product } from './types';
+import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import type { Product, Order } from './types';
 
 /**
  * recordMarketSignal
  * ------------------
  * Logs a behavioral event to the user's market profile and the product's velocity bucket.
- * Handles category counters, vendor affinity, and price range preferences.
  */
 export async function recordMarketSignal(
   firestore: Firestore,
@@ -49,6 +48,9 @@ export async function recordMarketSignal(
     profileUpdates[`purchasedCategories.${product.category}`] = increment(1);
     profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
     velocityUpdates.purchases = increment(1);
+    
+    // 🔥 LIAISON UPGRADE: Update Co-Purchase Graph
+    updateCoPurchaseCorrelation(firestore, userId, product.id);
   }
 
   // Non-blocking write to Profile
@@ -83,4 +85,95 @@ export async function recordMarketSignal(
       console.warn("Market Intel: Price sync interrupted.");
     }
   }
+}
+
+/**
+ * updateCoPurchaseCorrelation
+ * ----------------------------
+ * Finds the user's last few purchases and increments the correlation weight
+ * between the new item and historical items. This powers "People Also Bought".
+ */
+async function updateCoPurchaseCorrelation(firestore: Firestore, userId: string, newProductId: string) {
+    try {
+        // 1. Fetch user's last 5 completed orders
+        const q = query(
+            collection(firestore, 'orders'),
+            where('buyerId', '==', userId),
+            where('status', 'in', ['picked-up', 'completed', 'archived']),
+            orderBy('createdAt', 'desc'),
+            limit(6) // Current one + 5 historical
+        );
+        
+        const snap = await getDocs(q);
+        const purchasedIds = Array.from(new Set(
+            snap.docs
+                .map(d => (d.data() as Order).productId)
+                .filter(id => id !== newProductId)
+        )).slice(0, 5);
+
+        if (purchasedIds.length === 0) return;
+
+        // 2. Update pairs (Correlation Handshake)
+        for (const historicalId of purchasedIds) {
+            // Standardize key to avoid duplicates (Alphabetical sort)
+            const pair = [newProductId, historicalId].sort();
+            const correlationId = `${pair[0]}_${pair[1]}`;
+            
+            const ref = doc(firestore, 'product_co_purchases', correlationId);
+            setDoc(ref, {
+                productA: pair[0],
+                productB: pair[1],
+                count: increment(1),
+                lastUpdated: serverTimestamp()
+            }, { merge: true }).catch(() => {});
+        }
+    } catch (err) {
+        console.warn("Co-Purchase Sync Failed:", err);
+    }
+}
+
+/**
+ * getRelatedProducts
+ * -------------------
+ * Retrieves the top 10 most correlated products for a given ID.
+ */
+export async function getRelatedProducts(firestore: Firestore, productId: string) {
+    if (!firestore || !productId) return [];
+
+    try {
+        // Check both sides of the pair (productA OR productB)
+        // Since we standardized the ID, we need two queries or a complex index.
+        // For simplicity, we query where productA == target OR productB == target
+        const qA = query(
+            collection(firestore, 'product_co_purchases'),
+            where('productA', '==', productId),
+            orderBy('count', 'desc'),
+            limit(10)
+        );
+        
+        const qB = query(
+            collection(firestore, 'product_co_purchases'),
+            where('productB', '==', productId),
+            orderBy('count', 'desc'),
+            limit(10)
+        );
+
+        const [snapA, snapB] = await Promise.all([getDocs(qA), getDocs(qB)]);
+        
+        const results = [...snapA.docs, ...snapB.docs]
+            .map(d => {
+                const data = d.data();
+                return {
+                    id: data.productA === productId ? data.productB : data.productA,
+                    count: data.count
+                };
+            })
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        return results;
+    } catch (err) {
+        console.error("Related Retrieval Error:", err);
+        return [];
+    }
 }
