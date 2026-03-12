@@ -12,3 +12,4 @@ import '@/ai/flows/academic-vibe-summary-flow.ts';
 import '@/ai/flows/generate-semantic-hashtags.ts';
 import '@/ai/flows/analyze-vibe-content.ts';
 import '@/ai/flows/generate-query-embedding.ts';
+import '@/ai/flows/market-intent-parser.ts';

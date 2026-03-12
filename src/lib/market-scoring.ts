@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -5,7 +6,7 @@
  * Implements the professional multi-signal product scoring equation.
  * 
  * Pipeline:
- * 1. Intent (Category matching)
+ * 1. Intent (AI Parsed & Category matching)
  * 2. Reputed Trust (Vendor scoring)
  * 3. Financial Value (Deal detection)
  * 4. Momentum (Trending velocity)
@@ -14,7 +15,7 @@
  * 7. Recency (Freshness decay)
  */
 
-import type { Product, MarketProfile, User } from './types';
+import type { Product, MarketProfile, User, MarketIntent } from './types';
 import type { VibeProfile } from '@/hooks/use-vibe-profile';
 
 /**
@@ -62,12 +63,38 @@ export function computeMarketScore(
   marketProfile: MarketProfile | null,
   vibeProfile: VibeProfile | null,
   user: User | null,
-  searchQuery: string = ''
+  searchQuery: string = '',
+  parsedIntent?: MarketIntent | null
 ) {
   let score = 0;
 
-  // 1. AI SEARCH RELEVANCE (Initial Boost)
-  if (searchQuery.trim()) {
+  // 🧠 1. AI INTENT BOOST (The Smart Assistant Layer)
+  if (parsedIntent) {
+      // Category Match (Major Signal)
+      if (parsedIntent.category && product.category.toLowerCase() === parsedIntent.category.toLowerCase()) {
+          score += 30;
+      }
+      
+      // Tag/Product Match (Deep Relevance)
+      if (parsedIntent.tags && product.tags) {
+          const matches = product.tags.filter(t => parsedIntent.tags?.includes(t.toLowerCase()));
+          score += matches.length * 15;
+      }
+      
+      // Price Relevance (Hard Constraint Match)
+      if (parsedIntent.priceMax && product.price <= parsedIntent.priceMax) {
+          score += 15;
+      }
+      if (parsedIntent.priceMin && product.price >= parsedIntent.priceMin) {
+          score += 5;
+      }
+      
+      // Intent/Context Match (Study, Gym, etc)
+      if (parsedIntent.intent && product.tags?.includes(parsedIntent.intent.toLowerCase())) {
+          score += 20;
+      }
+  } else if (searchQuery.trim()) {
+    // Basic Keyword Fallback
     const term = searchQuery.toLowerCase().trim();
     if (product.name.toLowerCase().includes(term)) score += 20;
     if (product.category.toLowerCase().includes(term)) score += 15;
@@ -75,7 +102,6 @@ export function computeMarketScore(
   }
 
   // 🛡️ 2. VENDOR TRUST SCORE (The Reputational Pillar)
-  // Reliability score from the merchant is added directly
   const vendorScore = computeVendorScore(product);
   score += vendorScore;
 
@@ -88,7 +114,7 @@ export function computeMarketScore(
     score += product.trendScore * 2;
   }
 
-  // 📊 5. COMMERCIAL INTENT (Category Interest)
+  // 📊 5. COMMERCIAL INTENT (Category Interest from Profile)
   if (marketProfile) {
     const views = marketProfile.viewedCategories?.[product.category] || 0;
     const intents = marketProfile.intentCategories?.[product.category] || 0;
@@ -111,8 +137,7 @@ export function computeMarketScore(
     }
   }
 
-  // 🌉 6. THE VIBE BRIDGE (Tag Match)
-  // Cross-references with the user's Video Discovery Profile
+  // 🌉 6. THE VIBE BRIDGE (Video Vibe Profile Cross-Reference)
   if (vibeProfile && product.tags) {
     product.tags.forEach(tag => {
       const weight = vibeProfile.tagWeights[tag.toLowerCase()] || 0;
@@ -123,7 +148,7 @@ export function computeMarketScore(
   // 📍 7. CAMPUS INTELLIGENCE
   if (user) {
     // Proximity Boost (Same Campus)
-    if (product.campusId === user.campusId) score += 10;
+    if (product.campusId === user.campusId) score += 4;
     
     // Academic Boost (Same Major/Department)
     const userMajor = (user.major || '').toLowerCase();
@@ -140,7 +165,6 @@ export function computeMarketScore(
   if (product.createdAt) {
     const createdAt = typeof product.createdAt === 'string' ? new Date(product.createdAt) : (product.createdAt.toDate ? product.createdAt.toDate() : new Date(product.createdAt));
     const ageHours = (Date.now() - createdAt.getTime()) / 3600000;
-    // Slow decay over 48 hours
     score += 10 * Math.exp(-ageHours / 48);
   }
 

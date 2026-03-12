@@ -62,6 +62,14 @@ export type MarketProfile = {
   updatedAt: string;
 };
 
+export type MarketIntent = {
+  category?: string;
+  tags?: string[];
+  priceMin?: number;
+  priceMax?: number;
+  intent?: string;
+};
+
 export type ProductCoPurchase = {
   id: string;
   productA: string;

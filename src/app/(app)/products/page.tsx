@@ -1,3 +1,4 @@
+
 'use client';
 import * as React from 'react';
 import { useAuth } from '@/hooks/use-auth';
@@ -8,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useCampusView } from '@/hooks/use-campus-view';
 import SponsoredMajorAd from '@/components/market/SponsoredMajorAd';
 import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
-import { Sparkles, ShoppingBag, Zap, Search, X, Loader2 } from 'lucide-react';
+import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 export const dynamic = 'force-dynamic';
@@ -19,14 +20,13 @@ export default function ProductsPage() {
   const { viewAsCampus } = useCampusView();
   const [searchQuery, setSearchQuery] = React.useState('');
 
-  // 🏎️ Use the new Ranking Engine for personalized discovery and AI search
-  const { products: rankedProducts, isLoading: isRanking, hasProfile } = useMarketRecommendations(searchQuery);
+  // 🏎️ Rank Engine with AI Intent Parsing
+  const { products: rankedProducts, isLoading: isRanking, isParsing, hasProfile, intent } = useMarketRecommendations(searchQuery);
 
   const campusProducts = React.useMemo(() => {
     if (!rankedProducts) return [];
     if (viewMode === 'vendor' || isAdmin) return rankedProducts;
     
-    // Safety Filter: Ensure services are hidden if vendor is out of fuel
     return rankedProducts.filter(p => {
         if (p.productType === 'service') {
             return p.has_fuel !== false;
@@ -61,7 +61,7 @@ export default function ProductsPage() {
             <Input 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search products, services, or brands..."
+                placeholder="Ask Liaison Assistant..."
                 className="pl-12 pr-10 h-14 rounded-2xl bg-white border-2 border-slate-100 shadow-sm focus:ring-2 focus:ring-primary focus:border-transparent transition-all font-bold"
             />
             {searchQuery && (
@@ -77,27 +77,32 @@ export default function ProductsPage() {
         {viewMode === 'vendor' && <AddProductDialog />}
       </div>
 
-      {!searchQuery && viewMode === 'student' && <SponsoredMajorAd userMajor={user?.major} />}
-
-      {/* INTELLIGENCE STATUS BAR */}
-      {hasProfile && !isLoading && (
-          <div className="px-4 animate-in slide-in-from-top-2 duration-500">
-              <div className="bg-blue-50 dark:bg-blue-900/20 px-6 py-3 rounded-[1.5rem] border border-blue-100 dark:border-blue-800 flex items-center justify-between">
+      {/* AI INTELLIGENCE STATUS BAR */}
+      <div className="px-4">
+          {(hasProfile || isParsing || intent) && !isLoading && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 px-6 py-3 rounded-[1.5rem] border border-blue-100 dark:border-blue-800 flex items-center justify-between animate-in slide-in-from-top-2 duration-500">
                   <div className="flex items-center gap-3">
                       <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-200/50">
-                        <Sparkles size={14} />
+                        {isParsing ? <Loader2 className="animate-spin" size={14}/> : <Bot size={14} />}
                       </div>
-                      <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
-                        {searchQuery ? 'AI Search Ranking Active' : 'Personalized Discovery Active'}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
+                            {isParsing ? 'Analyzing Intent...' : intent ? `Searching for ${intent.category || 'items'} ${intent.intent ? `for ${intent.intent}` : ''}` : 'Personalized Discovery Active'}
+                        </p>
+                        {intent?.priceMax && (
+                            <p className="text-[8px] font-bold text-slate-400 uppercase">Budget Cap: GHS {intent.priceMax}</p>
+                        )}
+                      </div>
                   </div>
                   <div className="flex items-center gap-2">
                       <Zap size={12} className="text-amber-500 fill-amber-500" />
-                      <span className="text-[9px] font-bold text-slate-400 uppercase">Synced with Campus Profile</span>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase hidden sm:inline">Liaison Assistant Active</span>
                   </div>
               </div>
-          </div>
-      )}
+          )}
+      </div>
+
+      {!searchQuery && viewMode === 'student' && <SponsoredMajorAd userMajor={user?.major} />}
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
