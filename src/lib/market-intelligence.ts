@@ -8,7 +8,9 @@
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import type { Product, Order } from './types';
+import type { Product, Order, ProductTrend } from './types';
+import { computeTrendScore } from './compute-trend-score';
+import { applyTrendDecay } from './apply-trend-decay';
 
 export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
 
@@ -139,6 +141,43 @@ export async function trackProductEvent(
   await setDoc(ref, updates, { merge: true }).catch(err => {
     console.error("Trend Tracking Failed:", err);
   });
+}
+
+/**
+ * getTrendingProducts
+ * --------------------
+ * Retrieves the hottest products for a specific campus using the decayed score formula.
+ */
+export async function getTrendingProducts(
+  firestore: Firestore,
+  campusId: string
+) {
+  const q = query(
+    collection(firestore, "product_trends"),
+    where("campusId", "==", campusId),
+    limit(100)
+  );
+
+  const snapshot = await getDocs(q);
+  const trends = snapshot.docs.map(d => d.data() as ProductTrend);
+
+  const scored = trends.map(trend => {
+    let score = computeTrendScore(trend);
+    
+    // Apply time decay
+    const lastUpdated = trend.lastUpdated?.toDate ? trend.lastUpdated.toDate() : new Date(trend.lastUpdated);
+    score = applyTrendDecay(score, lastUpdated);
+
+    return {
+      productId: trend.productId,
+      score
+    };
+  });
+
+  // Sort by decayed score descending
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, 20);
 }
 
 /**

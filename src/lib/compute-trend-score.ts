@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Trending Score Utility.
  * Implements the weighted trend score formula for marketplace products.
@@ -5,10 +6,10 @@
  */
 
 export function computeTrendScore(trend: { 
-  viewCount: number; 
-  cartCount: number; 
-  purchaseCount: number; 
-  shareCount: number; 
+  viewCount?: number; 
+  cartCount?: number; 
+  purchaseCount?: number; 
+  shareCount?: number; 
 }) {
   return (
     (trend.viewCount || 0) * 1 +

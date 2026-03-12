@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Trend Decay Utility.
  * Implements exponential time decay for trending scores.
