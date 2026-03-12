@@ -211,6 +211,7 @@ export type ArenaPost = {
   aiTags?: string[]; // NEW: AI content understanding
   aiTopics?: string[];
   mood?: string;
+  detectedObjects?: string[];
   embedding?: number[]; // SEMANTIC VECTOR
   status?: 'active' | 'blocked';
   moderationNote?: string;

@@ -83,7 +83,7 @@ export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
 
 /**
  * 🏗️ MASTER DISCOVERY EQUATION (AI Augmented)
- * Now incorporates aiTags and aiTopics for higher-fidelity matching.
+ * Now incorporates mood and visual object matching.
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -92,7 +92,8 @@ export function computeVibeScore(
   viralTags: Set<string>, 
   trendingTags: Set<string>, 
   relatedTags: Set<string>,
-  creatorReputation: Record<string, any> = {}
+  creatorReputation: Record<string, any> = {},
+  activeMoodId: VibeMood = 'all'
 ) {
   let score = 0;
 
@@ -110,36 +111,55 @@ export function computeVibeScore(
   const sharedTags = candidateTags.filter(t => currentTags.has(t));
   score += sharedTags.length * 10;
 
-  // 2. AI Topic Match
+  // 2. AI Topic & Object Match
   const currentTopics = new Set((current.aiTopics || []).map(t => t.toLowerCase()));
   const matchingTopics = (candidate.aiTopics || []).filter(t => currentTopics.has(t.toLowerCase()));
-  score += matchingTopics.length * 15; // Topics weighted higher as they represent broader intent
+  score += matchingTopics.length * 15;
 
-  // 3. Graph Expansion (Topic Discovery)
+  const currentObjects = new Set((current.detectedObjects || []).map(o => o.toLowerCase()));
+  const matchingObjects = (candidate.detectedObjects || []).filter(o => currentObjects.has(o.toLowerCase()));
+  score += matchingObjects.length * 8; // Visual continuity boost
+
+  // 3. Mood Synchronization Boost
+  // Map UI Moods to AI detected mood patterns
+  const moodMapping: Record<VibeMood, string[]> = {
+    all: [],
+    hype: ['energetic', 'hype', 'fast', 'victory', 'exciting'],
+    chill: ['relaxed', 'calm', 'serene', 'smooth', 'mellow'],
+    study: ['focus', 'serious', 'educational', 'quiet'],
+    flex: ['proud', 'confident', 'swagger', 'wealthy']
+  };
+
+  const activeMoodTerms = moodMapping[activeMoodId];
+  if (candidate.mood && activeMoodTerms.includes(candidate.mood.toLowerCase())) {
+    score += 10; // Positive reinforcement for mood selection
+  }
+
+  // 4. Graph Expansion (Topic Discovery)
   const relatedMatches = candidateTags.filter(t => relatedTags.has(t));
   score += relatedMatches.length * 5;
 
-  // 4. Interest Graph Match (Profile)
+  // 5. Interest Graph Match (Profile)
   score += getPersonalScore(candidate) * 0.3;
 
-  // 5. Exploration Boost (Diversity)
+  // 6. Exploration Boost (Diversity)
   score += explorationBoost(candidate);
 
-  // 6. Viral Hashtag Boost (Velocity)
+  // 7. Viral Hashtag Boost (Velocity)
   if (candidateTags.some(t => viralTags.has(t))) score += 25;
   else if (candidateTags.some(t => trendingTags.has(t))) score += 12;
 
-  // 7. Creator Quality Boost (Reputation)
+  // 8. Creator Quality Boost (Reputation)
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
   score += (repData.qualityScore || 50) * 0.5;
 
-  // 8. Freshness Boost (Recency)
+  // 9. Freshness Boost (Recency)
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
     score += exponentialFreshness(date);
   }
 
-  // 9. Security Penalty (Spam Control)
+  // 10. Security Penalty (Spam Control)
   if ((repData.violationScore || 0) > 3) score -= 50;
 
   return score;
@@ -160,7 +180,7 @@ export function buildSmartQueue(
       const match = (p.tags || []).some(t => moodTagSet.has(t.toLowerCase())) || p.mediaType === 'video';
       if (!match) continue;
     }
-    const score = computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags, creatorReputation);
+    const score = computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags, creatorReputation, mood);
     ranked.push({ post: p, score });
   }
   return ranked.sort((a, b) => b.score - a.score);
@@ -327,7 +347,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, scorer, viral, trending, relatedTags, reputations),
+        score: computeVibeScore(current, p, scorer, viral, trending, relatedTags, reputations, mood),
         reason: buildReason(current, p, scorer, userEmbedding, relatedTags),
       }));
 
