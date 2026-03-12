@@ -47,6 +47,8 @@
         "trendingProducts": { "type": "boolean" },
         "vendorUpdates": { "type": "boolean" },
         "recommendations": { "type": "boolean" },
+        "lastSentAt": { "type": "string", "format": "date-time" },
+        "dailyCount": { "type": "number" },
         "quietHours": {
           "type": "object",
           "properties": {

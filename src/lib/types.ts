@@ -55,6 +55,8 @@ export type NotificationSettings = {
   trendingProducts: boolean;
   vendorUpdates: boolean;
   recommendations: boolean;
+  lastSentAt?: string;
+  dailyCount?: number;
   quietHours: {
     start: number;
     end: number;

@@ -8,27 +8,81 @@ admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🛰️ LIAISON NOTIFICATION SERVICE: Helper to send multicast messages
- * Respects user tokens and handles batching.
+ * 🛰️ LIAISON NOTIFICATION SERVICE: Throttling & Delivery
+ * Rule: Max 3 notifications per day, min 2 hours between.
  */
-async function sendMulticastNotification(tokens, payload) {
-  if (!tokens || tokens.length === 0) return null;
+async function checkThrottlingAndNotify(userId, payload, db) {
+  const prefRef = db.collection("user_notifications").doc(userId);
+  const userRef = db.collection("users").doc(userId);
   
-  // FCM Multicast limit is 500 per call
-  const chunks = [];
-  for (let i = 0; i < tokens.length; i += 500) {
-    chunks.push(tokens.slice(i, i + 500));
+  try {
+    const [prefSnap, userSnap] = await Promise.all([prefRef.get(), userRef.get()]);
+    if (!userSnap.exists) return null;
+    
+    const userData = userSnap.data();
+    const token = userData.fcmToken;
+    if (!token) return null;
+
+    const prefs = prefSnap.exists ? prefSnap.data() : { priceDrops: true, dailyCount: 0 };
+    const now = new Date();
+    const lastSent = prefs.lastSentAt ? new Date(prefs.lastSentAt) : null;
+
+    // 1. Throttling Checks
+    if (lastSent) {
+      // Rule A: Min 2 Hour Gap
+      const diffHours = (now - lastSent) / 3600000;
+      if (diffHours < 2) return null;
+
+      // Rule B: Daily Cap (Max 3)
+      const isSameDay = lastSent.toDateString() === now.toDateString();
+      if (isSameDay && (prefs.dailyCount || 0) >= 3) return null;
+      
+      // Reset count if new day
+      if (!isSameDay) {
+        prefs.dailyCount = 0;
+      }
+    }
+
+    // 2. Deliver via FCM
+    await admin.messaging().send({
+      token: token,
+      notification: payload.notification,
+      data: payload.data || {}
+    });
+
+    // 3. Update Audit Trail & Throttling Stats
+    const batch = db.batch();
+    batch.set(prefRef, {
+      lastSentAt: now.toISOString(),
+      dailyCount: (prefs.dailyCount || 0) + 1
+    }, { merge: true });
+
+    batch.add(db.collection("notifications"), {
+      userId,
+      title: payload.notification.title,
+      body: payload.notification.body,
+      type: payload.data?.type || "system",
+      sentAt: now.toISOString()
+    });
+
+    return batch.commit();
+
+  } catch (err) {
+    console.error(`Liaison Delivery Service Error for ${userId}:`, err);
+    return null;
   }
+}
 
-  const results = await Promise.all(chunks.map(chunk => {
-    const message = {
-      ...payload,
-      tokens: chunk
-    };
-    return admin.messaging().sendEachForMulticast(message);
-  }));
-
-  return results;
+/**
+ * 🛰️ LIAISON NOTIFICATION SERVICE: Helper to send multicast messages
+ * Filters recipients by individual throttling rules before sending.
+ */
+async function sendSmartMulticast(recipients, payload, db) {
+  if (!recipients || recipients.length === 0) return null;
+  
+  // We process individually to respect per-user throttling
+  const deliveryPromises = recipients.map(uid => checkThrottlingAndNotify(uid, payload, db));
+  return Promise.all(deliveryPromises);
 }
 
 /**
@@ -47,62 +101,25 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
   if (!isPriceDrop && !isSignificantDrop && !isRestock) return null;
 
   try {
-    // 1. Gather Users from Explicit Favorites
+    const interestedUserIds = new Set();
+
+    // 1. Explicit Favorites
     const profilesSnap = await db.collection("user_market_profiles")
       .where("favoriteProducts", "array-contains", productId)
       .get();
-    
-    let interestedUserIds = profilesSnap.docs.map(doc => doc.id);
+    profilesSnap.docs.forEach(doc => interestedUserIds.add(doc.id));
 
-    // 2. Gather Users from Recent Views (Last 30 days)
+    // 2. Recent Views (Last 30 days)
     const viewThreshold = new Date();
     viewThreshold.setDate(viewThreshold.getDate() - 30);
-    
     const viewsSnap = await db.collection("user_product_views")
       .where("productId", "==", productId)
       .where("viewedAt", ">=", viewThreshold.toISOString())
-      .limit(200)
+      .limit(100)
       .get();
+    viewsSnap.forEach(vDoc => interestedUserIds.add(vDoc.data().userId));
 
-    viewsSnap.forEach(vDoc => {
-        const uid = vDoc.data().userId;
-        if (!interestedUserIds.includes(uid)) interestedUserIds.push(uid);
-    });
-
-    if (interestedUserIds.length === 0) return null;
-
-    // 3. Filter by Preferences (Price Drops)
-    const tokens = [];
-    const now = new Date();
-    const hour = now.getHours();
-
-    // Batch fetch user data and preferences
-    const usersSnap = await db.collection("users")
-      .where("__name__", "in", interestedUserIds.slice(0, 100))
-      .get();
-
-    for (const uDoc of usersSnap.docs) {
-      const userData = uDoc.data();
-      const prefSnap = await db.collection("user_notifications").doc(uDoc.id).get();
-      const prefs = prefSnap.exists() ? prefSnap.data() : { priceDrops: true, quietHours: { start: 22, end: 7 } };
-
-      // Check Preference & Quiet Hours
-      if (!prefs.priceDrops) continue;
-      if (prefs.quietHours) {
-        const { start, end } = prefs.quietHours;
-        if (start > end) { // Wraps around midnight
-          if (hour >= start || hour < end) continue;
-        } else {
-          if (hour >= start && hour < end) continue;
-        }
-      }
-
-      if (userData.fcmToken && userData.id !== after.vendorId) {
-        tokens.push(userData.fcmToken);
-      }
-    }
-
-    if (tokens.length === 0) return null;
+    if (interestedUserIds.size === 0) return null;
 
     let title = "";
     let body = "";
@@ -115,13 +132,13 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
       body = `Good news! ${after.name} is back. Get it while it lasts!`;
     }
 
-    return sendMulticastNotification(tokens, {
+    return sendSmartMulticast(Array.from(interestedUserIds), {
       notification: { title, body },
       data: { productId, type: isPriceDrop ? "price_drop" : "restock" }
-    });
+    }, db);
 
   } catch (err) {
-    console.error(`Liaison Notification Engine Error for ${productId}:`, err);
+    console.error(`Liaison Price Engine Error for ${productId}:`, err);
     return null;
   }
 });
@@ -141,21 +158,15 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
 
     if (followersSnap.empty) return null;
 
-    const tokens = [];
-    followersSnap.forEach(doc => {
-      const token = doc.data().fcmToken;
-      if (token) tokens.push(token);
-    });
+    const uids = followersSnap.docs.map(doc => doc.id);
 
-    if (tokens.length === 0) return null;
-
-    return sendMulticastNotification(tokens, {
+    return sendSmartMulticast(uids, {
       notification: {
         title: "📦 New Arrival!",
         body: `${product.vendorName} just listed a new vibe: ${product.name}`
       },
       data: { productId: event.params.productId, type: "vendor_new_post" }
-    });
+    }, db);
 
   } catch (err) {
     console.error("Vendor Update Notification Error:", err);
@@ -199,73 +210,64 @@ exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event)
 });
 
 /**
- * 🛒 PRODUCT TRENDING ENGINE (V2) - Reactive Sync & Notification Trigger
+ * 🧠 DAILY SMART RECOMMENDATIONS SCHEDULER
+ * Runs at 9:00 AM daily. Sends one high-value pick to every active user.
  */
-exports.calculateProductTrendingScore = onDocumentUpdated("product_trends/{productId}", async (event) => {
-  const data = event.data.after.data();
+exports.sendDailyRecommendations = onSchedule("0 9 * * *", async (event) => {
   const db = admin.firestore();
-  const productId = event.params.productId;
   
   try {
-    const rawScore = (data.viewCount || 0) * 1 + (data.cartCount || 0) * 4 + (data.purchaseCount || 0) * 8 + (data.shareCount || 0) * 3;
-    const now = new Date();
-    const lastUpdated = data.lastUpdated?.toDate ? data.lastUpdated.toDate() : now;
-    const hoursSinceUpdate = (now - lastUpdated) / 3600000;
-    const decayFactor = Math.exp(-hoursSinceUpdate / 24);
-    const finalTrendScore = rawScore * decayFactor;
+    // 1. Get users with active tokens
+    const usersSnap = await db.collection("users").where("fcmToken", "!=", null).limit(500).get();
+    if (usersSnap.empty) return null;
 
-    const productRef = db.collection("products").doc(productId);
-    const productSnap = await productRef.get();
-    
-    if (!productSnap.exists()) return null;
-    const product = productSnap.data();
+    for (const uDoc of usersSnap.docs) {
+      const userId = uDoc.id;
+      const userData = uDoc.data();
 
-    // 🏎️ Update the trendScore on the main product document for ranking
-    const currentScore = product.trendScore || 0;
-    if (Math.abs(currentScore - finalTrendScore) > 0.1) {
-      await productRef.update({ trendScore: finalTrendScore, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-    }
-
-    // 🔥 TRENDING NOTIFICATION TRIGGER (Threshold: 50 points)
-    if (finalTrendScore >= 50 && currentScore < 50) {
-      // Find users interested in this category
-      const interestedProfilesSnap = await db.collection("user_market_profiles")
-        .where(`viewedCategories.${product.category}`, ">", 5)
-        .limit(100)
-        .get();
-
-      const userIds = interestedProfilesSnap.docs.map(doc => doc.id);
-      if (userIds.length === 0) return null;
-
-      const usersSnap = await db.collection("users")
-        .where("__name__", "in", userIds)
-        .get();
-
-      const tokens = [];
-      for (const uDoc of usersSnap.docs) {
-        const userData = uDoc.data();
-        const prefSnap = await db.collection("user_notifications").doc(uDoc.id).get();
-        const prefs = prefSnap.exists() ? prefSnap.data() : { trendingProducts: true };
-
-        if (prefs.trendingProducts && userData.fcmToken) {
-          tokens.push(userData.fcmToken);
+      // 2. Fetch User Market Profile to identify top category
+      const profileSnap = await db.collection("user_market_profiles").doc(userId).get();
+      if (!profileSnap.exists) continue;
+      
+      const profile = profileSnap.data();
+      const viewedCategories = profile.viewedCategories || {};
+      
+      // Find highest interest category
+      let topCategory = null;
+      let maxViews = 0;
+      Object.entries(viewedCategories).forEach(([cat, count]) => {
+        if (count > maxViews) {
+          maxViews = count;
+          topCategory = cat;
         }
-      }
+      });
 
-      if (tokens.length > 0) {
-        return sendMulticastNotification(tokens, {
-          notification: {
-            title: "🔥 Trending on Campus",
-            body: `${product.name} is the new vibe! Check what everyone is buying.`
-          },
-          data: { productId, type: "trending_alert" }
-        });
-      }
+      if (!topCategory) continue;
+
+      // 3. Find a fresh product in that category (Top trending)
+      const productsSnap = await db.collection("products")
+        .where("campusId", "==", userData.campusId)
+        .where("category", "==", topCategory)
+        .orderBy("trendScore", "desc")
+        .limit(1)
+        .get();
+
+      if (productsSnap.empty) continue;
+      const topPick = productsSnap.docs[0].data();
+
+      // 4. Send with Throttling check
+      await checkThrottlingAndNotify(userId, {
+        notification: {
+          title: "🧠 Morning Pick for You",
+          body: `Based on your vibe, you'll love ${topPick.name}!`
+        },
+        data: { productId: topPick.id, type: "daily_recommendation" }
+      }, db);
     }
 
     return null;
   } catch (err) {
-    console.error(`Liaison Trending Error for ${productId}:`, err);
+    console.error("Daily Recommendations Engine Error:", err);
     return null;
   }
 });
