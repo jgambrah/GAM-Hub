@@ -70,6 +70,8 @@
         "salesCount": { "type": "number" },
         "viewCount": { "type": "number" },
         "rating": { "type": "number" },
+        "trendScore": { "type": "number" },
+        "recentSales": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
@@ -100,7 +102,7 @@
         "path": "/product_velocity/{productId}/minutes/{minuteId}",
         "definition": {
           "entityName": "ProductVelocity",
-          "schema": { "type": "object", "properties": { "views": { "type": "number" }, "intents": { "type": "number" } } },
+          "schema": { "type": "object", "properties": { "views": { "type": "number" }, "intents": { "type": "number" }, "purchases": { "type": "number" } } },
           "description": "Time-series commercial velocity tracking."
         }
       },

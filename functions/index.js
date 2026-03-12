@@ -88,6 +88,54 @@ exports.calculateTrendingScore = onDocumentUpdated("trending_stats/{postId}", as
 });
 
 /**
+ * 🛒 PRODUCT TRENDING ENGINE
+ * Monitors commercial velocity to surface hot campus items.
+ */
+exports.calculateProductTrendingScore = onDocumentUpdated("products/{productId}", async (event) => {
+  const data = event.data.after.data();
+  const oldData = event.data.before.data();
+  const db = admin.firestore();
+  const productId = event.params.productId;
+
+  // Optimization: Only run if counts changed
+  const hasChanged = data.viewCount !== oldData.viewCount || data.salesCount !== oldData.salesCount;
+  if (!hasChanged) return null;
+
+  try {
+    const now = new Date();
+    const lookbackMins = 15;
+    const startTime = new Date(now.getTime() - lookbackMins * 60000).toISOString().slice(0, 16);
+    
+    const velocitySnap = await db.collection("product_velocity").doc(productId).collection("minutes")
+      .where("__name__", ">=", startTime)
+      .get();
+
+    let recentVelocity = 0;
+    let recentSales = 0;
+    velocitySnap.forEach((doc) => {
+      const v = doc.data();
+      recentVelocity += (v.views || 0) + (v.intents || 0) * 5;
+      recentSales += (v.purchases || 0);
+    });
+
+    // Score combines view velocity and immediate sales momentum
+    const velocity = recentVelocity / lookbackMins;
+    const score = (velocity * 2.0) + (recentSales * 10.0);
+
+    if (data.trendScore && Math.abs(data.trendScore - score) < 0.01) return null;
+
+    return event.data.after.ref.update({ 
+      trendScore: score,
+      recentSales: recentSales,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+    });
+  } catch (err) {
+    console.error(`Product Trending Failure for ${productId}:`, err);
+    return null;
+  }
+});
+
+/**
  * 🕒 SCHEDULED TREND DECAY AUDITOR
  * Ensures that even inactive posts are decayed so the Pulse stays fresh.
  */

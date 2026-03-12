@@ -109,6 +109,8 @@ export type Product = {
   salesCount?: number; // NEW: Popularity signal
   viewCount?: number; // NEW: Popularity signal
   rating?: number; // NEW: Trust signal
+  trendScore?: number; // NEW: Real-time commercial velocity
+  recentSales?: number; // NEW: For trending boost
   targetAudience: 'all' | 'student' | 'staff';
   isSponsored?: boolean;
   sponsoredMajor?: string; // Kept for backward compatibility
