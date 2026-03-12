@@ -9,11 +9,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useCampusView } from '@/hooks/use-campus-view';
 import SponsoredMajorAd from '@/components/market/SponsoredMajorAd';
 import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
-import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot, Trophy, Mic, TrendingUp, Star, Flame, Tag } from 'lucide-react';
+import { Sparkles, ShoppingBag, Zap, Search, X, Loader2, Bot, Trophy, Mic, TrendingUp, Star, Flame, Tag, Megaphone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
+import RequestItemDialog from '@/components/market/RequestItemDialog';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,7 @@ export default function ProductsPage() {
   
   const [searchQuery, setSearchQuery] = React.useState('');
   const [isListening, setIsListening] = React.useState(false);
+  const [isRequestDialogOpen, setIsRequestDialogOpen] = React.useState(false);
 
   // 🏎️ Rank Engine with structured discovery layers
   const { 
@@ -51,16 +53,20 @@ export default function ProductsPage() {
     recognition.lang = 'en-GH';
     recognition.onstart = () => setIsListening(true);
     recognition.onresult = (e: any) => setSearchQuery(e.results[0][0].transcript);
-    recognition.onerror = () => setIsListening(false);
+    recognition.onerror = (e: any) => {
+        setIsListening(false);
+        if (e.error === 'not-allowed') {
+            toast({ variant: 'destructive', title: 'Mic Access Denied', description: 'Enable permissions in your browser.' });
+        }
+    };
     recognition.onend = () => setIsListening(false);
     try { recognition.start(); } catch (e) { setIsListening(false); }
   };
 
   const campusProducts = React.useMemo(() => {
     if (!rankedProducts) return [];
-    if (viewMode === 'vendor' || isAdmin) return rankedProducts;
     return rankedProducts;
-  }, [rankedProducts, viewMode, isAdmin]);
+  }, [rankedProducts]);
 
   const isLoading = isUserLoading || isRanking;
   const isBrowsing = !searchQuery.trim();
@@ -225,11 +231,27 @@ export default function ProductsPage() {
         ) : (
             <div className="flex flex-col items-center justify-center rounded-[3rem] border-4 border-dashed border-muted-foreground/10 py-32 text-center bg-muted/5">
                 <ShoppingBag className="mx-auto text-muted-foreground/20 mb-6" size={64} />
-                <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">No vibes matched</h2>
-                <p className="text-sm text-muted-foreground mt-2 italic font-medium">Try searching for broader keywords like "food" or "tech".</p>
+                <h2 className="text-xl font-black text-slate-400 uppercase tracking-widest">No matching supply found</h2>
+                <p className="text-sm text-muted-foreground mt-2 italic font-medium max-w-sm mx-auto">
+                    Looks like the Yard doesn't have what you need yet. Request it below and we'll alert vendors!
+                </p>
+                <Button 
+                    onClick={() => setIsRequestDialogOpen(true)}
+                    className="mt-8 rounded-2xl font-black bg-slate-900 text-white px-8 h-14 flex items-center gap-2 shadow-xl active:scale-95 transition-all"
+                >
+                    <Megaphone size={18} /> Broadcast Request to Vendors
+                </Button>
             </div>
         )}
       </div>
+
+      {isRequestDialogOpen && (
+          <RequestItemDialog 
+            initialQuery={searchQuery}
+            open={isRequestDialogOpen}
+            onOpenChange={setIsRequestDialogOpen}
+          />
+      )}
     </div>
   );
 }

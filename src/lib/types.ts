@@ -102,6 +102,18 @@ export type ProductTrend = {
   lastUpdated: any;
 };
 
+export type MarketRequest = {
+  id: string;
+  userId: string;
+  userName: string;
+  query: string;
+  category: string;
+  campusId: string;
+  createdAt: any;
+  status: 'open' | 'fulfilled' | 'expired';
+  matchCount?: number;
+};
+
 export type Product = {
   id: string;
   name: string;
@@ -239,6 +251,9 @@ export type Chat = {
   users: [string, string];
   lastMessage?: string;
   updatedAt: string;
+  userAInfo?: { id: string; name: string; avatarUrl: string };
+  userBInfo?: { id: string; name: string; avatarUrl: string };
+  type?: 'private' | 'support';
 };
 
 export type Message = {
@@ -248,6 +263,9 @@ export type Message = {
   text?: string;
   type: 'text' | 'image' | 'video' | 'file';
   createdAt: string;
+  mediaUrl?: string;
+  isForwarded?: boolean;
+  replyTo?: { messageId: string; text: string; senderName: string } | null;
 };
 
 export type SpotlightItem = {
@@ -255,11 +273,17 @@ export type SpotlightItem = {
   type: 'vendor' | 'student' | 'vlog' | 'announcement';
   title?: string;
   content?: string;
+  category?: string;
+  sourceType?: string;
   campusId?: string;
   image?: string | null;
+  imageHint?: string;
   vibeColor?: string;
   isOfficial?: boolean;
   updatedAt?: string;
+  data?: any;
+  authorCampus?: string;
+  score?: number;
 };
 
 export type PickupPoint = {
@@ -275,10 +299,15 @@ export type PickupPoint = {
 export type Group = {
   id: string;
   name: string;
+  description?: string;
   campusId: string;
   members: string[];
-  type: 'social' | 'class' | 'department';
+  admins: string[];
+  type: 'social' | 'class' | 'department' | 'staff-only';
   isPrivate: boolean;
+  isMainRoom?: boolean;
+  createdBy: string;
+  createdAt: string;
 };
 
 export type GroupRequest = {
@@ -286,7 +315,11 @@ export type GroupRequest = {
   groupId: string;
   userId: string;
   userName: string;
+  userCampusId: string;
+  userAvatarUrl: string;
   status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  approvedAt?: any;
 };
 
 export type RegistryPost = {
@@ -298,6 +331,7 @@ export type RegistryPost = {
   targetAudience: 'all' | 'staff' | 'student';
   attachments?: string[];
   createdAt: string;
+  authorId: string;
 };
 
 export type SrcPost = {
@@ -316,7 +350,10 @@ export type LiveBroadcast = {
   videoUrl: string;
   currentTime: number;
   hostName: string;
+  hostId: string;
   title: string;
+  viewerCount: number;
+  updatedAt?: any;
 };
 
 export type StudyRoom = {
@@ -326,14 +363,19 @@ export type StudyRoom = {
   campusId: string;
   content: string;
   authorId: string;
+  authorName: string;
   participants: string[];
   isOfficial?: boolean;
+  isPrivate?: boolean;
+  creatorRole?: string;
+  createdAt: any;
 };
 
 export type ArenaPost = {
   id: string;
   authorId: string;
   authorName: string;
+  authorAvatarUrl?: string;
   authorCampus: string;
   authorColor: string;
   vibeType: 'shade' | 'celebration';
@@ -345,17 +387,26 @@ export type ArenaPost = {
   createdAt: any;
   mediaUrl?: string;
   mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
+  isArenaEntry: boolean;
+  campusId: string;
+  targetCampus?: string;
+  comebackCount?: number;
+  status?: 'active' | 'blocked';
+  moderationNote?: string;
 };
 
 export type ArenaComeback = {
   id: string;
   text: string;
+  authorId: string;
   authorName: string;
   authorCampus: string;
   authorColor: string;
   isCounter: boolean;
   createdAt: any;
   isBot?: boolean;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
 };
 
 export type NavItem = {
@@ -374,4 +425,29 @@ export type Connection = {
     status: 'pending' | 'accepted' | 'rejected';
     createdAt: string;
     isInterCampus?: boolean;
+}
+
+export type HallOfFameEntry = {
+  id: string;
+  campusId: string;
+  totalBurns: number;
+  weekEnding: any;
+}
+
+export type LeadPrice = {
+  id: string;
+  category: string;
+  price: number;
+  updatedAt: string;
+}
+
+export type PayoutRequest = {
+  id: string;
+  vendorId: string;
+  vendorName: string;
+  amount: number;
+  momoNumber: string;
+  momoBankCode: string;
+  status: 'pending' | 'paid' | 'rejected';
+  createdAt: any;
 }
