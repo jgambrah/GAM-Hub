@@ -5,15 +5,45 @@
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
  * Upgraded with Notification FCM tokens and Follower Logic.
- * Now includes Trending Retrieval and Atomic Event Tracking.
+ * Now includes Trending Retrieval, Atomic Event Tracking, and Demand Signals.
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import type { Product, Order, ProductTrend, NotificationSettings } from './types';
+import type { Product, Order, ProductTrend, NotificationSettings, MarketRequest } from './types';
 import { computeTrendScore } from './compute-trend-score';
 import { applyTrendDecay } from './apply-trend-decay';
 
 export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
+
+/**
+ * createMarketRequest
+ * -------------------
+ * Logic to persist a student's marketplace request (Demand Signal).
+ */
+export async function createMarketRequest(
+  firestore: Firestore,
+  userId: string,
+  userName: string,
+  query: string,
+  campusId: string,
+  aiMetadata: { category: string; tags: string[]; condition: string }
+) {
+  const ref = collection(firestore, "market_requests");
+  const requestData: Omit<MarketRequest, 'id'> = {
+    userId,
+    userName,
+    query,
+    category: aiMetadata.category || 'general',
+    tags: aiMetadata.tags || [],
+    condition: aiMetadata.condition || 'any',
+    campusId,
+    createdAt: serverTimestamp(),
+    status: 'open',
+    matchCount: 0
+  };
+
+  return addDoc(ref, requestData);
+}
 
 /**
  * trackProductEvent

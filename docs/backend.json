@@ -158,6 +158,8 @@
         "userName": { "type": "string" },
         "query": { "type": "string" },
         "category": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "condition": { "type": "string" },
         "campusId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "status": { "type": "string", "enum": ["open", "fulfilled", "expired"] },

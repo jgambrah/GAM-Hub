@@ -108,6 +108,8 @@ export type MarketRequest = {
   userName: string;
   query: string;
   category: string;
+  tags: string[];
+  condition: string;
   campusId: string;
   createdAt: any;
   status: 'open' | 'fulfilled' | 'expired';
