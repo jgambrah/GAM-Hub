@@ -37,7 +37,7 @@ export type User = {
   candidatePosition?: string;
   isAuthority?: boolean;
   installedAt?: any;
-  installedBy?: string;
+  installedBy?: any;
   authorityRole?: 'management' | 'src';
   campusAcronym?: string;
   idVerificationStatus?: 'unverified' | 'pending' | 'approved';
@@ -114,6 +114,14 @@ export type MarketRequest = {
   createdAt: any;
   status: 'open' | 'fulfilled' | 'expired';
   matchCount?: number;
+};
+
+export type DemandSignal = {
+  id: string;
+  item: string;
+  campusId: string;
+  demandCount: number;
+  lastUpdated: any;
 };
 
 export type Product = {

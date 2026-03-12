@@ -166,6 +166,19 @@
         "matchCount": { "type": "number" }
       },
       "required": ["id", "userId", "query", "campusId"]
+    },
+    "DemandSignal": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "DemandSignal",
+      "type": "object",
+      "description": "Aggregated student demand for a specific item on a specific campus.",
+      "properties": {
+        "item": { "type": "string" },
+        "campusId": { "type": "string" },
+        "demandCount": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["item", "campusId", "demandCount"]
     }
   },
   "auth": {
@@ -235,6 +248,14 @@
           "entityName": "MarketRequest",
           "schema": { "$ref": "#/backend/entities/MarketRequest" },
           "description": "Student-initiated requests for items currently missing from supply."
+        }
+      },
+      {
+        "path": "/demand_signals/{signalId}",
+        "definition": {
+          "entityName": "DemandSignal",
+          "schema": { "$ref": "#/backend/entities/DemandSignal" },
+          "description": "Aggregated signals of student demand for market sourcing."
         }
       }
     ]

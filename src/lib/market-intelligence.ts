@@ -5,7 +5,7 @@
  * @fileOverview Marketplace Commercial Intelligence Service.
  * Tracks student and staff behavior to build a high-fidelity intent profile.
  * Upgraded with Notification FCM tokens and Follower Logic.
- * Now includes Trending Retrieval, Atomic Event Tracking, and Demand Signals.
+ * Now includes Trending Retrieval, Atomic Event Tracking, and Demand Aggregation.
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
@@ -16,15 +16,38 @@ import { applyTrendDecay } from './apply-trend-decay';
 export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
 
 /**
+ * updateDemandSignal
+ * -------------------
+ * Aggregates student demand into high-level signals for vendors.
+ */
+export async function updateDemandSignal(
+  firestore: Firestore,
+  item: string,
+  campusId: string
+) {
+  const normalizedItem = item.toLowerCase().trim();
+  const signalId = `${normalizedItem}_${campusId}`;
+  const ref = doc(firestore, "demand_signals", signalId);
+
+  return setDoc(ref, {
+    item: normalizedItem,
+    campusId,
+    demandCount: increment(1),
+    lastUpdated: serverTimestamp()
+  }, { merge: true });
+}
+
+/**
  * createMarketRequest
  * -------------------
  * Logic to persist a student's marketplace request (Demand Signal).
+ * Now triggers atomic aggregation for the Demand Engine.
  */
 export async function createMarketRequest(
   firestore: Firestore,
   userId: string,
   userName: string,
-  query: string,
+  queryText: string,
   campusId: string,
   aiMetadata: { category: string; tags: string[]; condition: string }
 ) {
@@ -32,7 +55,7 @@ export async function createMarketRequest(
   const requestData: Omit<MarketRequest, 'id'> = {
     userId,
     userName,
-    query,
+    query: queryText,
     category: aiMetadata.category || 'general',
     tags: aiMetadata.tags || [],
     condition: aiMetadata.condition || 'any',
@@ -42,7 +65,14 @@ export async function createMarketRequest(
     matchCount: 0
   };
 
-  return addDoc(ref, requestData);
+  const docRef = await addDoc(ref, requestData);
+  
+  // 🧠 1. AGGREGATE DEMAND: Increment count for the specific item on this campus
+  // We use the primary AI-extracted tag as the "Item" for clustering
+  const primaryItem = aiMetadata.tags?.[0] || aiMetadata.category || 'item';
+  updateDemandSignal(firestore, primaryItem, campusId).catch(e => console.error("Aggregation failed:", e));
+
+  return docRef;
 }
 
 /**
