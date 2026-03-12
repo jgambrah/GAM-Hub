@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -7,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  Image as ImageIcon, FileText, ArrowRight,
+  ImageIcon, FileText, ArrowRight,
 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
@@ -29,6 +30,7 @@ import {
 import { VibeReactionBar } from './VibeReactions';
 import { recordEngagement } from '@/lib/trending-service';
 import { renderWithHashtags } from '@/lib/hashtag-utils';
+import VibeShopOverlay from './VibeShopOverlay';
 
 const getYouTubeId = (url: string) => {
   if (!url) return null;
@@ -373,6 +375,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
+
+          {/* 🛍️ COMMERCE OVERLAY: Shop the Vibe */}
+          {post.productTags && post.productTags.length > 0 && (
+            <VibeShopOverlay 
+                productIds={post.productTags} 
+                isActive={isActiveVibe} 
+            />
+          )}
 
           {post.mediaType === 'image' && post.imageUrl && (
             <Image src={post.imageUrl} alt="post" fill

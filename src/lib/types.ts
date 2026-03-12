@@ -189,6 +189,7 @@ export type SocialPost = {
   embedding?: number[]; 
   trendScore?: number; 
   authorQualityScore?: number; 
+  productTags?: string[];
 };
 
 export type Notification = {

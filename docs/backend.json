@@ -36,6 +36,22 @@
       },
       "required": ["id", "email", "campusId", "role"]
     },
+    "SocialPost": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SocialPost",
+      "type": "object",
+      "description": "Represents a social vibration (post) in the Yard Pulse.",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "content": { "type": "string" },
+        "mediaType": { "type": "string", "enum": ["youtube", "tiktok", "image", "text", "video"] },
+        "mediaUrl": { "type": "string" },
+        "productTags": { "type": "array", "items": { "type": "string" } },
+        "campusId": { "type": "string" }
+      },
+      "required": ["authorId", "content", "campusId"]
+    },
     "NotificationSettings": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "NotificationSettings",
@@ -193,6 +209,14 @@
           "entityName": "User",
           "schema": { "$ref": "#/backend/entities/User" },
           "description": "User profiles with notification tokens."
+        }
+      },
+      {
+        "path": "/campus_pulse/{postId}",
+        "definition": {
+          "entityName": "SocialPost",
+          "schema": { "$ref": "#/backend/entities/SocialPost" },
+          "description": "The unified stream of campus vibrations."
         }
       },
       {

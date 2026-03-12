@@ -1,18 +1,18 @@
 
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, query, where, limit, getDocs } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { 
   ImageIcon, Type, X, Send, 
-  Video, Sparkles, Youtube, Loader2, Link as LinkIcon, Globe, ShieldAlert 
+  Video, Sparkles, Youtube, Loader2, Link as LinkIcon, Globe, Tag, ShoppingBag, Search, Plus, CheckCircle2 
 } from 'lucide-react';
 import Image from 'next/image';
-import type { SocialPost } from '@/lib/types';
+import type { SocialPost, Product } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
@@ -24,7 +24,7 @@ import { analyzeVibeContent } from '@/ai/flows/analyze-vibe-content';
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Now with full AI Content Understanding (Multi-modal) and Tag Expansion.
+ * Upgraded with Creator-Commerce Engine (Product Tagging).
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -36,13 +36,64 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
   const [externalUrl, setExternalUrl] = useState('');
   const [isGlobal, setIsGlobal] = useState(false);
   
+  // Media State
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Commerce State
+  const [showTagging, setShowTagging] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+
+  // 🛍️ COMMERCE ENGINE: Product Lookup
+  useEffect(() => {
+    if (!productSearch.trim() || !firestore || !userProfile?.campusId) {
+        setSearchResults([]);
+        return;
+    }
+
+    const timer = setTimeout(async () => {
+        setIsSearching(true);
+        try {
+            const q = query(
+                collection(firestore, 'products'),
+                where('campusId', '==', userProfile.campusId),
+                limit(10)
+            );
+            const snap = await getDocs(q);
+            const term = productSearch.toLowerCase();
+            const filtered = snap.docs
+                .map(d => ({ id: d.id, ...d.data() } as Product))
+                .filter(p => p.name.toLowerCase().includes(term) || p.category.toLowerCase().includes(term));
+            setSearchResults(filtered);
+        } catch (e) {
+            console.warn("Product search failed");
+        } finally {
+            setIsSearching(false);
+        }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [productSearch, firestore, userProfile?.campusId]);
+
+  const handleToggleTag = (product: Product) => {
+    setSelectedProducts(prev => {
+        const exists = prev.find(p => p.id === product.id);
+        if (exists) return prev.filter(p => p.id !== product.id);
+        if (prev.length >= 3) {
+            toast({ title: "Tag Limit Reached", description: "You can only link 3 products to a single vibe." });
+            return prev;
+        }
+        return [...prev, product];
+    });
+  };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -75,7 +126,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       return;
     }
     
-    // 1. HASHTAG VALIDATION (Manual)
+    // HASHTAG VALIDATION
     const rawTags = (content.match(/#\w+/g) || []);
     if (rawTags.length > 10) {
         toast({ variant: 'destructive', title: 'Policy Violation', description: 'Maximum 10 hashtags per vibration allowed.' });
@@ -101,7 +152,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
       const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
 
-      // A. Multimedia Upload
+      // Upload Media
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
@@ -118,7 +169,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaUrl = externalUrl;
       }
 
-      // B. BASE POST CREATION
+      // BASE POST CREATION
       const manualTags = extractHashtags(content);
       const postData: any = {
         authorId: auth.currentUser.uid,
@@ -131,6 +182,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         imageUrl: imageUrl,
         mediaUrl: mediaUrl,
         tags: manualTags,
+        productTags: selectedProducts.map(p => p.id), // COMMERCE ATTACHMENT
         likes: 0,
         commentCount: 0,
         type: 'regular',
@@ -141,21 +193,18 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       const docRef = await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // C. ASYNC AI UNDERSTANDING PIPELINE (Non-blocking Tag Expansion)
+      // Async AI Intelligence Pipeline
       const runAiAnalysis = async () => {
           try {
-              // 1. AI Content understanding (Multi-modal + Speech)
               const aiResult = await analyzeVibeContent({
                   mediaUrl: mediaUrl || '',
                   caption: content,
                   mediaType: (mediaType as any) === 'text' ? 'text' : (mediaType as any)
               });
 
-              // 2. Semantic Embedding (The Taste Vector)
               const finalTags = Array.from(new Set([...manualTags, ...aiResult.aiTags])).slice(0, 15);
               const embedding = await generatePostEmbedding({ content: content || "", tags: finalTags });
 
-              // 3. Update post with expanded intelligence
               await updateDoc(doc(firestore, 'campus_pulse', docRef.id), {
                   aiTags: aiResult.aiTags,
                   aiTopics: aiResult.aiTopics,
@@ -166,7 +215,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                   embedding: embedding
               });
 
-              // 4. Update Hashtag Indexes (Graph Learning)
               if (finalTags.length > 0) {
                   await updateHashtagIndex(firestore, finalTags);
                   if (finalTags.length >= 2) await updateHashtagGraph(firestore, finalTags);
@@ -176,14 +224,14 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
           }
       };
 
-      runAiAnalysis(); // Trigger background processing
+      runAiAnalysis();
       
       toast({ title: isGlobal ? 'Global Vibe Broadcasted!' : 'Vibe Shared!' });
       onClose();
 
     } catch (err: any) { 
         console.error("🚨 BROADCAST CRASH:", err); 
-        toast({ variant: 'destructive', title: 'Broadcast Failed', description: 'Check your connection and try again.' });
+        toast({ variant: 'destructive', title: 'Broadcast Failed' });
     } finally { 
         setLoading(false); 
     }
@@ -237,7 +285,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                     value={content}
                     onChange={(e) => setContent(e.target.value)} 
                 />
-                <p className="text-[9px] text-muted-foreground px-4 italic">Multi-modal AI & Speech summary active. 🤖🎬</p>
             </div>
             
             {preview && (
@@ -267,6 +314,76 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                     </div>
                 </div>
             )}
+
+            {/* 🛍️ COMMERCE OVERLAY: Tagging UI */}
+            <div className="space-y-4">
+                <button 
+                    type="button"
+                    onClick={() => setShowTagging(!showTagging)}
+                    className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border-2",
+                        selectedProducts.length > 0 ? "bg-amber-50 border-amber-200 text-amber-600" : "bg-muted/50 text-muted-foreground border-transparent hover:border-amber-400"
+                    )}
+                >
+                    <ShoppingBag size={14} /> 
+                    {selectedProducts.length > 0 ? `Tagged ${selectedProducts.length} Items` : 'Tag Products from Market'}
+                </button>
+
+                {showTagging && (
+                    <div className="p-4 bg-muted/30 rounded-[2rem] border-2 border-dashed border-border space-y-4 animate-in slide-in-from-top-2">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <input 
+                                value={productSearch}
+                                onChange={(e) => setProductSearch(e.target.value)}
+                                placeholder="Search products to link..."
+                                className="w-full bg-white dark:bg-slate-950 p-3 pl-10 rounded-xl outline-none font-bold text-xs"
+                            />
+                            {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-slate-300" size={14} />}
+                        </div>
+
+                        {searchResults.length > 0 && (
+                            <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto no-scrollbar">
+                                {searchResults.map(p => {
+                                    const isSelected = selectedProducts.find(item => item.id === p.id);
+                                    return (
+                                        <div 
+                                            key={p.id} 
+                                            onClick={() => handleToggleTag(p)}
+                                            className={cn(
+                                                "p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all",
+                                                isSelected ? "bg-amber-50 border-amber-200" : "bg-white dark:bg-card border-transparent hover:border-primary/20"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0">
+                                                    <Image src={p.imageUrl} fill className="object-cover" alt="" />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="font-bold text-[10px] truncate">{p.name}</p>
+                                                    <p className="text-[9px] text-muted-foreground">GHS {p.price.toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                            {isSelected ? <CheckCircle2 className="text-amber-500" size={16} /> : <Plus className="text-slate-300" size={16} />}
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+
+                        {selectedProducts.length > 0 && (
+                            <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                                {selectedProducts.map(p => (
+                                    <div key={p.id} className="bg-amber-500 text-white text-[8px] font-black px-2 py-1 rounded-lg flex items-center gap-1">
+                                        <span className="truncate max-w-[80px]">{p.name}</span>
+                                        <button type="button" onClick={() => handleToggleTag(p)}><X size={10} /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
 
             <div className="flex gap-2 bg-muted/30 p-1 rounded-3xl border">
                 {[
