@@ -5,10 +5,12 @@ import type { Product } from "./types";
 /**
  * 🎨 MARKETPLACE DIVERSITY ENGINE
  * 
+ * Final stage filtering to prevent marketplace feeds from becoming repetitive.
  * Enforces balance across vendors and categories.
+ * 
  * Rules:
- * - Max 2 products per vendor per window.
- * - Max 3 products per category per window.
+ * - Max 2 products per vendor in the visible window.
+ * - Max 3 products per category in the visible window.
  */
 export function enforceMarketDiversity(products: Product[], limit = 40): Product[] {
   if (!products || products.length === 0) return [];
@@ -38,7 +40,7 @@ export function enforceMarketDiversity(products: Product[], limit = 40): Product
       }
     }
 
-    // Fallback: If no product satisfies constraints, take the top one to keep feed alive
+    // FALLBACK: If no product satisfies constraints, take the top one to keep feed alive
     if (bestIdx === -1) {
       bestIdx = 0;
     }

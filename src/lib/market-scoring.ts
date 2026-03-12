@@ -49,7 +49,7 @@ export function computeMarketScore(
   }
 
   // 🛡️ 4. VENDOR REPUTATION & TRUST (Weight: 1.5x)
-  // Rewards establishes merchants with high ratings
+  // Rewards established merchants with high quality ratings and sales history
   score += (product.rating || 5) * 1.5;
   score += (product.salesCount || 0) * 0.1;
 

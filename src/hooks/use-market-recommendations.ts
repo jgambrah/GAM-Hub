@@ -48,7 +48,7 @@ export function useMarketRecommendations() {
     if (!candidates) return [];
     if (!marketProfile && !vibeProfile) return candidates;
 
-    // A. Scoring Pass
+    // A. Local Scoring Pass (Stage 2)
     const scored = [...candidates]
       .map(product => ({
         product,
@@ -57,7 +57,7 @@ export function useMarketRecommendations() {
       .sort((a, b) => b.score - a.score)
       .map(r => r.product);
 
-    // B. Diversity Pass (Max 2 per vendor, 3 per category)
+    // B. Diversity Pass (Stage 3: Max 2 per vendor, 3 per category)
     return enforceMarketDiversity(scored);
   }, [candidates, marketProfile, vibeProfile]);
 
