@@ -7,12 +7,13 @@
  * 
  * Pipeline:
  * 1. Intent (AI Parsed & Category matching)
- * 2. Reputed Trust (Vendor scoring)
- * 3. Financial Value (Deal detection)
- * 4. Momentum (Trending velocity)
- * 5. Cultural Fit (Vibe tag matching)
- * 6. Proximity (Campus intelligence)
- * 7. Recency (Freshness decay)
+ * 2. Semantic Tag Matching (Conceptual similarity)
+ * 3. Reputed Trust (Vendor scoring)
+ * 4. Financial Value (Deal detection)
+ * 5. Momentum (Trending velocity)
+ * 6. Cultural Fit (Vibe tag matching)
+ * 7. Proximity (Campus intelligence)
+ * 8. Recency (Freshness decay)
  */
 
 import type { Product, MarketProfile, User, MarketIntent } from './types';
@@ -54,6 +55,22 @@ export function computeDealBoost(avgPrice: number | undefined, currentPrice: num
 }
 
 /**
+ * computeTagSimilarity (Step 3)
+ * -----------------------------
+ * Matches intent tags with product tags for a conceptual boost.
+ */
+export function computeTagSimilarity(intentTags: string[] | undefined, productTags: string[] | undefined) {
+    if (!intentTags || !productTags) return 0;
+    let score = 0;
+    for (const tag of intentTags) {
+        if (productTags.map(t => t.toLowerCase()).includes(tag.toLowerCase())) {
+            score += 5; // Step 3: Specific boost per tag match
+        }
+    }
+    return score;
+}
+
+/**
  * computeMarketScore
  * ------------------
  * The definitive Marketplace Ranking Formula.
@@ -75,11 +92,9 @@ export function computeMarketScore(
           score += 30;
       }
       
-      // Tag/Product Match (Deep Relevance)
-      if (parsedIntent.tags && product.tags) {
-          const matches = product.tags.filter(t => parsedIntent.tags?.includes(t.toLowerCase()));
-          score += matches.length * 15;
-      }
+      // Step 3: Semantic Tag Match (Deep Relevance)
+      const tagSimilarity = computeTagSimilarity(parsedIntent.tags, product.tags);
+      score += tagSimilarity;
       
       // Price Relevance (Hard Constraint Match)
       if (parsedIntent.priceMax && product.price <= parsedIntent.priceMax) {
@@ -90,7 +105,7 @@ export function computeMarketScore(
       }
       
       // Intent/Context Match (Study, Gym, etc)
-      if (parsedIntent.intent && product.tags?.includes(parsedIntent.intent.toLowerCase())) {
+      if (parsedIntent.intent && product.tags?.map(t => t.toLowerCase()).includes(parsedIntent.intent.toLowerCase())) {
           score += 20;
       }
   } else if (searchQuery.trim()) {
@@ -102,8 +117,9 @@ export function computeMarketScore(
   }
 
   // 🛡️ 2. VENDOR TRUST SCORE (The Reputational Pillar)
+  // Reliability score from computeVendorScore, with a 2x multiplier for impact
   const vendorScore = computeVendorScore(product);
-  score += vendorScore;
+  score += vendorScore * 2;
 
   // 💰 3. DEAL DETECTION (The Financial Pillar)
   const dealBoost = computeDealBoost(product.averagePrice, product.price);

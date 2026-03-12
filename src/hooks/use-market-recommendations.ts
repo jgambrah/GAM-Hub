@@ -3,7 +3,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, orderBy, limit, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, doc, CollectionReference, Query, DocumentData } from 'firebase/firestore';
 import type { Product, MarketProfile, MarketIntent } from '@/lib/types';
 import { useVibeProfile } from './use-vibe-profile';
 import { computeMarketScore } from '@/lib/market-scoring';
@@ -18,8 +18,8 @@ import { parseMarketIntent } from '@/ai/flows/market-intent-parser';
  * 
  * Pipeline:
  * 1. AI INTENT PARSING: Natural language to structured query.
- * 2. BUCKETED RETRIEVAL: Pull candidates from current campus.
- * 3. MULTI-SIGNAL RANKING: Intent + Vibe + Trust + Deal.
+ * 2. BUCKETED RETRIEVAL: Pull candidates from current campus using parsed intent filters.
+ * 3. MULTI-SIGNAL RANKING: Intent + Vibe + Trust + Deal + Semantic Tags.
  * 4. DIVERSITY FILTER: Vendor & Category balance.
  */
 export function useMarketRecommendations(searchQuery: string = '') {
@@ -66,21 +66,28 @@ export function useMarketRecommendations(searchQuery: string = '') {
   }, [firestore, user?.id]);
   const { data: marketProfile, isLoading: isLoadingProfile } = useDoc<MarketProfile>(marketProfileRef);
 
-  // 2. STAGE 1: CANDIDATE RETRIEVAL
+  // 2. STAGE 1: INTENT-AWARE CANDIDATE RETRIEVAL (Step 2)
   const candidatesQuery = useMemoFirebase(() => {
     if (!firestore || !user?.campusId || !isTokenReady) return null;
     
-    return query(
-      collection(firestore, 'products'),
-      where('campusId', '==', user.campusId),
-      orderBy('createdAt', 'desc'),
-      limit(300)
-    );
-  }, [firestore, user?.campusId, isTokenReady]);
+    let ref: Query<DocumentData> = collection(firestore, 'products');
+
+    // Filter by Campus (Mandatory)
+    ref = query(ref, where('campusId', '==', user.campusId));
+
+    // Step 2: Use parsed intent to narrow retrieval
+    if (parsedIntent?.category) {
+        // Broad Category Filter
+        ref = query(ref, where('category', '==', parsedIntent.category));
+    }
+
+    // We order by creation to get fresh vibes, limiting to 300 candidates for local ranking
+    return query(ref, orderBy('createdAt', 'desc'), limit(300));
+  }, [firestore, user?.campusId, isTokenReady, parsedIntent?.category]);
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 3. STAGE 2 & 3: PERSONALIZED RANKING & DIVERSITY
+  // 3. STAGE 2 & 3: PERSONALIZED RANKING & DIVERSITY (Step 3)
   const rankedProducts = useMemo(() => {
     if (!candidates) return [];
     
@@ -94,6 +101,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
     // If searching, only show relevant matches
     let finalRankedPool = scored;
     if (searchQuery.trim()) {
+        // High confidence threshold for search results
         finalRankedPool = scored.filter(r => r.score > 5); 
     }
 
