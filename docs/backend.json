@@ -89,6 +89,19 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "authorId", "content", "createdAt"]
+    },
+    "VibeStats": {
+      "title": "VibeStats",
+      "type": "object",
+      "properties": {
+        "views": { "type": "number" },
+        "likes": { "type": "number" },
+        "comments": { "type": "number" },
+        "shares": { "type": "number" },
+        "completions": { "type": "number" },
+        "trendScore": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -126,6 +139,22 @@
           "entityName": "CampusPulse",
           "schema": { "$ref": "#/backend/entities/CampusPulse" },
           "description": "Unified social post feed with AI-driven discovery metadata."
+        }
+      },
+      {
+        "path": "/trending_stats/{postId}",
+        "definition": {
+          "entityName": "VibeStats",
+          "schema": { "$ref": "#/backend/entities/VibeStats" },
+          "description": "Aggregate engagement counts for velocity scoring."
+        }
+      },
+      {
+        "path": "/post_velocity/{postId}/minutes/{minuteBucket}",
+        "definition": {
+          "entityName": "VibeStats",
+          "schema": { "$ref": "#/backend/entities/VibeStats" },
+          "description": "Time-series engagement buckets for viral detection."
         }
       }
     ]

@@ -5,9 +5,8 @@ import { doc, increment, serverTimestamp, setDoc, Firestore } from 'firebase/fir
 import type { SocialPost } from './types';
 
 /**
- * 🏎️ THE LIAISON ENGAGEMENT TRACKER
- * Records viral signals to the trending_stats collection for velocity calculation.
- * Now upgraded to track author performance for reputation scoring.
+ * 🏎️ THE LIAISON TREND DETECTION ENGINE
+ * Records viral signals to both aggregate stats and time-series minute buckets.
  */
 export function recordEngagement(
   firestore: Firestore, 
@@ -18,8 +17,12 @@ export function recordEngagement(
 ) {
   if (!firestore || !postId) return;
 
-  const ref = doc(firestore, 'trending_stats', postId);
+  const statsRef = doc(firestore, 'trending_stats', postId);
   
+  // 🕒 MINUTE BUCKET LOGIC: Detects velocity within a 60-second window
+  const minuteBucket = new Date().toISOString().slice(0, 16); // e.g., "2026-03-12T15:20"
+  const velocityRef = doc(firestore, 'post_velocity', postId, 'minutes', minuteBucket);
+
   const updates: any = {
     updatedAt: serverTimestamp()
   };
@@ -31,14 +34,20 @@ export function recordEngagement(
   if (type === 'share') updates.shares = increment(1);
   if (type === 'completion') updates.completions = increment(1);
 
-  // 2. Persistent Handshake: Ensure the document exists with a creation timestamp and author anchor
-  const data: any = { ...updates };
-  if (postCreatedAt) data.createdAt = postCreatedAt;
-  if (authorId) data.authorId = authorId;
+  // 2. Persistent Handshake: Update Global Aggregate
+  const statsData: any = { ...updates };
+  if (postCreatedAt) statsData.createdAt = postCreatedAt;
+  if (authorId) statsData.authorId = authorId;
 
-  // Non-blocking write
-  setDoc(ref, data, { merge: true }).catch(err => {
-    console.warn("Trending Service: Failed to record engagement", err);
+  // Non-blocking write to aggregate
+  setDoc(statsRef, statsData, { merge: true }).catch(err => {
+    console.warn("Trending Service: Failed to record global stats", err);
+  });
+
+  // 3. Time-Series Velocity Write: Record specifically for THIS minute
+  const velocityData: any = { ...updates };
+  setDoc(velocityRef, velocityData, { merge: true }).catch(err => {
+    console.warn("Trending Service: Failed to record velocity bucket", err);
   });
 }
 
