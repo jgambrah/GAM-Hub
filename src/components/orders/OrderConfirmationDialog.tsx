@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -28,6 +29,7 @@ import dynamic from 'next/dynamic';
 import { Skeleton } from '../ui/skeleton';
 import ReactPlayer from 'react-player';
 import YouTube from 'react-youtube';
+import { recordMarketSignal } from '@/lib/market-intelligence';
 
 const PreciseLocationMap = dynamic(() => import('../logistics/PreciseLocationMap'), {
     ssr: false,
@@ -140,7 +142,12 @@ export function OrderConfirmationDialog({ product, open, onOpenChange }: OrderCo
     };
 
     try {
+        // 1. Log order to database
         await addDocumentNonBlocking(collection(firestore, 'orders'), orderData);
+        
+        // 2. 🛒 MARKET INTELLIGENCE: Record "High Intent" signal
+        recordMarketSignal(firestore, user.id, product, 'intent');
+
         toast({ title: isService ? 'Inquiry Sent!' : 'Order Request Sent!' });
         onOpenChange(false);
     } catch (err) {

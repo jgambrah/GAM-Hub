@@ -49,6 +49,19 @@ export type User = {
   businessName?: string;
 };
 
+export type MarketProfile = {
+  id: string;
+  viewedCategories: Record<string, number>;
+  purchasedCategories: Record<string, number>;
+  intentCategories: Record<string, number>;
+  favoriteVendors: Record<string, number>;
+  pricePreference: {
+    min: number;
+    max: number;
+  };
+  updatedAt: string;
+};
+
 export type CreatorReputation = {
   id: string;
   qualityScore: number;

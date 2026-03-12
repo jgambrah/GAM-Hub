@@ -34,6 +34,25 @@
       },
       "required": ["id", "email", "campusId", "role"]
     },
+    "MarketProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "MarketProfile",
+      "type": "object",
+      "description": "Tracks a user's commercial intent and shopping behavior.",
+      "properties": {
+        "viewedCategories": { "type": "object" },
+        "purchasedCategories": { "type": "object" },
+        "favoriteVendors": { "type": "object" },
+        "pricePreference": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "CreatorReputation": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "CreatorReputation",
@@ -85,39 +104,16 @@
         "mediaUrl": { "type": "string" },
         "isArenaEntry": { "type": "boolean" },
         "tags": { "type": "array", "items": { "type": "string" } },
-        "aiTags": { "type": "array", "items": { "type": "string" }, "description": "Auto-detected hashtags from AI analysis." },
-        "aiTopics": { "type": "array", "items": { "type": "string" }, "description": "Broad categories like music, sports, study." },
-        "mood": { "type": "string", "description": "The emotional tone of the post." },
-        "musicGenre": { "type": "string", "description": "Detected music genre if applicable." },
-        "detectedObjects": { "type": "array", "items": { "type": "string" }, "description": "Visual objects detected in media." },
-        "transcript": { "type": "string", "description": "AI-generated summary of speech or audio content." },
-        "embedding": { "type": "array", "items": { "type": "number" }, "description": "Semantic vector for similarity search." },
+        "aiTags": { "type": "array", "items": { "type": "string" } },
+        "aiTopics": { "type": "array", "items": { "type": "string" } },
+        "mood": { "type": "string" },
+        "musicGenre": { "type": "string" },
+        "detectedObjects": { "type": "array", "items": { "type": "string" } },
+        "transcript": { "type": "string" },
+        "embedding": { "type": "array", "items": { "type": "number" } },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "authorId", "content", "createdAt"]
-    },
-    "VibeStats": {
-      "title": "VibeStats",
-      "type": "object",
-      "properties": {
-        "views": { "type": "number" },
-        "likes": { "type": "number" },
-        "comments": { "type": "number" },
-        "shares": { "type": "number" },
-        "completions": { "type": "number" },
-        "trendScore": { "type": "number" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
-      }
-    },
-    "ViralPromotion": {
-      "title": "ViralPromotion",
-      "type": "object",
-      "properties": {
-        "postId": { "type": "string" },
-        "trendScore": { "type": "number" },
-        "detectedAt": { "type": "string", "format": "date-time" },
-        "campusId": { "type": "string" }
-      }
     }
   },
   "auth": {
@@ -142,6 +138,14 @@
         }
       },
       {
+        "path": "/user_market_profiles/{userId}",
+        "definition": {
+          "entityName": "MarketProfile",
+          "schema": { "$ref": "#/backend/entities/MarketProfile" },
+          "description": "Stores behavioral commercial intelligence for each user."
+        }
+      },
+      {
         "path": "/creator_reputation/{creatorId}",
         "definition": {
           "entityName": "CreatorReputation",
@@ -163,30 +167,6 @@
           "entityName": "Product",
           "schema": { "$ref": "#/backend/entities/Product" },
           "description": "Marketplace product listings with recommendation metadata."
-        }
-      },
-      {
-        "path": "/trending_stats/{postId}",
-        "definition": {
-          "entityName": "VibeStats",
-          "schema": { "$ref": "#/backend/entities/VibeStats" },
-          "description": "Aggregate engagement counts for velocity scoring."
-        }
-      },
-      {
-        "path": "/post_velocity/{postId}/minutes/{minuteBucket}",
-        "definition": {
-          "entityName": "VibeStats",
-          "schema": { "$ref": "#/backend/entities/VibeStats" },
-          "description": "Time-series engagement buckets for viral detection."
-        }
-      },
-      {
-        "path": "/viral_posts/{postId}",
-        "definition": {
-          "entityName": "ViralPromotion",
-          "schema": { "$ref": "#/backend/entities/ViralPromotion" },
-          "description": "Special pool for content that has cleared the high-momentum viral threshold."
         }
       }
     ]

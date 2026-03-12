@@ -1,17 +1,20 @@
+
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useDoc, useFirebase, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import type { Product } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Youtube, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ShieldCheck, Video, PlayCircle, Star, ShoppingBag, Youtube, AlertTriangle, MapPin } from 'lucide-react';
 import Image from 'next/image';
 import ReactPlayer from 'react-player';
 import YouTube from 'react-youtube';
 import { OrderConfirmationDialog } from '@/components/orders/OrderConfirmationDialog';
+import { useAuth } from '@/hooks/use-auth';
+import { recordMarketSignal } from '@/lib/market-intelligence';
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;
@@ -24,6 +27,7 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { firestore } = useFirebase();
+  const { user } = useAuth();
   const id = params.id as string;
   const [isOrderDialogOpen, setIsOrderDialogOpen] = React.useState(false);
   const [isRestricted, setIsRestricted] = useState(false);
@@ -34,6 +38,13 @@ export default function ProductDetailPage() {
   }, [firestore, id]);
 
   const { data: product, isLoading } = useDoc<Product>(productRef);
+
+  // 🛒 MARKET INTELLIGENCE: Record product view once loaded
+  useEffect(() => {
+    if (product && user && firestore) {
+        recordMarketSignal(firestore, user.id, product, 'view');
+    }
+  }, [product, user?.id, firestore]);
 
   const youtubeId = useMemo(() => product ? getYouTubeId(product.videoUrl || '') : null, [product]);
 
