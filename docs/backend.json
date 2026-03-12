@@ -86,7 +86,7 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "type": { "type": "string", "enum": ["tag", "category", "creator", "vendor", "location"] },
+        "type": { "type": "string", "enum": ["tag", "category", "creator", "vendor", "location", "product"] },
         "name": { "type": "string" },
         "connections": { 
           "type": "object",

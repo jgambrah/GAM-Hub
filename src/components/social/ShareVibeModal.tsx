@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -11,7 +12,7 @@ import {
   Video, Sparkles, Youtube, Loader2, Link as LinkIcon, Globe, Tag, ShoppingBag, Search, Plus, CheckCircle2 
 } from 'lucide-react';
 import Image from 'next/image';
-import type { SocialPost, Product } from '@/lib/types';
+import type { SocialPost, Product, KnowledgeGraphNode } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
@@ -19,12 +20,13 @@ import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/h
 import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
 import { analyzeVibeContent } from '@/ai/flows/analyze-vibe-content';
 import { searchMarketplaceProducts } from '@/lib/market-intelligence';
+import { updateGraphFromContent } from '@/lib/knowledge-graph';
 
 /**
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Upgraded with Creator-Commerce Engine (Product Tagging).
+ * Upgraded with Creator-Commerce Engine and Knowledge Graph Seeding.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -52,7 +54,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  // 🛍️ COMMERCE ENGINE: Product Lookup using improved helper
+  // 🛍️ COMMERCE ENGINE: Product Lookup
   useEffect(() => {
     if (!productSearch.trim() || !firestore || !userProfile?.campusId) {
         setSearchResults([]);
@@ -117,7 +119,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       return;
     }
     
-    // HASHTAG VALIDATION
     const rawTags = (content.match(/#\w+/g) || []);
     if (rawTags.length > 10) {
         toast({ variant: 'destructive', title: 'Policy Violation', description: 'Maximum 10 hashtags per vibration allowed.' });
@@ -143,7 +144,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
       const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
 
-      // Upload Media
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
@@ -160,7 +160,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaUrl = externalUrl;
       }
 
-      // BASE POST CREATION
       const manualTags = extractHashtags(content);
       const postData: any = {
         authorId: auth.currentUser.uid,
@@ -173,7 +172,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         imageUrl: imageUrl,
         mediaUrl: mediaUrl,
         tags: manualTags,
-        productTags: selectedProducts.map(p => p.id), // COMMERCE ATTACHMENT
+        productTags: selectedProducts.map(p => p.id),
         likes: 0,
         commentCount: 0,
         type: 'regular',
@@ -184,7 +183,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       const docRef = await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // Async AI Intelligence Pipeline
+      // 🚀 KNOWLEDGE GRAPH & AI PIPELINE
       const runAiAnalysis = async () => {
           try {
               const aiResult = await analyzeVibeContent({
@@ -205,6 +204,18 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                   transcript: aiResult.transcript,
                   embedding: embedding
               });
+
+              // 🕸️ AUTOMATIC GRAPH SEEDING
+              const graphEntities: {id: string, type: KnowledgeGraphNode['type']}[] = [
+                  { id: auth.currentUser!.uid, type: 'creator' },
+                  { id: targetCampusId, type: 'location' },
+                  ...finalTags.map(t => ({ id: t.toLowerCase(), type: 'tag' as const })),
+                  ...selectedProducts.map(p => ({ id: p.id, type: 'product' as const }))
+              ];
+              
+              if (graphEntities.length >= 2) {
+                  await updateGraphFromContent(firestore, graphEntities);
+              }
 
               if (finalTags.length > 0) {
                   await updateHashtagIndex(firestore, finalTags);
@@ -306,7 +317,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 </div>
             )}
 
-            {/* 🛍️ COMMERCE OVERLAY: Professional Tagging UI */}
             <div className="space-y-4">
                 <button 
                     type="button"

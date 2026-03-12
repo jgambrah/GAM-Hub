@@ -4,6 +4,7 @@
 /**
  * @fileOverview National Hub Knowledge Graph Service.
  * Orchestrates the semantic relationship network between campus entities.
+ * Features automated edge building and relationship reinforcement.
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
@@ -16,37 +17,66 @@ import type { KnowledgeGraphNode } from './types';
  */
 export async function recordEdge(
   firestore: Firestore,
-  sourceId: string,
-  targetId: string,
-  type: KnowledgeGraphNode['type'],
+  source: { id: string; type: KnowledgeGraphNode['type'] },
+  target: { id: string; type: KnowledgeGraphNode['type'] },
   weightIncrement = 1
 ) {
-  if (!firestore || !sourceId || !targetId || sourceId === targetId) return;
+  if (!firestore || !source.id || !target.id || source.id === target.id) return;
 
-  const nodeRef = doc(firestore, 'knowledge_graph', sourceId);
-  const targetRef = doc(firestore, 'knowledge_graph', targetId);
+  const nodeRef = doc(firestore, 'knowledge_graph', source.id);
+  const targetRef = doc(firestore, 'knowledge_graph', target.id);
 
   // We use a batch to ensure symmetry in the graph
   const batch = writeBatch(firestore);
 
-  // Update Source Node
+  // Update Source Node: Set type and name if creating, then increment connection weight
   batch.set(nodeRef, {
-    id: sourceId,
-    type: type,
+    id: source.id,
+    type: source.type,
+    name: source.id, // Fallback name to ID
     updatedAt: serverTimestamp(),
-    [`connections.${targetId}.weight`]: increment(weightIncrement),
-    [`connections.${targetId}.lastUpdated`]: serverTimestamp()
+    [`connections.${target.id}.weight`]: increment(weightIncrement),
+    [`connections.${target.id}.lastUpdated`]: serverTimestamp()
   }, { merge: true });
 
   // Update Target Node (Symmetric Relationship)
   batch.set(targetRef, {
-    id: targetId,
+    id: target.id,
+    type: target.type,
+    name: target.id,
     updatedAt: serverTimestamp(),
-    [`connections.${sourceId}.weight`]: increment(weightIncrement),
-    [`connections.${sourceId}.lastUpdated`]: serverTimestamp()
+    [`connections.${source.id}.weight`]: increment(weightIncrement),
+    [`connections.${source.id}.lastUpdated`]: serverTimestamp()
   }, { merge: true });
 
-  return batch.commit().catch(err => console.warn("Graph edge log failed", err));
+  return batch.commit().catch(err => console.warn("Liaison Graph: Edge log failed", err));
+}
+
+/**
+ * updateGraphFromContent
+ * ----------------------
+ * Automatically connects all entities within a piece of content (Post, Product, etc.).
+ * Implements nested loop mapping to build semantic clusters.
+ */
+export async function updateGraphFromContent(
+  firestore: Firestore,
+  entities: { id: string; type: KnowledgeGraphNode['type'] }[]
+) {
+  if (!firestore || entities.length < 2) return;
+
+  // Professional Limit: only connect the first 10 entities to prevent graph saturation
+  const pool = entities.slice(0, 10);
+
+  const promises = [];
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      const a = pool[i];
+      const b = pool[j];
+      promises.push(recordEdge(firestore, a, b));
+    }
+  }
+
+  return Promise.all(promises);
 }
 
 /**

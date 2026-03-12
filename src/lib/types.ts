@@ -67,7 +67,7 @@ export type UserIntelligence = {
 
 export type KnowledgeGraphNode = {
   id: string;
-  type: 'tag' | 'category' | 'creator' | 'vendor' | 'location';
+  type: 'tag' | 'category' | 'creator' | 'vendor' | 'location' | 'product';
   name: string;
   connections: Record<string, { weight: number; lastUpdated: any }>;
   updatedAt: any;
