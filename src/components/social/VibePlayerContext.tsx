@@ -72,20 +72,11 @@ export function explorationBoost(post: SocialPost) {
   return 0;
 }
 
-export function rankByEmbedding(posts: SocialPost[], userVector: number[]) {
-  if (!userVector) return posts;
-  return posts
-    .filter(p => p.embedding)
-    .map(p => ({ post: p, score: cosineSimilarity(userVector, p.embedding!) }))
-    .sort((a, b) => b.score - a.score)
-    .map(r => r.post);
-}
-
 /**
  * computeVibeScore
  * ---------------
  * The multi-signal discovery equation.
- * Upgraded with Commerce-Boost logic.
+ * Now factors in Unified Personalization Score from the intelligence brain.
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -99,7 +90,11 @@ export function computeVibeScore(
 ) {
   let score = 0;
 
-  // 1. CONTENT INTELLIGENCE MATCH
+  // 🎯 1. UNIFIED PERSONALIZATION (Highest Weight)
+  // This uses the user_intelligence model where score += userInterest[tag] * 2
+  score += getPersonalScore(candidate);
+
+  // 2. CONTENT INTELLIGENCE MATCH
   const currentTags = new Set([
     ...(current.tags || []),
     ...(current.aiTags || [])
@@ -113,19 +108,19 @@ export function computeVibeScore(
   const aiMatches = candidateTags.filter(t => currentTags.has(t));
   score += aiMatches.length * 12;
 
-  // 2. VECTOR SIMILARITY
+  // 3. VECTOR SIMILARITY
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
     if (similarity > 0.85) score += 20;
   }
 
-  // 3. MOOD SYNCHRONIZATION
+  // 4. MOOD SYNCHRONIZATION
   if (candidate.mood && activeMoodId !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === activeMoodId);
     if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
   }
 
-  // 4. GRAPH & TREND SIGNALS
+  // 5. GRAPH & TREND SIGNALS
   const relatedMatches = candidateTags.filter(t => relatedTags.has(t));
   score += relatedMatches.length * 5;
 
@@ -135,20 +130,17 @@ export function computeVibeScore(
     score += 25;
   }
 
-  // 🛍️ 5. COMMERCE-CONVERSION BOOST
-  // Reward videos that drive commercial traffic
+  // 🛍️ 6. COMMERCE-CONVERSION BOOST
   if (candidate.commerceClicks) {
       score += Math.min(candidate.commerceClicks * 5, 50);
   }
 
-  // 🎯 6. BEHAVIORAL SIGNALS (PERSONALIZATION)
-  score += getPersonalScore(candidate);
+  // 7. EXPLORATION & CREATOR REPUTATION
   score += explorationBoost(candidate);
-
-  const repData = creatorReputation[candidate.authorId] || { qualityScore: 50, violationScore: 0 };
+  const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
   score += (repData.qualityScore || 50) * 0.5;
 
-  // 7. FRESHNESS DECAY
+  // 8. FRESHNESS DECAY
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
     score += exponentialFreshness(date);
@@ -268,7 +260,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const isContinuousRef = useRef(false);
   const activeMoodRef = useRef<VibeMood>('all');
   const getPersonalScoreRef = useRef(getPersonalScore);
-  const userEmbeddingRef = useRef(profile.vibeEmbedding);
   const viralTagsRef = useRef(viralTags);
   const trendingTagsRef = useRef(trendingTags);
   const creatorReputationRef = useRef(creatorReputation);
@@ -280,7 +271,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
   useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
   useEffect(() => { getPersonalScoreRef.current = getPersonalScore; }, [getPersonalScore]);
-  useEffect(() => { userEmbeddingRef.current = profile.vibeEmbedding; }, [profile.vibeEmbedding]);
   useEffect(() => { viralTagsRef.current = viralTags; }, [viralTags]);
   useEffect(() => { trendingTagsRef.current = trendingTags; }, [trendingTags]);
   useEffect(() => { creatorReputationRef.current = creatorReputation; }, [creatorReputation]);

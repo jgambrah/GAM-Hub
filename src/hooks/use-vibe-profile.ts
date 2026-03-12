@@ -11,8 +11,8 @@ import { recordUnifiedSignal, updateVideoInterest } from '@/lib/user-intelligenc
 /**
  * useVibeProfile Hook
  * -------------------
- * Refactored to use the Unified User Intelligence Engine.
- * Manages local state for fast UI updates while syncing with the global brain.
+ * Manages the local state for the Unified User Intelligence Engine.
+ * Implements the 2x Personalization Boost for discovery ranking.
  */
 export function useVibeProfile() {
   const { firestore } = useFirebase();
@@ -64,20 +64,26 @@ export function useVibeProfile() {
   /**
    * getPersonalScore
    * ----------------
-   * Calculates a relevance score for a post based on the Unified profile.
+   * UNIFIED INTEREST SCORING:
+   * Boosts content relevance by 2x for matched interests from the unified brain.
    */
   const getPersonalScore = useCallback((post: SocialPost): number => {
     if (!isLoaded || !intelligence.interests) return 0;
     
     let score = 0;
-    const postTags = [...(post.tags || []), ...(post.aiTags || [])].map(t => t.toLowerCase());
+    const postTags = [
+      ...(post.tags || []), 
+      ...(post.aiTags || [])
+    ].map(t => t.toLowerCase());
 
-    // 1. Interest Matching (Shared social/market data)
+    // 🎯 THE BOOST: score += userInterest[tag] * 2
+    // This makes the feed feel extremely personalized based on BOTH social and market signals.
     postTags.forEach(tag => {
-      score += (intelligence.interests![tag] || 0) * 0.8;
+      const interestWeight = intelligence.interests![tag] || 0;
+      score += interestWeight * 2.0; 
     });
 
-    // 2. Creator Affinity
+    // Creator Affinity: High boost for creators the user engages with
     if (post.authorId && intelligence.affinities?.creators?.[post.authorId]) {
       score += (intelligence.affinities.creators[post.authorId]) * 1.5;
     }
