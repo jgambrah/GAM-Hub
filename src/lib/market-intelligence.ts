@@ -3,22 +3,60 @@
 
 /**
  * @fileOverview Marketplace Commercial Intelligence Service.
- * Tracks student and staff behavior to build a high-fidelity intent profile.
- * Upgraded with Commerce Click Tracking and Affiliate Infrastructure.
+ * Now synchronized with the Unified User Intelligence Engine.
  */
 
 import { doc, increment, setDoc, Firestore, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs, addDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import type { Product, Order, ProductTrend, NotificationSettings, MarketRequest, DemandSignal } from './types';
-import { computeTrendScore } from './compute-trend-score';
-import { applyTrendDecay } from './apply-trend-decay';
+import type { Product, Order, MarketplaceSignal, NotificationSettings, MarketRequest, DemandSignal } from './types';
+import { recordUnifiedSignal } from './user-intelligence';
 
-export type CommercialSignal = 'view' | 'favorite' | 'intent' | 'purchase' | 'share';
+/**
+ * recordMarketSignal
+ * ------------------
+ * Enhanced to relay signals to the Unified Brain.
+ */
+export async function recordMarketSignal(
+  firestore: Firestore,
+  userId: string,
+  product: Product,
+  signal: 'view' | 'favorite' | 'intent' | 'purchase' | 'share'
+) {
+  if (!firestore || !userId || !product) return;
+
+  // 1. Log to legacy product stats
+  const statsRef = doc(firestore, 'products', product.id);
+  const productAggregates: any = { updatedAt: serverTimestamp() };
+
+  // 2. Relay to Unified Intelligence Brain 🧠
+  const unifiedSignalType: MarketplaceSignal = signal === 'share' ? 'click' : signal;
+  recordUnifiedSignal(firestore, userId, unifiedSignalType, {
+    category: product.category,
+    tags: product.tags,
+    vendorId: product.vendorId,
+    price: product.price
+  });
+
+  // Handle specific product aggregation
+  switch (signal) {
+    case 'view':
+      productAggregates.viewCount = increment(1);
+      break;
+    case 'favorite':
+      productAggregates.favoriteCount = increment(1);
+      break;
+    case 'share':
+      productAggregates.shareCount = increment(1);
+      break;
+    case 'purchase':
+      productAggregates.salesCount = increment(1);
+      break;
+  }
+
+  return setDoc(statsRef, productAggregates, { merge: true }).catch(() => {});
+}
 
 /**
  * trackVideoProductClick
- * -----------------------
- * Logs a commercial conversion from a video vibe to a product listing.
- * Automatically boosts the video's search score in the Pulse.
  */
 export async function trackVideoProductClick(
   firestore: Firestore,
@@ -28,99 +66,31 @@ export async function trackVideoProductClick(
 ) {
   if (!firestore || !videoId || !productId) return;
 
-  const clickRef = collection(firestore, "video_product_clicks");
-  const postRef = doc(firestore, "campus_pulse", videoId);
-
-  // 1. Audit Trail
-  await addDoc(clickRef, {
+  // Audit conversion
+  await addDoc(collection(firestore, "video_product_clicks"), {
     videoId,
     productId,
     userId,
     timestamp: new Date().toISOString()
   });
 
-  // 2. 🚀 RANKING BOOST: Increment commerce clicks for the video
-  return setDoc(postRef, {
+  // Boost video score
+  return setDoc(doc(firestore, "campus_pulse", videoId), {
     commerceClicks: increment(1)
   }, { merge: true });
 }
 
-/**
- * searchMarketplaceProducts
- * -------------------------
- * Searches for products on a specific campus.
- */
 export async function searchMarketplaceProducts(firestore: Firestore, campusId: string, searchTerm: string) {
   if (!firestore || !searchTerm) return [];
-  
-  // We fetch a batch and filter client-side for 'includes' functionality
-  const q = query(
-    collection(firestore, "products"),
-    where("campusId", "==", campusId),
-    limit(50)
-  );
-
+  const q = query(collection(firestore, "products"), where("campusId", "==", campusId), limit(50));
   const snapshot = await getDocs(q);
   const term = searchTerm.toLowerCase().trim();
-  
   return snapshot.docs
     .map(doc => ({ id: doc.id, ...doc.data() } as Product))
-    .filter(p => 
-        p.name.toLowerCase().includes(term) || 
-        p.category.toLowerCase().includes(term) ||
-        p.tags?.some(t => t.toLowerCase().includes(term))
-    )
+    .filter(p => p.name.toLowerCase().includes(term) || p.category.toLowerCase().includes(term))
     .slice(0, 10);
 }
 
-/**
- * getHighDemandItems
- * -------------------
- * Retrieves the top demand signals for a specific campus.
- */
-export async function getHighDemandItems(firestore: Firestore, campusId: string) {
-  if (!firestore || !campusId) return [];
-  
-  const q = query(
-    collection(firestore, "demand_signals"),
-    where("campusId", "==", campusId),
-    orderBy("demandCount", "desc"),
-    limit(20)
-  );
-
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DemandSignal));
-}
-
-/**
- * updateDemandSignal
- * -------------------
- * Aggregates student demand into high-level signals for vendors.
- */
-export async function updateDemandSignal(
-  firestore: Firestore,
-  item: string,
-  campusId: string,
-  category: string
-) {
-  const normalizedItem = item.toLowerCase().trim();
-  const signalId = `${normalizedItem}_${campusId}`;
-  const ref = doc(firestore, "demand_signals", signalId);
-
-  return setDoc(ref, {
-    item: normalizedItem,
-    campusId,
-    category: category.toLowerCase(),
-    demandCount: increment(1),
-    lastUpdated: serverTimestamp()
-  }, { merge: true });
-}
-
-/**
- * createMarketRequest
- * -------------------
- * Logic to persist a student's marketplace request (Demand Signal).
- */
 export async function createMarketRequest(
   firestore: Firestore,
   userId: string,
@@ -130,223 +100,22 @@ export async function createMarketRequest(
   aiMetadata: { category: string; tags: string[]; condition: string; location?: string }
 ) {
   const ref = collection(firestore, "market_requests");
-  const requestData: Omit<MarketRequest, 'id'> = {
-    userId,
-    userName,
-    query: queryText,
+  const requestData = {
+    userId, userName, query: queryText,
     category: aiMetadata.category || 'general',
     tags: aiMetadata.tags || [],
     condition: aiMetadata.condition || 'any',
-    campusId,
-    location: aiMetadata.location || 'Yard General',
+    campusId, location: aiMetadata.location || 'Yard General',
     createdAt: serverTimestamp(),
     status: 'open',
-    matchCount: 0
   };
-
-  const docRef = await addDoc(ref, requestData);
-  
-  // 🧠 1. AGGREGATE DEMAND: Increment count for the specific item on this campus
-  const primaryItem = aiMetadata.tags?.[0] || aiMetadata.category || 'item';
-  updateDemandSignal(firestore, primaryItem, campusId, requestData.category).catch(e => console.error("Aggregation failed:", e));
-
-  return docRef;
+  return addDoc(ref, requestData);
 }
 
-/**
- * trackProductEvent
- */
-export async function trackProductEvent(
-  firestore: Firestore,
-  productId: string,
-  eventType: 'view' | 'cart' | 'purchase' | 'share',
-  campusId: string
-) {
-  const ref = doc(firestore, "product_trends", productId);
-
-  const updates: any = {
-    productId,
-    campusId,
-    lastUpdated: serverTimestamp()
-  };
-
-  if (eventType === "view") updates.viewCount = increment(1);
-  if (eventType === "cart") updates.cartCount = increment(1);
-  if (eventType === "purchase") updates.purchaseCount = increment(1);
-  if (eventType === "share") updates.shareCount = increment(1);
-
-  return setDoc(ref, updates, { merge: true });
-}
-
-/**
- * getTrendingProducts
- */
-export async function getTrendingProducts(
-  firestore: Firestore,
-  campusId: string
-) {
-  const q = query(
-    collection(firestore, "product_trends"),
-    where("campusId", "==", campusId),
-    limit(100)
-  );
-
-  const snapshot = await getDocs(q);
-  const trends = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ProductTrend));
-
-  const scored = trends.map(trend => {
-    let score = computeTrendScore(trend);
-    const lastUpdated = trend.lastUpdated?.toDate 
-      ? trend.lastUpdated.toDate() 
-      : new Date(trend.lastUpdated);
-    score = applyTrendDecay(score, lastUpdated);
-    return { productId: trend.productId, score };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 20);
-}
-
-/**
- * recordMarketSignal
- */
-export async function recordMarketSignal(
-  firestore: Firestore,
-  userId: string,
-  product: Product,
-  signal: CommercialSignal
-) {
-  if (!firestore || !userId || !product) return;
-
-  const profileRef = doc(firestore, 'user_market_profiles', userId);
-  const statsRef = doc(firestore, 'products', product.id);
-  
-  const trendingEventType = signal === 'intent' ? 'cart' : (signal as any);
-  if (['view', 'cart', 'purchase', 'share'].includes(trendingEventType)) {
-    trackProductEvent(firestore, product.id, trendingEventType, product.campusId);
-  }
-
-  const profileUpdates: any = { updatedAt: serverTimestamp() };
-  const productAggregates: any = {};
-
-  switch (signal) {
-    case 'view':
-      profileUpdates[`viewedCategories.${product.category}`] = increment(1);
-      productAggregates.viewCount = increment(1);
-      addDoc(collection(firestore, 'user_product_views'), {
-        userId,
-        productId: product.id,
-        viewedAt: new Date().toISOString()
-      }).catch(() => {});
-      break;
-    case 'favorite':
-      profileUpdates.favoriteProducts = arrayUnion(product.id);
-      productAggregates.favoriteCount = increment(1);
-      break;
-    case 'share':
-      productAggregates.shareCount = increment(1);
-      break;
-    case 'intent':
-      profileUpdates[`intentCategories.${product.category}`] = increment(1);
-      profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
-      break;
-    case 'purchase':
-      profileUpdates[`purchasedCategories.${product.category}`] = increment(1);
-      profileUpdates[`favoriteVendors.${product.vendorId}`] = increment(1);
-      productAggregates.salesCount = increment(1);
-      updateCoPurchaseCorrelation(firestore, userId, product.id);
-      break;
-  }
-
-  setDoc(profileRef, profileUpdates, { merge: true }).catch(() => {});
-  if (Object.keys(productAggregates).length > 0) {
-    setDoc(statsRef, productAggregates, { merge: true }).catch(() => {});
-  }
-}
-
-/**
- * updateNotificationSettings
- */
-export async function updateNotificationSettings(
-    firestore: Firestore,
-    userId: string,
-    settings: Partial<NotificationSettings>
-) {
-    const ref = doc(firestore, 'user_notifications', userId);
-    return setDoc(ref, { userId, ...settings, updatedAt: serverTimestamp() }, { merge: true });
-}
-
-/**
- * toggleFollowVendor
- */
-export async function toggleFollowVendor(firestore: Firestore, userId: string, vendorId: string, isFollowing: boolean) {
-    const userRef = doc(firestore, 'users', userId);
-    try {
-        if (isFollowing) {
-            await setDoc(userRef, { followedVendors: arrayRemove(vendorId) }, { merge: true });
-        } else {
-            await setDoc(userRef, { followedVendors: arrayUnion(vendorId) }, { merge: true });
-        }
-    } catch (e) {
-        console.error("Follow toggle failed:", e);
-    }
-}
-
-/**
- * saveFcmToken
- */
-export async function saveFcmToken(firestore: Firestore, userId: string, token: string) {
-    const userRef = doc(firestore, 'users', userId);
-    return setDoc(userRef, { fcmToken: token, updatedAt: serverTimestamp() }, { merge: true });
-}
-
-/**
- * toggleFavoriteProduct
- */
 export async function toggleFavoriteProduct(firestore: Firestore, userId: string, product: Product, isFavorited: boolean) {
-    const profileRef = doc(firestore, 'user_market_profiles', userId);
-    const productRef = doc(firestore, 'products', product.id);
-    try {
-        if (isFavorited) {
-            await setDoc(profileRef, { favoriteProducts: arrayRemove(product.id) }, { merge: true });
-            await setDoc(productRef, { favoriteCount: increment(-1) }, { merge: true });
-        } else {
-            await recordMarketSignal(firestore, userId, product, 'favorite');
-        }
-    } catch (e) { console.error("Favorite toggle failed:", e); }
-}
-
-/**
- * updateCoPurchaseCorrelation
- */
-async function updateCoPurchaseCorrelation(firestore: Firestore, userId: string, newProductId: string) {
-    try {
-        const q = query(collection(firestore, 'orders'), where('buyerId', '==', userId), where('status', 'in', ['picked-up', 'completed', 'archived']), orderBy('createdAt', 'desc'), limit(6));
-        const snap = await getDocs(q);
-        const purchasedIds = Array.from(new Set(snap.docs.map(d => (d.data() as Order).productId).filter(id => id !== newProductId))).slice(0, 5);
-        if (purchasedIds.length === 0) return;
-        for (const historicalId of purchasedIds) {
-            const pair = [newProductId, historicalId].sort();
-            const correlationId = `${pair[0]}_${pair[1]}`;
-            const ref = doc(firestore, 'product_co_purchases', correlationId);
-            setDoc(ref, { productA: pair[0], productB: pair[1], count: increment(1), lastUpdated: serverTimestamp() }, { merge: true }).catch(() => {});
-        }
-    } catch (err) { console.warn("Co-Purchase Sync Failed:", err); }
-}
-
-/**
- * getRelatedProducts
- */
-export async function getRelatedProducts(firestore: Firestore, productId: string) {
-    if (!firestore || !productId) return [];
-    try {
-        const qA = query(collection(firestore, 'product_co_purchases'), where('productA', '==', productId), orderBy('count', 'desc'), limit(10));
-        const qB = query(collection(firestore, 'product_co_purchases'), where('productB', '==', productId), orderBy('count', 'desc'), limit(10));
-        const [snapA, snapB] = await Promise.all([getDocs(qA), getDocs(qB)]);
-        results = [...snapA.docs, ...snapB.docs].map(d => {
-            const data = d.data();
-            return { id: data.productA === productId ? data.productB : data.productA, count: data.count };
-        }).sort((a, b) => b.count - a.count).slice(0, 10);
-        return results;
-    } catch (err) { console.error("Related Retrieval Error:", err); return []; }
+    if (isFavorited) {
+        await setDoc(doc(firestore, 'user_intelligence', userId), { favoriteProducts: arrayRemove(product.id) }, { merge: true });
+    } else {
+        await recordMarketSignal(firestore, userId, product, 'favorite');
+    }
 }

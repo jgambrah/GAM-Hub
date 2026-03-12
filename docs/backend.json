@@ -36,6 +36,32 @@
       },
       "required": ["id", "email", "campusId", "role"]
     },
+    "UserIntelligence": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserIntelligence",
+      "type": "object",
+      "description": "Unified behavioral profile combining social and commercial signals.",
+      "properties": {
+        "interests": { "type": "object", "description": "Map of tags/categories to weight scores." },
+        "affinities": {
+          "type": "object",
+          "properties": {
+            "creators": { "type": "object" },
+            "vendors": { "type": "object" }
+          }
+        },
+        "pricePreference": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" }
+          }
+        },
+        "engagementLevel": { "type": "number", "description": "0-1 score of platform activity." },
+        "vibeEmbedding": { "type": "array", "items": { "type": "number" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "SocialPost": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "SocialPost",
@@ -53,58 +79,22 @@
       },
       "required": ["authorId", "content", "campusId"]
     },
-    "NotificationSettings": {
+    "Notification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "NotificationSettings",
+      "title": "Notification",
       "type": "object",
-      "description": "User preferences for various notification types and quiet hours.",
+      "description": "Push notification record with engagement tracking.",
       "properties": {
+        "id": { "type": "string" },
         "userId": { "type": "string" },
-        "priceDrops": { "type": "boolean" },
-        "trendingProducts": { "type": "boolean" },
-        "vendorUpdates": { "type": "boolean" },
-        "recommendations": { "type": "boolean" },
-        "lastSentAt": { "type": "string", "format": "date-time" },
-        "dailyCount": { "type": "number" },
-        "quietHours": {
-          "type": "object",
-          "properties": {
-            "start": { "type": "number", "description": "Hour in 24h format (e.g. 22)" },
-            "end": { "type": "number", "description": "Hour in 24h format (e.g. 7)" }
-          }
-        }
-      }
-    },
-    "ProductView": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "ProductView",
-      "type": "object",
-      "description": "A single instance of a user viewing a product.",
-      "properties": {
-        "userId": { "type": "string" },
-        "productId": { "type": "string" },
-        "viewedAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "MarketProfile": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "MarketProfile",
-      "type": "object",
-      "description": "Tracks a user's commercial intent and shopping behavior.",
-      "properties": {
-        "viewedCategories": { "type": "object" },
-        "purchasedCategories": { "type": "object" },
-        "intentCategories": { "type": "object" },
-        "favoriteVendors": { "type": "object" },
-        "favoriteProducts": { "type": "array", "items": { "type": "string" } },
-        "pricePreference": {
-          "type": "object",
-          "properties": {
-            "min": { "type": "number" },
-            "max": { "type": "number" }
-          }
-        },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "type": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date-time" },
+        "opened": { "type": "boolean" },
+        "clicked": { "type": "boolean" },
+        "purchased": { "type": "boolean" },
+        "relatedProductId": { "type": "string" }
       }
     },
     "Product": {
@@ -123,11 +113,7 @@
         "tags": { "type": "array", "items": { "type": "string" } },
         "salesCount": { "type": "number" },
         "viewCount": { "type": "number" },
-        "favoriteCount": { "type": "number" },
-        "shareCount": { "type": "number" },
-        "rating": { "type": "number" },
         "trendScore": { "type": "number" },
-        "recentSales": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "campusId", "vendorId", "name", "price"]
@@ -144,22 +130,9 @@
         "productId": { "type": "string" },
         "amount": { "type": "number" },
         "status": { "type": "string" },
-        "affiliateCreatorId": { "type": "string", "description": "ID of the creator who drove this sale via tagged video." },
-        "commissionRate": { "type": "number", "description": "Percentage earned by the affiliate." }
+        "affiliateCreatorId": { "type": "string", "description": "ID of the creator who drove this sale." },
+        "commissionRate": { "type": "number" }
       }
-    },
-    "VideoProductClick": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "VideoProductClick",
-      "type": "object",
-      "description": "Tracks conversion from video engagement to marketplace discovery.",
-      "properties": {
-        "videoId": { "type": "string" },
-        "productId": { "type": "string" },
-        "userId": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
-      },
-      "required": ["videoId", "productId", "userId"]
     }
   },
   "auth": {
@@ -176,6 +149,14 @@
         }
       },
       {
+        "path": "/user_intelligence/{userId}",
+        "definition": {
+          "entityName": "UserIntelligence",
+          "schema": { "$ref": "#/backend/entities/UserIntelligence" },
+          "description": "Unified behavioral brain for every citizen."
+        }
+      },
+      {
         "path": "/campus_pulse/{postId}",
         "definition": {
           "entityName": "SocialPost",
@@ -189,14 +170,6 @@
           "entityName": "Order",
           "schema": { "$ref": "#/backend/entities/Order" },
           "description": "Marketplace transaction records."
-        }
-      },
-      {
-        "path": "/video_product_clicks/{clickId}",
-        "definition": {
-          "entityName": "VideoProductClick",
-          "schema": { "$ref": "#/backend/entities/VideoProductClick" },
-          "description": "Audit trail of commerce conversions from social content."
         }
       }
     ]

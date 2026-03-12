@@ -49,6 +49,22 @@ export type User = {
   businessName?: string;
 };
 
+export type UserIntelligence = {
+  id: string;
+  interests: Record<string, number>;
+  affinities: {
+    creators: Record<string, number>;
+    vendors: Record<string, number>;
+  };
+  pricePreference: {
+    min: number;
+    max: number;
+  };
+  engagementLevel: number;
+  vibeEmbedding?: number[];
+  updatedAt: string;
+};
+
 export type NotificationSettings = {
   userId: string;
   priceDrops: boolean;
@@ -63,67 +79,12 @@ export type NotificationSettings = {
   };
 };
 
-export type ProductView = {
-  id: string;
-  userId: string;
-  productId: string;
-  viewedAt: string;
-};
-
-export type MarketProfile = {
-  id: string;
-  viewedCategories: Record<string, number>;
-  purchasedCategories: Record<string, number>;
-  intentCategories: Record<string, number>;
-  favoriteVendors: Record<string, number>;
-  favoriteProducts?: string[]; 
-  pricePreference: {
-    min: number;
-    max: number;
-  };
-  updatedAt: string;
-};
-
 export type MarketIntent = {
   category?: string;
   tags?: string[];
   priceMin?: number;
   priceMax?: number;
   intent?: string;
-};
-
-export type ProductTrend = {
-  productId: string;
-  campusId: string;
-  viewCount: number;
-  cartCount: number;
-  purchaseCount: number;
-  shareCount: number;
-  lastUpdated: any;
-};
-
-export type MarketRequest = {
-  id: string;
-  userId: string;
-  userName: string;
-  query: string;
-  category: string;
-  tags: string[];
-  condition: string;
-  campusId: string;
-  location?: string;
-  createdAt: any;
-  status: 'open' | 'fulfilled' | 'expired';
-  matchCount?: number;
-};
-
-export type DemandSignal = {
-  id: string;
-  item: string;
-  campusId: string;
-  demandCount: number;
-  lastUpdated: any;
-  category?: string;
 };
 
 export type Product = {
@@ -190,7 +151,7 @@ export type SocialPost = {
   trendScore?: number; 
   authorQualityScore?: number; 
   productTags?: string[];
-  commerceClicks?: number; // Conversion metric
+  commerceClicks?: number; 
 };
 
 export type Order = {
@@ -216,16 +177,8 @@ export type Order = {
     longitude?: number;
   };
   createdAt: string;
-  affiliateCreatorId?: string; // Originating video creator
-  commissionRate?: number; // Affiliate percentage
-};
-
-export type VideoProductClick = {
-  id: string;
-  videoId: string;
-  productId: string;
-  userId: string;
-  timestamp: string;
+  affiliateCreatorId?: string; 
+  commissionRate?: number; 
 };
 
 export type Campus = {
@@ -262,13 +215,6 @@ export type Connection = {
     isInterCampus?: boolean;
 }
 
-export type LeadPrice = {
-  id: string;
-  category: string;
-  price: number;
-  updatedAt: string;
-}
-
 export type PayoutRequest = {
   id: string;
   vendorId: string;
@@ -279,3 +225,6 @@ export type PayoutRequest = {
   status: 'pending' | 'paid' | 'rejected';
   createdAt: any;
 }
+
+export type MarketplaceSignal = 'view' | 'click' | 'purchase' | 'favorite' | 'intent';
+export type VibeSignal = 'watch' | 'like' | 'share' | 'comment' | 'skip' | 'reaction';
