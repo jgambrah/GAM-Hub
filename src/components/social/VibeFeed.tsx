@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useMemo, useEffect, useRef } from 'react';
@@ -9,8 +8,9 @@ import VibeMoodBar from './VibeMoodBar';
 import VibeHistoryPanel from './VibeHistoryPanel';
 import { useVibePlayer } from './VibePlayerContext';
 import { useVibeAds, AD_INTERVAL } from '@/hooks/use-vibe-ads';
+import { useSound } from '@/context/SoundContext';
 import { cn } from '@/lib/utils';
-import { Sparkles, Loader2, Zap, ShoppingBag } from 'lucide-react';
+import { Sparkles, Loader2, Zap, ShoppingBag, VolumeX, Volume2 } from 'lucide-react';
 import ProductCard from '../products/product-card';
 
 interface VibeFeedProps {
@@ -42,6 +42,7 @@ export default function VibeFeed({
     activeMood,
   } = useVibePlayer();
 
+  const { isMuted, toggleMute } = useSound();
   const { getAdForSlot, recordImpression, recordClick } = useVibeAds(activeMood);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -122,6 +123,15 @@ export default function VibeFeed({
           <VibeMoodBar />
         </div>
         <div className="flex items-center gap-2">
+          {/* Global Sound Toggle */}
+          <button 
+            onClick={toggleMute}
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 border-border bg-white dark:bg-slate-900 shadow-sm transition-all active:scale-95"
+          >
+            {isMuted ? <VolumeX size={14} className="text-red-500" /> : <Volume2 size={14} className="text-blue-500" />}
+            <span>{isMuted ? 'Muted' : 'Sound On'}</span>
+          </button>
+
           {isProfileLoaded && (
             <div className="flex items-center gap-1.5 text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/40 px-3 py-2 rounded-xl border border-indigo-100 dark:border-indigo-900">
               <Sparkles size={10} className="fill-indigo-600" /> Vibe Profile: ACTIVE

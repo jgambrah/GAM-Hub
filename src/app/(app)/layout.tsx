@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import CampusAIGuide from '@/components/ai/CampusAIGuide';
 import ImpersonatorTool from '@/components/admin/ImpersonatorTool';
 import { ViewProvider, useView } from '@/context/ViewContext';
+import { SoundProvider } from '@/context/SoundContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import BottomNav from '@/components/navigation/BottomNav';
 import { doc } from 'firebase/firestore';
@@ -155,17 +156,19 @@ function AuthGatedLayout({ children }: { children: React.ReactNode }) {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <FirebaseClientProvider>
-        <ViewProvider>
-            <SidebarProvider>
-                <VibePlayerProvider>
-                    <CampusViewProvider>
-                        <DynamicThemeProvider>
-                            <AuthGatedLayout>{children}</AuthGatedLayout>
-                        </DynamicThemeProvider>
-                    </CampusViewProvider>
-                </VibePlayerProvider>
-            </SidebarProvider>
-        </ViewProvider>
+        <SoundProvider>
+            <ViewProvider>
+                <SidebarProvider>
+                    <VibePlayerProvider>
+                        <CampusViewProvider>
+                            <DynamicThemeProvider>
+                                <AuthGatedLayout>{children}</AuthGatedLayout>
+                            </DynamicThemeProvider>
+                        </CampusViewProvider>
+                    </VibePlayerProvider>
+                </SidebarProvider>
+            </ViewProvider>
+        </SoundProvider>
     </FirebaseClientProvider>
   );
 }

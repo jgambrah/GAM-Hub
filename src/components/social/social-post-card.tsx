@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  ImageIcon, FileText, ArrowRight, Zap,
+  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX,
 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
@@ -26,6 +26,7 @@ import {
   getMediaLabel,
   DISPLAY_DURATIONS,
 } from './VibePlayerContext';
+import { useSound } from '@/context/SoundContext';
 import { VibeReactionBar } from './VibeReactions';
 import { recordEngagement } from '@/lib/trending-service';
 import { renderWithHashtags } from '@/lib/hashtag-utils';
@@ -49,6 +50,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const { user, isAdmin } = useAuth();
   const { firestore } = useFirebase();
   const { toast } = useToast();
+  const { isMuted, toggleMute } = useSound();
   const {
     activePostId, isContinuous, playNext,
     setActivePost, addToQueue,
@@ -311,6 +313,18 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {/* Global Mute Toggle Overlay (Active Vibe Only) */}
+      {isActiveVibe && mediaCategory === 'video' && (
+        <div className="absolute bottom-24 right-6 z-30 animate-in fade-in zoom-in duration-500">
+          <button 
+            onClick={(e) => { e.stopPropagation(); toggleMute(); }}
+            className="p-4 bg-white/10 backdrop-blur-xl border border-white/20 text-white rounded-2xl shadow-2xl hover:scale-110 active:scale-90 transition-all group"
+          >
+            {isMuted ? <VolumeX size={24} className="group-hover:text-red-400" /> : <Volume2 size={24} className="group-hover:text-blue-400" />}
+          </button>
+        </div>
+      )}
+
       {post.mediaType !== 'text' && (
         <div className={cn(
           'relative bg-slate-950 overflow-hidden flex-shrink-0 transition-all duration-700 ease-in-out',
@@ -338,7 +352,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               ) : (
                 <YouTube
                   videoId={youtubeId}
-                  opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: isActiveVibe ? 1 : 0, mute: isActiveVibe ? 1 : 0, playsinline: 1 } }}
+                  opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: isActiveVibe ? 1 : 0, mute: isMuted ? 1 : 0, playsinline: 1 } }}
                   className="w-full h-full"
                   onReady={onYoutubeReady}
                   onPlay={onYoutubePlay}
@@ -374,7 +388,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 </div>
               ) : (
                 <ReactPlayer
-                  url={videoSource} controls width="100%" height="100%" playing={isActiveVibe} playsinline onStart={() => setActivePost(post)} onEnded={handleEnd}
+                  url={videoSource} controls width="100%" height="100%" playing={isActiveVibe} playsinline muted={isMuted} onStart={() => setActivePost(post)} onEnded={handleEnd}
                   config={{ file: { attributes: { playsInline: true, preload: 'auto' }, forceHLS: !!post.hlsUrl, hlsConfig: { maxBufferLength: 30, startFragPrefetch: true } } }}
                 />
               )}

@@ -5,6 +5,7 @@ import Image from 'next/image';
 import type { AdCampaign } from './vibeAdsSchema';
 import { cn } from '@/lib/utils';
 import { ExternalLink, Volume2, VolumeX, Megaphone } from 'lucide-react';
+import { useSound } from '@/context/SoundContext';
 
 interface VibeAdCardProps {
   ad: AdCampaign;
@@ -16,8 +17,8 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
   const cardRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hasTrackedImpression = useRef(false);
+  const { isMuted, toggleMute } = useSound();
 
-  const [isMuted, setIsMuted] = useState(true);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   useEffect(() => {
@@ -42,13 +43,12 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
     return () => observer.disconnect();
   }, [ad.id, ad.mediaType, onImpression]);
 
-  const toggleMute = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Sync the video element's muted state with the global SoundContext
+  useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(m => !m);
+      videoRef.current.muted = isMuted;
     }
-  };
+  }, [isMuted]);
 
   return (
     <div
@@ -65,7 +65,7 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
         </div>
       </div>
 
-      <div className="relative aspect-video bg-slate-900 overflow-hidden group/media">
+      <div className="relative aspect-video bg-slate-950 overflow-hidden group/media">
         {ad.mediaType === 'image' && ad.mediaUrl && (
           <Image
             src={ad.mediaUrl} alt={ad.headline} fill
@@ -85,7 +85,7 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
               className="w-full h-full object-cover"
             />
             <button
-              onClick={toggleMute}
+              onClick={(e) => { e.stopPropagation(); toggleMute(); }}
               className="absolute bottom-3 right-3 z-10 p-2 bg-black/60 backdrop-blur-sm text-white rounded-xl hover:bg-black/80 transition-all active:scale-95"
               title={isMuted ? 'Unmute' : 'Mute'}
             >
