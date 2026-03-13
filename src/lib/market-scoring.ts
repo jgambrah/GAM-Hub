@@ -1,9 +1,10 @@
+
 'use client';
 
 /**
  * @fileOverview Marketplace Ranking Engine.
  * Upgraded to use the Unified Intelligence Brain + Knowledge Graph expansion + Global Trend Boosting.
- * Includes Neural Vector Similarity matching.
+ * Includes Neural Vector Similarity and Content-to-Commerce matching.
  */
 
 import type { Product, UserIntelligence, User, MarketIntent } from './types';
@@ -18,7 +19,7 @@ export function computeVendorScore(product: Product) {
 /**
  * computeMarketScore
  * ------------------
- * Commercial Discovery with Knowledge Graph Support and Viral Boosting.
+ * Commercial Discovery with Knowledge Graph Support and Neural Alignment.
  */
 export function computeMarketScore(
   product: Product,
@@ -28,7 +29,8 @@ export function computeMarketScore(
   searchQuery: string = '',
   parsedIntent?: MarketIntent | null,
   expandedInterests: Record<string, number> = {},
-  queryVector: number[] | null = null
+  queryVector: number[] | null = null,
+  activeVideoEmbedding: number[] | null = null
 ) {
   let score = 0;
 
@@ -39,7 +41,16 @@ export function computeMarketScore(
   const categoryTrend = globalTrendScores[product.category.toLowerCase()] || 0;
   score += categoryTrend * 2;
 
-  // 2. AI Intent & Keyword Matching
+  // 2. 🛍️ CONTENT-TO-COMMERCE BRIDGE (Semantic Bridge)
+  // Match product to the video currently being watched
+  if (activeVideoEmbedding && product.embedding) {
+      const bridgeSimilarity = cosineSimilarity(activeVideoEmbedding, product.embedding);
+      if (bridgeSimilarity > 0.75) {
+          score += bridgeSimilarity * 50; // Strongest bridge signal
+      }
+  }
+
+  // 3. AI Intent & Keyword Matching
   if (parsedIntent) {
       if (parsedIntent.category && product.category.toLowerCase() === parsedIntent.category.toLowerCase()) score += 35;
       if (parsedIntent.intent && product.tags?.includes(parsedIntent.intent)) score += 20;
@@ -49,7 +60,7 @@ export function computeMarketScore(
     if (product.category.toLowerCase().includes(term)) score += 15;
   }
 
-  // 3. 🧠 NEURAL SEARCH: Match search query vector to product embedding
+  // 4. 🧠 NEURAL SEARCH: Match search query vector to product embedding
   if (queryVector && product.embedding) {
       const similarity = cosineSimilarity(queryVector, product.embedding);
       if (similarity > 0.7) {
@@ -57,7 +68,7 @@ export function computeMarketScore(
       }
   }
 
-  // 4. 🧠 UNIFIED BRAIN + 🕸️ GRAPH SIGNALS
+  // 5. 🧠 UNIFIED BRAIN + 🕸️ GRAPH SIGNALS
   if (unifiedIntelligence?.interests) {
     const productCategory = product.category.toLowerCase();
     
@@ -93,11 +104,11 @@ export function computeMarketScore(
     }
   }
 
-  // 5. Proximity & Momentum
+  // 6. Proximity & Momentum
   if (user && product.campusId === user.campusId) score += 5;
   if (product.trendScore) score += product.trendScore * 0.5;
 
-  // 6. Freshness Decay
+  // 7. Freshness Decay
   if (product.createdAt) {
     const date = typeof product.createdAt === 'string' ? new Date(product.createdAt) : product.createdAt.toDate();
     const ageHours = (Date.now() - date.getTime()) / 3600000;

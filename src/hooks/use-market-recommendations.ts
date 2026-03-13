@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
@@ -10,17 +11,19 @@ import { useAuth } from './use-auth';
 import { parseMarketIntent } from '@/ai/flows/market-intent-parser';
 import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
 import { expandInterests } from '@/lib/knowledge-graph';
+import { useVibePlayer } from '@/components/social/VibePlayerContext';
 
 /**
  * useMarketRecommendations Hook
  * ----------------------------
  * The primary discovery engine for the marketplace.
  * Synchronizes with the Unified User Intelligence brain + Knowledge Graph + Trend Scores.
- * Now expanded with Semantic Query Embedding.
+ * Now expanded with Semantic Query Embedding and Content-to-Commerce bridge.
  */
 export function useMarketRecommendations(searchQuery: string = '') {
   const { firestore } = useFirebase();
   const { user, isTokenReady } = useAuth();
+  const { activePost } = useVibePlayer();
   
   const [parsedIntent, setParsedIntent] = useState<MarketIntent | null>(null);
   const [queryVector, setQueryVector] = useState<number[] | null>(null);
@@ -74,7 +77,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 4. 🏎️ HYBRID PERSONALIZED RANKING (Knowledge Graph + Trends + Neural Enhanced)
+  // 4. 🏎️ HYBRID PERSONALIZED RANKING (Knowledge Graph + Trends + Content Bridge)
   const processed = useMemo(() => {
     if (!candidates) return { ranked: [], trending: [], deals: [], topRated: [] };
     
@@ -89,7 +92,8 @@ export function useMarketRecommendations(searchQuery: string = '') {
             searchQuery, 
             parsedIntent,
             expandedInterests,
-            queryVector
+            queryVector,
+            activePost?.embedding || null // CONTENT-TO-COMMERCE BRIDGE
         )
       }))
       .sort((a, b) => b.score - a.score);
@@ -120,7 +124,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
       .slice(0, 10);
 
     return { ranked, trending, deals, topRated };
-  }, [candidates, unifiedIntelligence, globalTrendScores, user, searchQuery, parsedIntent, expandedInterests, queryVector]);
+  }, [candidates, unifiedIntelligence, globalTrendScores, user, searchQuery, parsedIntent, expandedInterests, queryVector, activePost?.embedding]);
 
   // 5. 🧠 AI INTENT & VECTOR PARSING
   useEffect(() => {

@@ -1,19 +1,21 @@
 
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, documentId } from 'firebase/firestore';
-import type { Product } from '@/lib/types';
+import { collection, query, where, documentId, limit } from 'firebase/firestore';
+import type { Product, SocialPost } from '@/lib/types';
 import Image from 'next/image';
-import { ShoppingCart, ChevronRight, Sparkles, Star } from 'lucide-react';
+import { ShoppingCart, ChevronRight, Sparkles, Star, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { trackVideoProductClick } from '@/lib/market-intelligence';
+import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
 
 interface VibeShopOverlayProps {
   postId: string;
-  productIds: string[];
+  productIds?: string[];
+  post?: SocialPost;
   isActive: boolean;
 }
 
@@ -22,14 +24,17 @@ interface VibeShopOverlayProps {
  * 
  * Part of the Creator-Commerce Engine.
  * Displays a premium floating "Featured Products" shelf over vibrations.
- * Now integrated with Click Tracking for ROI analysis.
+ * Now expanded with Semantic Discovery for untagged videos.
  */
-export default function VibeShopOverlay({ postId, productIds, isActive }: VibeShopOverlayProps) {
+export default function VibeShopOverlay({ postId, productIds = [], post, isActive }: VibeShopOverlayProps) {
   const { firestore, user } = useFirebase();
   const router = useRouter();
+  
+  // 🏎️ SEMANTIC BRIDGE: Fetch top ranked products if no explicit tags exist
+  const { products: semanticCandidates, isLoading: isLoadingSemantic } = useMarketRecommendations('');
 
-  // 🏎️ COMMERCE HANDSHAKE: Fetch all tagged products in one efficient query
-  const productsQuery = useMemoFirebase(() => {
+  // 📦 RETRIEVAL: Fetch explicit tags if they exist
+  const explicitQuery = useMemoFirebase(() => {
     if (!firestore || !productIds || productIds.length === 0) return null;
     return query(
         collection(firestore, 'products'), 
@@ -37,7 +42,17 @@ export default function VibeShopOverlay({ postId, productIds, isActive }: VibeSh
     );
   }, [firestore, productIds]);
 
-  const { data: products, isLoading } = useCollection<Product>(productsQuery);
+  const { data: explicitProducts, isLoading: isLoadingExplicit } = useCollection<Product>(explicitQuery);
+
+  const displayProducts = useMemo(() => {
+      // 1. Prefer explicit creator tags
+      if (explicitProducts && explicitProducts.length > 0) return explicitProducts;
+      
+      // 2. Fallback to semantic matches (Top 3)
+      if (semanticCandidates && semanticCandidates.length > 0) return semanticCandidates.slice(0, 3);
+      
+      return [];
+  }, [explicitProducts, semanticCandidates]);
 
   const handleProductClick = async (product: Product) => {
     if (!firestore || !user) {
@@ -45,12 +60,8 @@ export default function VibeShopOverlay({ postId, productIds, isActive }: VibeSh
         return;
     }
 
-    // 📊 CONVERSION TRACKING: Record the click context
-    // This provides the data for the Video -> Commerce Ranking Boost
     try {
-        // Store video ID in session storage to track conversion if purchase happens
         sessionStorage.setItem('last_video_source', postId);
-        
         await trackVideoProductClick(firestore, postId, product.id, user.id);
     } catch (e) {
         console.warn("Liaison Analytics: Conversion log failed.");
@@ -59,7 +70,9 @@ export default function VibeShopOverlay({ postId, productIds, isActive }: VibeSh
     router.push(`/products/${product.id}`);
   };
 
-  if (isLoading || !products || products.length === 0) return null;
+  const isSemantic = !productIds || productIds.length === 0;
+
+  if ((isSemantic && isLoadingSemantic) || (!isSemantic && isLoadingExplicit) || displayProducts.length === 0) return null;
 
   return (
     <div className={cn(
@@ -68,13 +81,17 @@ export default function VibeShopOverlay({ postId, productIds, isActive }: VibeSh
     )}>
       <div className="flex flex-col gap-3 max-w-[320px] md:max-w-[400px]">
         {/* Authority Badge */}
-        <div className="bg-amber-500 text-slate-950 px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] shadow-2xl w-fit flex items-center gap-2 animate-bounce border-2 border-white/20">
-            <Sparkles size={12} fill="currentColor" /> Featured Products
+        <div className={cn(
+            "px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] shadow-2xl w-fit flex items-center gap-2 border-2 border-white/20",
+            isSemantic ? "bg-indigo-600 text-white" : "bg-amber-500 text-slate-950"
+        )}>
+            {isSemantic ? <Zap size={12} className="fill-white" /> : <Sparkles size={12} fill="currentColor" />}
+            {isSemantic ? 'Semantic Match' : 'Creator Picks'}
         </div>
         
         {/* The Scrollable Shelf */}
         <div className="flex gap-3 overflow-x-auto no-scrollbar py-3 px-1 pointer-events-auto">
-            {products.map((product) => (
+            {displayProducts.map((product) => (
                 <button
                     key={product.id}
                     onClick={(e) => {
