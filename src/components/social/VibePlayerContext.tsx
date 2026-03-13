@@ -77,11 +77,6 @@ export function cosineSimilarity(a: number[], b: number[]) {
   return dot / (magA * magB);
 }
 
-function exponentialFreshness(date: Date) {
-  const ageHours = (Date.now() - date.getTime()) / 3600000;
-  return 10 * Math.exp(-hours / 12);
-}
-
 export function explorationBoost(post: SocialPost) {
   const views = post.likes || 0; 
   if (views < 50) return 15;
@@ -101,31 +96,43 @@ export function computeVibeScore(
   activeMoodId: VibeMood = 'all'
 ) {
   let score = 0;
+
+  // 1. Personalization (Unified Brain + Graph)
   score += getPersonalScore(candidate);
+
+  // 2. Global Trend Injection (5x Weight)
   const globalTrendValue = globalTrendScores[candidate.id] || 0;
   score += globalTrendValue * 5;
+
+  // 3. 📈 ENGAGEMENT BOOST (Likes, Comments, Shares)
+  // Weighting: Likes (2x), Comments (3x), Shares (5x)
+  const engagementScore = (candidate.likes || 0) * 2 + (candidate.commentCount || 0) * 3 + (candidate.trendScore || 0) * 5;
+  score += Math.min(engagementScore, 100); // Capped at 100 to prevent viral runaway
+
+  // 4. 👑 CREATOR MOMENTUM
+  const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
+  score += (repData.qualityScore || 50) * 0.8; // Reward high-quality creators
+
+  // 5. Semantic Match
   const currentTags = new Set([...(current.tags || []), ...(current.aiTags || [])].map(t => t.toLowerCase()));
   const candidateTags = [...(candidate.tags || []), ...(candidate.aiTags || [])].map(t => t.toLowerCase());
   const tagMatches = candidateTags.filter(t => currentTags.has(t));
   score += tagMatches.length * 15;
-  candidateTags.forEach(tag => { const tagTrend = globalTrendScores[tag] || 0; score += tagTrend * 2; });
+
+  // 6. Embedding Similarity
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
     if (similarity > 0.85) score += 20;
   }
-  if (candidate.mood && activeMoodId !== 'all') {
-    const moodDef = VIBE_MOODS.find(m => m.id === activeMoodId);
-    if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
-  }
-  if (candidate.commerceClicks) score += Math.min(candidate.commerceClicks * 5, 50);
+
+  // 7. Exploration & Proximity
   score += explorationBoost(candidate);
-  const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
-  score += (repData.qualityScore || 50) * 0.5;
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
     const ageHours = (Date.now() - date.getTime()) / 3600000;
     score += 10 * Math.exp(-ageHours / 12);
   }
+
   return score;
 }
 
@@ -142,13 +149,19 @@ export function buildSmartQueue(
         score: computeVibeScore(current, p, getPersonalScore, globalTrendScores, viralTags, trendingTags, relatedTags, creatorReputation, mood)
     }));
   scored.sort((a, b) => b.score - a.score);
-  const finalRanked = []; const candidates = [...scored]; const seenClusters = new Map<string, number>(); const creatorSessionCount = new Map<string, number>(); const lastCreatorPositions = new Map<string, number>(); const MIN_CREATOR_GAP = 4;
+  
+  // Apply Diversity logic inside queue construction
+  const finalRanked = []; const candidates = [...scored]; const seenClusters = new Map<string, number>(); const creatorSessionCount = new Map<string, number>(); const lastCreatorPositions = new Map<string, number>(); 
+  const MIN_CREATOR_GAP = 3; 
+
   while (candidates.length > 0 && finalRanked.length < 50) {
       const currentIndex = finalRanked.length;
       const window = candidates.slice(0, 20).map(c => {
           const cluster = (c.post.tags?.[0] || 'none').toLowerCase(); const creatorId = c.post.authorId; const clusterFreq = seenClusters.get(cluster) || 0; const creatorFreq = creatorSessionCount.get(creatorId) || 0; const lastPos = lastCreatorPositions.get(creatorId);
-          let diverseScore = c.score; diverseScore -= (clusterFreq * 6); diverseScore -= (creatorFreq * 8); 
-          if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) diverseScore -= 40; 
+          let diverseScore = c.score; 
+          diverseScore -= (clusterFreq * 10); // Punish repeating topics
+          diverseScore -= (creatorFreq * 12); // Punish repeating creators
+          if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) diverseScore -= 50; 
           return { ...c, diverseScore };
       });
       window.sort((a, b) => b.diverseScore - a.diverseScore); const best = window[0]; finalRanked.push(best);
@@ -190,7 +203,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
   const [isMiniPlayerVisible, setIsMiniPlayerVisible] = useState(true);
   
-  const { profile, sessionProfile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
+  const { sessionProfile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const [globalTrendScores, setGlobalTrendScores] = useState<Record<string, number>>({});
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());

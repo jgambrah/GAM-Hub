@@ -66,7 +66,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
   const skipTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ⏱️ DWELL TIME TRACKER
+  // ⏱️ DWELL TIME TRACKER: Precision monitoring for Skip Detection
   const dwellStartTimeRef = React.useRef<number | null>(null);
 
   const ytPlayerRef = React.useRef<any>(null);
@@ -118,8 +118,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         } else {
           if (dwellStartTimeRef.current) {
             const timeVisible = Date.now() - dwellStartTimeRef.current;
-            // Rule: Visibility < 1.5s counts as an active "Skip" (negative penalty)
-            if (timeVisible < 1500 && !isActiveVibe) {
+            // RULE: Visibility < 2s counts as an active "Skip" (negative penalty)
+            if (timeVisible < 2000 && !isActiveVibe) {
               recordSkip(post);
             }
             dwellStartTimeRef.current = null;
@@ -224,7 +224,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     const shareData = {
         title: 'Check out this vibe on GAM Hub',
         text: post.content,
-        url: window.location.href,
+        url: window.location.origin + `/pulse?postId=${post.id}`,
     };
 
     if (navigator.share) {

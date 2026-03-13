@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -14,14 +13,14 @@ import { recordEdge } from './knowledge-graph';
 import { recordBanditReward, BANDIT_REWARDS } from './bandit-learning';
 import type { FeedStrategyId } from './feed-strategies';
 
-// LIAISON INTELLIGENCE WEIGHTS
+// LIAISON INTELLIGENCE WEIGHTS - REFINED FOR ENGAGEMENT LOOP
 const SIGNAL_VALUES: Record<MarketplaceSignal | VibeSignal, number> = {
   'watch': 1,
   'like': 3,
   'comment': 5,
   'share': 8,
   'reaction': 2,
-  'skip': -4, 
+  'skip': -10, // Aggressive penalty for Fast Skips (< 2s)
   'view': 3,
   'click': 6,
   'intent': 10,
@@ -135,11 +134,16 @@ export async function recordUnifiedSignal(
 
   interestsToBoost.forEach(interest => {
     let weight = score;
-    if (type === 'watch') weight = 1; 
-    updates[`interests.${interest}`] = increment(weight);
+    // Special handling for skips: reduce interest significantly
+    if (type === 'skip') {
+        updates[`interests.${interest}`] = increment(-5); // Direct interest reduction
+    } else {
+        updates[`interests.${interest}`] = increment(weight);
+    }
   });
 
   if (context.creatorId) {
+    // Punish or reward creator affinity
     updates[`affinities.creators.${context.creatorId}`] = increment(score);
   }
   if (context.vendorId) {

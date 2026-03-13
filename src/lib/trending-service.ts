@@ -1,4 +1,3 @@
-
 'use client';
 
 import { doc, increment, serverTimestamp, setDoc, Firestore } from 'firebase/firestore';
@@ -20,7 +19,6 @@ export function recordEngagement(
   const statsRef = doc(firestore, 'trending_stats', postId);
   
   // 🕒 MINUTE BUCKET LOGIC: Detects velocity within a 60-second window
-  // Format: YYYY-MM-DDTHH:mm (Standard ISO minus seconds)
   const minuteBucket = new Date().toISOString().slice(0, 16); 
   const velocityRef = doc(firestore, 'post_velocity', postId, 'minutes', minuteBucket);
 
@@ -28,13 +26,13 @@ export function recordEngagement(
     updatedAt: serverTimestamp()
   };
 
-  // 1. Assign Weights based on Liaison Viral Protocol
-  // Comments and Shares carry significantly more weight than simple views
+  // 1. Assign Weights based on Liaison Engagement Protocol
+  // Higher weights for more committed actions
   if (type === 'view') updates.views = increment(1);
-  if (type === 'like') updates.likes = increment(1);
-  if (type === 'comment') updates.comments = increment(1);
-  if (type === 'share') updates.shares = increment(1);
-  if (type === 'completion') updates.completions = increment(1);
+  if (type === 'like') updates.likes = increment(2);
+  if (type === 'comment') updates.comments = increment(3);
+  if (type === 'share') updates.shares = increment(5);
+  if (type === 'completion') updates.completions = increment(10);
 
   // 2. Persistent Handshake: Update Global Aggregate
   const statsData: any = { ...updates };
@@ -47,7 +45,6 @@ export function recordEngagement(
   });
 
   // 3. Time-Series Velocity Write: Record specifically for THIS minute
-  // This powers the Velocity Calculation in Cloud Functions
   const velocityData: any = { ...updates };
   setDoc(velocityRef, velocityData, { merge: true }).catch(err => {
     console.warn("Trending Service: Failed to record velocity bucket", err);
@@ -56,7 +53,6 @@ export function recordEngagement(
 
 /**
  * 🎓 VIRAL GRADUATION
- * Manually promotes a successful vibration into the trending pool.
  */
 export async function promoteToTrending(firestore: Firestore, post: SocialPost) {
   if (!firestore || !post.id) return;
