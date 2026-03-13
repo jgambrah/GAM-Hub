@@ -1,4 +1,3 @@
-
 'use client';
 
 import Image from 'next/image';
@@ -70,7 +69,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const dwellStartTimeRef = React.useRef<number | null>(null);
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
-  const [ytMuted, setYtMuted] = React.useState(false);
   const [ytMounted, setYtMounted] = React.useState(false);
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
   const [countdown, setCountdown] = React.useState<number | null>(null);
@@ -245,6 +243,15 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       toast({ title: 'AI Match Found', description: 'Continuing the narative...' });
       setTimeout(() => playNext(), 500);
     }
+  };
+
+  const onYoutubeReady = (event: any) => {
+    ytPlayerRef.current = event.target;
+    ytReadyRef.current = true;
+  };
+
+  const onYoutubePlay = () => {
+    setActivePost(post);
   };
 
   const handleYoutubeError = React.useCallback((e: { data: number }) => {
