@@ -63,6 +63,13 @@ export type UserIntelligence = {
   engagementLevel: number;
   vibeEmbedding?: number[];
   updatedAt: string;
+  // Multi-Armed Bandit Fields
+  currentStrategy?: 'A' | 'B' | 'C' | 'D';
+  strategyStats?: Record<string, {
+    totalEngagementScore: number;
+    sessionsCount: number;
+    lastActive: string;
+  }>;
 };
 
 export type KnowledgeGraphNode = {
