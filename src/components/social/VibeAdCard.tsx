@@ -65,7 +65,10 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
         </div>
       </div>
 
-      <div className="relative aspect-video bg-slate-950 overflow-hidden group/media">
+      <div 
+        onClick={toggleSound}
+        className="relative aspect-video bg-slate-950 overflow-hidden group/media cursor-pointer"
+      >
         {ad.mediaType === 'image' && ad.mediaUrl && (
           <Image
             src={ad.mediaUrl} alt={ad.headline} fill
@@ -93,8 +96,8 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
             </button>
             {!soundOn && isVideoPlaying && (
               <div className="absolute inset-0 flex items-end justify-center pb-12 pointer-events-none animate-in fade-in duration-500">
-                <div className="bg-black/50 backdrop-blur-sm text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full flex items-center gap-1">
-                  <VolumeX size={9} /> Tap speaker to unmute
+                <div className="bg-black/50 backdrop-blur-sm text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
+                  <VolumeX size={9} /> Tap to unmute
                 </div>
               </div>
             )}

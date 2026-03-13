@@ -239,7 +239,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  // --- VIDEO HANDLERS ---
   const handleEnd = () => {
     recordWatchedToEnd(post);
     if (isContinuous) {
@@ -313,7 +312,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* Global Mute Toggle Overlay (Active Vibe Only) */}
+      {/* Tap-to-Unmute UX Logic */}
       {isActiveVibe && mediaCategory === 'video' && (
         <div className="absolute bottom-24 right-6 z-30 animate-in fade-in zoom-in duration-500">
           <button 
@@ -326,10 +325,13 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       )}
 
       {post.mediaType !== 'text' && (
-        <div className={cn(
-          'relative bg-slate-950 overflow-hidden flex-shrink-0 transition-all duration-700 ease-in-out',
-          isActiveVibe ? activeAspect : 'aspect-video group/media'
-        )}>
+        <div 
+          onClick={() => { if(isActiveVibe && mediaCategory === 'video') toggleSound(); }}
+          className={cn(
+            'relative bg-slate-950 overflow-hidden flex-shrink-0 transition-all duration-700 ease-in-out cursor-pointer',
+            isActiveVibe ? activeAspect : 'aspect-video group/media'
+          )}
+        >
           {post.productTags && post.productTags.length > 0 && (
             <VibeShopOverlay postId={post.id} productIds={post.productTags} isActive={isActiveVibe} />
           )}
@@ -388,7 +390,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 </div>
               ) : (
                 <ReactPlayer
-                  url={videoSource} controls width="100%" height="100%" playing={isActiveVibe} playsinline muted={!soundOn} onStart={() => setActivePost(post)} onEnded={handleEnd}
+                  url={videoSource} controls={false} width="100%" height="100%" playing={isActiveVibe} playsinline muted={!soundOn} onStart={() => setActivePost(post)} onEnded={handleEnd}
                   config={{ file: { attributes: { playsInline: true, preload: 'auto' }, forceHLS: !!post.hlsUrl, hlsConfig: { maxBufferLength: 30, startFragPrefetch: true } } }}
                 />
               )}

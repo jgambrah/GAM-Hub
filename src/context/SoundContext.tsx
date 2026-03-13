@@ -12,13 +12,14 @@ const SoundContext = createContext<SoundContextType | undefined>(undefined);
 
 export function SoundProvider({ children }: { children: React.ReactNode }) {
   // Default to false (muted) to comply with browser autoplay policies
+  // We initialize from null to avoid hydration mismatch, then sync in useEffect
   const [soundOn, setSoundOnState] = useState(false);
 
   // Sync with localStorage so the user's preference persists across sessions
   useEffect(() => {
     const saved = localStorage.getItem('gamhub_sound_pref');
-    if (saved !== null) {
-      setSoundOnState(saved === 'on');
+    if (saved === 'on') {
+      setSoundOnState(true);
     }
   }, []);
 
