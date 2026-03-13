@@ -16,9 +16,9 @@ admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🎥 STARTUP-SAFE VIDEO COMPRESSION ENGINE
- * Automatically compresses uploaded videos to reduce storage/bandwidth costs by ~90%.
- * Target: 720p, 800k bitrate, H.264.
+ * 🎥 STARTUP-SAFE VIDEO COMPRESSION & THUMBNAIL ENGINE
+ * Automatically compresses uploaded videos and extracts a 20KB thumbnail.
+ * Target: 720p, 800k bitrate, H.264 + 320px JPG Thumbnail.
  */
 exports.compressVideo = onObjectFinalized({
   cpu: 2,
@@ -40,61 +40,146 @@ exports.compressVideo = onObjectFinalized({
   const fileName = path.basename(filePath);
   const tempFilePath = path.join(os.tmpdir(), fileName);
   const targetFilePath = path.join(os.tmpdir(), `compressed-${fileName}`);
+  const thumbFileName = `thumb-${fileName.split(".")[0]}.jpg`;
+  const thumbTempPath = path.join(os.tmpdir(), thumbFileName);
 
   try {
     // 2. Download original to temp disk
     console.log(`Downloading original video: ${filePath}`);
     await bucket.file(filePath).download({destination: tempFilePath});
 
-    // 3. Execute FFmpeg Compression
-    console.log(`Compressing video: ${fileName}`);
+    // 3. Execute FFmpeg Compression & Thumbnail Extraction
+    console.log(`Processing media: ${fileName}`);
+    
+    // Transcode Video
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
-        .size("720x?") // Resize to 720p (width auto-calculated)
-        .videoBitrate("800k") // Targeted bitrate for mobile delivery
+        .size("720x?") 
+        .videoBitrate("800k") 
         .videoCodec("libx264")
         .format("mp4")
-        .on("start", (cmd) => console.log("Spawned FFmpeg with command: " + cmd))
+        .on("start", (cmd) => console.log("Spawned Video Transcoder: " + cmd))
         .on("end", resolve)
-        .on("error", (err) => {
-          console.error("FFmpeg Error:", err);
-          reject(err);
-        })
+        .on("error", reject)
         .save(targetFilePath);
     });
 
-    // 4. Upload back to same path with 'processed' metadata
-    console.log(`Uploading compressed video back to: ${filePath}`);
-    await bucket.upload(targetFilePath, {
-      destination: filePath,
-      metadata: {
-        contentType: "video/mp4",
-        metadata: {
-          processed: "true",
-          originalName: fileName,
-          compressedAt: new Date().toISOString(),
-        },
-      },
+    // Capture Thumbnail (1 second in)
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempFilePath)
+        .screenshots({
+          timestamps: ["1"],
+          filename: thumbFileName,
+          folder: os.tmpdir(),
+          size: "320x?"
+        })
+        .on("end", resolve)
+        .on("error", reject);
     });
 
-    // 5. Cleanup temp files
-    fs.unlinkSync(tempFilePath);
-    fs.unlinkSync(targetFilePath);
-    console.log(`Compression success for ${filePath}`);
+    // 4. Upload back to Storage
+    const thumbStoragePath = `thumbnails/${path.dirname(filePath)}/${thumbFileName}`;
+    
+    console.log(`Uploading processed assets for ${filePath}`);
+    
+    await Promise.all([
+      // Replace video
+      bucket.upload(targetFilePath, {
+        destination: filePath,
+        metadata: {
+          contentType: "video/mp4",
+          metadata: { processed: "true", compressedAt: new Date().toISOString() },
+        },
+      }),
+      // Upload new thumbnail
+      bucket.upload(thumbTempPath, {
+        destination: thumbStoragePath,
+        metadata: { contentType: "image/jpeg" },
+      })
+    ]);
+
+    // 5. UPDATE FIRESTORE: Link the thumbnail to the Post
+    const db = admin.firestore();
+    const publicBase = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/`;
+    const originalUrlMatch = `${publicBase}${encodeURIComponent(filePath)}?alt=media`;
+    const thumbUrl = `${publicBase}${encodeURIComponent(thumbStoragePath)}?alt=media`;
+
+    const pulseSnap = await db.collection("campus_pulse").where("mediaUrl", "==", originalUrlMatch).get();
+    const batch = db.batch();
+    pulseSnap.forEach(doc => {
+      batch.update(doc.ref, { imageUrl: thumbUrl });
+    });
+    await batch.commit();
+
+    // 6. Cleanup temp files
+    [tempFilePath, targetFilePath, thumbTempPath].forEach(p => {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    });
+    
+    console.log(`Media optimization success for ${filePath}`);
 
   } catch (err) {
-    console.error(`Compression failed for ${filePath}:`, err);
-    // Cleanup if files exist
-    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-    if (fs.existsSync(targetFilePath)) fs.unlinkSync(targetFilePath);
+    console.error(`Media optimization failed for ${filePath}:`, err);
   }
 
   return null;
 });
 
 /**
+ * 🧹 ZOMBIE VIDEO CLEANUP
+ * Runs every 24 hours to delete videos with < 5 likes after 30 days.
+ * Keeps storage costs lean.
+ */
+exports.cleanupLowEngagementVideos = onSchedule("every 24 hours", async (event) => {
+  const db = admin.firestore();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  console.log("🧹 Starting Zombie Video Cleanup sweep...");
+
+  try {
+    const snapshot = await db.collection("campus_pulse")
+      .where("mediaType", "==", "video")
+      .where("likes", "<", 5)
+      .where("createdAt", "<", thirtyDaysAgo.toISOString())
+      .get();
+
+    if (snapshot.empty) {
+      console.log("✅ Yard is clean. No zombie content found.");
+      return null;
+    }
+
+    const bucket = admin.storage().bucket();
+    const deletePromises = [];
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      
+      // Delete from Storage if it's a native video
+      if (data.mediaUrl && data.mediaUrl.includes(bucket.name)) {
+        const filePath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
+        deletePromises.push(bucket.file(filePath).delete().catch(() => null));
+        
+        // Also delete associated thumbnail if exists
+        if (data.imageUrl && data.imageUrl.includes("thumbnails/")) {
+          const thumbPath = decodeURIComponent(data.imageUrl.split("/o/")[1].split("?")[0]);
+          deletePromises.push(bucket.file(thumbPath).delete().catch(() => null));
+        }
+      }
+
+      // Delete from Firestore
+      deletePromises.push(doc.ref.delete());
+    }
+
+    await Promise.all(deletePromises);
+    console.log(`🗑️ Successfully pruned ${snapshot.size} low-engagement vibrations.`);
+  } catch (err) {
+    console.error("❌ Cleanup Service Error:", err);
+  }
+});
+
+/**
  * 🛰️ LIAISON NOTIFICATION SERVICE: Throttling & Delivery with Analytics
- * Rule: Max 3 notifications per day, min 2 hours between.
  */
 async function checkThrottlingAndNotify(userId, payload, db) {
   const prefRef = db.collection("user_notifications").doc(userId);
@@ -112,27 +197,20 @@ async function checkThrottlingAndNotify(userId, payload, db) {
     const now = new Date();
     const lastSent = prefs.lastSentAt ? new Date(prefs.lastSentAt) : null;
 
-    // 1. Throttling Checks
     if (lastSent) {
       const diffHours = (now - lastSent) / 3600000;
       if (diffHours < 2) return null;
-
       const isSameDay = lastSent.toDateString() === now.toDateString();
       if (isSameDay && (prefs.dailyCount || 0) >= 3) return null;
-      
-      if (!isSameDay) {
-        prefs.dailyCount = 0;
-      }
+      if (!isSameDay) prefs.dailyCount = 0;
     }
 
-    // 2. Deliver via FCM
     await admin.messaging().send({
       token: token,
       notification: payload.notification,
       data: payload.data || {}
     });
 
-    // 3. Update Audit Trail & Throttling Stats
     const batch = db.batch();
     batch.set(prefRef, {
       lastSentAt: now.toISOString(),
@@ -152,25 +230,18 @@ async function checkThrottlingAndNotify(userId, payload, db) {
     });
 
     return batch.commit();
-
   } catch (err) {
     console.error(`Liaison Delivery Service Error for ${userId}:`, err);
     return null;
   }
 }
 
-/**
- * 🛰️ LIAISON NOTIFICATION SERVICE: Helper to send multicast messages
- */
 async function sendSmartMulticast(recipients, payload, db) {
   if (!recipients || recipients.length === 0) return null;
   const deliveryPromises = recipients.map(uid => checkThrottlingAndNotify(uid, payload, db));
   return Promise.all(deliveryPromises);
 }
 
-/**
- * 🔔 SMART NOTIFICATION ENGINE: Price Drop & Restock Detector
- */
 exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
@@ -185,8 +256,6 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
 
   try {
     const interestedUserIds = new Set();
-    
-    // 🧠 UNIFIED BRAIN SYNC: Query the centralized intelligence vault
     const profilesSnap = await db.collection("user_intelligence")
       .where("favoriteProducts", "array-contains", productId)
       .get();
@@ -218,18 +287,12 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
       notification: { title, body },
       data: { productId, type: isPriceDrop ? "price_drop" : "restock" }
     }, db);
-
   } catch (err) {
     console.error(`Liaison Price Engine Error for ${productId}:`, err);
     return null;
   }
 });
 
-/**
- * 🚀 REAL-TIME TREND AGGREGATOR
- * Runs every 5 minutes to detect viral entities and topics from the last hour.
- * Produces a flat trend score structure for high-speed client lookup.
- */
 exports.aggregateGlobalTrends = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
   const oneHourAgo = Date.now() - (60 * 60 * 1000);
@@ -240,20 +303,13 @@ exports.aggregateGlobalTrends = onSchedule("every 5 minutes", async (event) => {
       .where("timestamp", ">", since)
       .get();
 
-    // 🏎️ FLAT STRUCTURE: Optimized for O(1) lookup on the client
     const scores = {
       _updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
     snapshot.forEach(doc => {
       const e = doc.data();
-      
-      // Increment score for the specific entity (video, product, vendor)
-      if (e.entityId) {
-        scores[e.entityId] = (scores[e.entityId] || 0) + 1;
-      }
-      
-      // Increment score for the associated tag (e.g. afrobeats, fashion)
+      if (e.entityId) scores[e.entityId] = (scores[e.entityId] || 0) + 1;
       if (e.tag) {
         const normalizedTag = e.tag.toLowerCase();
         scores[normalizedTag] = (scores[normalizedTag] || 0) + 1;
@@ -261,22 +317,18 @@ exports.aggregateGlobalTrends = onSchedule("every 5 minutes", async (event) => {
     });
 
     await db.collection("trend_scores").doc("current").set(scores);
-    console.log(`✅ Trend Aggregation Complete: Processed ${snapshot.size} events into flat score map.`);
+    console.log(`✅ Trend Aggregation Complete: Processed ${snapshot.size} events.`);
   } catch (err) {
     console.error("❌ Trend Aggregation Error:", err);
   }
 });
 
-/**
- * 🔔 SMART NOTIFICATION ENGINE: Vendor New Post Alert & Request Matching
- */
 exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async (event) => {
   const product = event.data.data();
   const vendorId = product.vendorId;
   const db = admin.firestore();
 
   try {
-    // 1. Follower Notification
     const followersSnap = await db.collection("users")
       .where("followedVendors", "array-contains", vendorId)
       .get();
@@ -292,7 +344,6 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
         }, db);
     }
 
-    // 🤝 2. Request Matching: Find students looking for this category
     const requestsSnap = await db.collection("market_requests")
       .where("campusId", "==", product.campusId)
       .where("category", "==", product.category.toLowerCase())
@@ -309,18 +360,13 @@ exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async
             data: { productId: event.params.productId, type: "request_match" }
         }, db);
     }
-
     return null;
-
   } catch (err) {
     console.error("Product Creation Intelligence Error:", err);
     return null;
   }
 });
 
-/**
- * 🔔 SMART NOTIFICATION ENGINE: Demand Spike Detector
- */
 exports.onDemandSignalUpdatedNotify = onDocumentUpdated("demand_signals/{signalId}", async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
@@ -344,7 +390,6 @@ exports.onDemandSignalUpdatedNotify = onDocumentUpdated("demand_signals/{signalI
         },
         data: { item: after.item, type: "demand_spike" }
       }, db);
-
     } catch (err) {
       console.error("Demand Spike Alert Error:", err);
       return null;
@@ -352,17 +397,12 @@ exports.onDemandSignalUpdatedNotify = onDocumentUpdated("demand_signals/{signalI
   }
 });
 
-/**
- * 🛒 PRODUCT TRENDING LEADERBOARD SCHEDULER
- */
 exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event) => {
   const db = admin.firestore();
   const now = new Date();
-
   try {
     const trendsSnap = await db.collection("product_trends").get();
     if (trendsSnap.empty) return null;
-
     const scoredProducts = [];
     trendsSnap.forEach((doc) => {
       const data = doc.data();
@@ -373,60 +413,44 @@ exports.updateTrendingLeaderboard = onSchedule("every 10 minutes", async (event)
       const finalScore = rawScore * decayFactor;
       if (finalScore > 0) scoredProducts.push({ productId: doc.id, score: finalScore });
     });
-
     const topProducts = scoredProducts.sort((a, b) => b.score - a.score).slice(0, 20).map(p => p.productId);
-
     return db.collection("market_leaderboard").doc("trending").set({
       productIds: topProducts,
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       type: "global_trending"
     });
   } catch (err) {
-    console.error("Liaison Leaderboard Re-compute Error:", err);
+    console.error("Liaison Leaderboard Error:", err);
     return null;
   }
 });
 
-/**
- * 🧠 SMART TIMING: DAILY RECOMMENDATIONS SCHEDULER
- * Uses the Unified Intelligence Brain for maximum relevance.
- */
 exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
   const db = admin.firestore();
   try {
     const usersSnap = await db.collection("users").where("fcmToken", "!=", null).limit(500).get();
     if (usersSnap.empty) return null;
-
     for (const uDoc of usersSnap.docs) {
       const userId = uDoc.id;
       const userData = uDoc.data();
-      
-      // 🧠 UNIFIED BRAIN SYNC: Get the centralized behavioral profile
       const profileSnap = await db.collection("user_intelligence").doc(userId).get();
       if (!profileSnap.exists) continue;
-      
       const profile = profileSnap.data();
       const interests = profile.interests || {};
-      
-      // Find the #1 highest weight interest across ALL behaviors
       let topCategory = null;
       let maxViews = 0;
       Object.entries(interests).forEach(([cat, score]) => {
         if (score > maxViews) { maxViews = score; topCategory = cat; }
       });
-
       if (!topCategory) continue;
-
       const productsSnap = await db.collection("products")
         .where("campusId", "==", userData.campusId)
         .where("category", "==", topCategory.charAt(0).toUpperCase() + topCategory.slice(1))
         .orderBy("trendScore", "desc")
         .limit(1)
         .get();
-
       if (productsSnap.empty) continue;
       const topPick = productsSnap.docs[0].data();
-
       await checkThrottlingAndNotify(userId, {
         notification: {
           title: "🧠 Morning Pick for You",
@@ -437,7 +461,7 @@ exports.sendDailyRecommendations = onSchedule("0 8 * * *", async (event) => {
     }
     return null;
   } catch (err) {
-    console.error("Daily Recommendations Engine Error:", err);
+    console.error("Daily Recommendations Error:", err);
     return null;
   }
 });
