@@ -66,6 +66,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
   const skipTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ⏱️ DWELL TIME TRACKER
   const dwellStartTimeRef = React.useRef<number | null>(null);
 
   const ytPlayerRef = React.useRef<any>(null);
@@ -87,7 +88,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
-  // Use HLS playlist if available, otherwise fallback to MP4
   const videoSource = post.hlsUrl || post.mediaUrl;
 
   React.useEffect(() => {
@@ -107,6 +107,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe]);
 
+  // 🏎️ INTELLIGENT DWELL MONITOR: Detect skips and deep interest
   React.useEffect(() => {
     if (!cardRef.current) return;
 
@@ -117,6 +118,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         } else {
           if (dwellStartTimeRef.current) {
             const timeVisible = Date.now() - dwellStartTimeRef.current;
+            // Rule: Visibility < 1.5s counts as an active "Skip" (negative penalty)
             if (timeVisible < 1500 && !isActiveVibe) {
               recordSkip(post);
             }

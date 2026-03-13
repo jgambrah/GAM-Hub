@@ -12,7 +12,7 @@
  * 7. Multi-Armed Bandit (Strategy Learning)
  * 8. AI Re-Ranking (LLM Refinement)
  * 9. TIKTOK-STYLE PREFETCHING (Lookahead Buffering)
- * 10. SMART CANCELLATION (Fast-Scroll Optimization)
+ * 10. INFINITE ENGAGEMENT LOOP (Auto-Fetch & Interaction Signals)
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -79,7 +79,7 @@ export function cosineSimilarity(a: number[], b: number[]) {
 
 function exponentialFreshness(date: Date) {
   const ageHours = (Date.now() - date.getTime()) / 3600000;
-  return 10 * Math.exp(-ageHours / 12);
+  return 10 * Math.exp(-hours / 12);
 }
 
 export function explorationBoost(post: SocialPost) {
@@ -89,11 +89,6 @@ export function explorationBoost(post: SocialPost) {
   return 0;
 }
 
-/**
- * computeVibeScore
- * ---------------
- * STAGE 2-4: Local Hybrid Scoring
- */
 export function computeVibeScore(
   current: SocialPost, 
   candidate: SocialPost, 
@@ -106,50 +101,31 @@ export function computeVibeScore(
   activeMoodId: VibeMood = 'all'
 ) {
   let score = 0;
-  
-  // 🎯 STAGE 2: Personalization Match
   score += getPersonalScore(candidate);
-
-  // 🚀 STAGE 4: REAL-TIME TREND BOOST (5x Weight)
   const globalTrendValue = globalTrendScores[candidate.id] || 0;
   score += globalTrendValue * 5;
-
-  // 🕸️ STAGE 3: Tag & Semantic Continuity (Graph & Embedding)
   const currentTags = new Set([...(current.tags || []), ...(current.aiTags || [])].map(t => t.toLowerCase()));
   const candidateTags = [...(candidate.tags || []), ...(candidate.aiTags || [])].map(t => t.toLowerCase());
-  
   const tagMatches = candidateTags.filter(t => currentTags.has(t));
   score += tagMatches.length * 15;
-
-  candidateTags.forEach(tag => {
-      const tagTrend = globalTrendScores[tag] || 0;
-      score += tagTrend * 2;
-  });
-
+  candidateTags.forEach(tag => { const tagTrend = globalTrendScores[tag] || 0; score += tagTrend * 2; });
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
     if (similarity > 0.85) score += 20;
   }
-
   if (candidate.mood && activeMoodId !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === activeMoodId);
     if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
   }
-
-  if (candidate.commerceClicks) {
-      score += Math.min(candidate.commerceClicks * 5, 50);
-  }
-
+  if (candidate.commerceClicks) score += Math.min(candidate.commerceClicks * 5, 50);
   score += explorationBoost(candidate);
-  
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
   score += (repData.qualityScore || 50) * 0.5;
-
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
-    score += exponentialFreshness(date);
+    const ageHours = (Date.now() - date.getTime()) / 3600000;
+    score += 10 * Math.exp(-ageHours / 12);
   }
-
   return score;
 }
 
@@ -165,53 +141,25 @@ export function buildSmartQueue(
         post: p,
         score: computeVibeScore(current, p, getPersonalScore, globalTrendScores, viralTags, trendingTags, relatedTags, creatorReputation, mood)
     }));
-
   scored.sort((a, b) => b.score - a.score);
-
-  const finalRanked = [];
-  const candidates = [...scored];
-  const seenClusters = new Map<string, number>();
-  const creatorSessionCount = new Map<string, number>();
-  const lastCreatorPositions = new Map<string, number>();
-  const MIN_CREATOR_GAP = 4;
-
+  const finalRanked = []; const candidates = [...scored]; const seenClusters = new Map<string, number>(); const creatorSessionCount = new Map<string, number>(); const lastCreatorPositions = new Map<string, number>(); const MIN_CREATOR_GAP = 4;
   while (candidates.length > 0 && finalRanked.length < 50) {
       const currentIndex = finalRanked.length;
       const window = candidates.slice(0, 20).map(c => {
-          const cluster = (c.post.tags?.[0] || 'none').toLowerCase();
-          const creatorId = c.post.authorId;
-          const clusterFreq = seenClusters.get(cluster) || 0;
-          const creatorFreq = creatorSessionCount.get(creatorId) || 0;
-          const lastPos = lastCreatorPositions.get(creatorId);
-          
-          let diverseScore = c.score;
-          diverseScore -= (clusterFreq * 6); 
-          diverseScore -= (creatorFreq * 8); 
-          
-          if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) {
-              diverseScore -= 40; 
-          }
+          const cluster = (c.post.tags?.[0] || 'none').toLowerCase(); const creatorId = c.post.authorId; const clusterFreq = seenClusters.get(cluster) || 0; const creatorFreq = creatorSessionCount.get(creatorId) || 0; const lastPos = lastCreatorPositions.get(creatorId);
+          let diverseScore = c.score; diverseScore -= (clusterFreq * 6); diverseScore -= (creatorFreq * 8); 
+          if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) diverseScore -= 40; 
           return { ...c, diverseScore };
       });
-
-      window.sort((a, b) => b.diverseScore - a.diverseScore);
-      const best = window[0];
-      finalRanked.push(best);
-
-      const cluster = (best.post.tags?.[0] || 'none').toLowerCase();
-      seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1);
-      creatorSessionCount.set(best.post.authorId, (creatorSessionCount.get(best.post.authorId) || 0) + 1);
-      lastCreatorPositions.set(best.post.authorId, currentIndex);
-
-      const idx = candidates.findIndex(c => c.post.id === best.post.id);
-      candidates.splice(idx, 1);
+      window.sort((a, b) => b.diverseScore - a.diverseScore); const best = window[0]; finalRanked.push(best);
+      const cluster = (best.post.tags?.[0] || 'none').toLowerCase(); seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1); creatorSessionCount.set(best.post.authorId, (creatorSessionCount.get(best.post.authorId) || 0) + 1); lastCreatorPositions.set(best.post.authorId, currentIndex);
+      const idx = candidates.findIndex(c => c.post.id === best.post.id); candidates.splice(idx, 1);
   }
   return finalRanked;
 }
 
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
-export const HISTORY_MAX = 30;
-export const MAX_POOL_SIZE = 800;
+export const HISTORY_MAX = 30; export const MAX_POOL_SIZE = 800;
 
 interface VibePlayerContextType {
   activePostId: string | null; activePost: SocialPost | null; queue: SocialPost[]; upNext: QueueEntry[];
@@ -234,7 +182,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [queue, setQueue] = useState<SocialPost[]>([]);
   const [upNext, setUpNext] = useState<QueueEntry[]>([]);
   const [allPosts, setAllPosts] = useState<SocialPost[]>([]);
-  const [isContinuous, setIsContinuous] = useState(true); // DEFAULT TO TRUE FOR ENGAGEMENT LOOP
+  const [isContinuous, setIsContinuous] = useState(true); 
   const [isLoadingQueue, setIsLoadingQueue] = useState(false);
   const [activeMood, setActiveMoodState] = useState<VibeMood>('all');
   const [history, setHistory] = useState<SocialPost[]>([]);
@@ -276,33 +224,18 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (!firestore) return;
-
-    const unsubTrends = onSnapshot(doc(firestore, 'trend_scores', 'current'), (snap) => {
-        if (snap.exists()) setGlobalTrendScores(snap.data() as Record<string, number>);
-    });
-
+    const unsubTrends = onSnapshot(doc(firestore, 'trend_scores', 'current'), (snap) => { if (snap.exists()) setGlobalTrendScores(snap.data() as Record<string, number>); });
     getDocs(query(collection(firestore, 'hashtags'), orderBy('trendScore', 'desc'), limit(20))).then(snap => {
         const viral = new Set<string>(); const trending = new Set<string>();
-        snap.docs.forEach(d => {
-            const data = d.data(); const tag = data.tag?.toLowerCase(); if (!tag) return;
-            if (data.trendScore > 30) viral.add(tag); else if (data.trendScore > 15) trending.add(tag);
-        });
+        snap.docs.forEach(d => { const data = d.data(); const tag = data.tag?.toLowerCase(); if (!tag) return; if (data.trendScore > 30) viral.add(tag); else if (data.trendScore > 15) trending.add(tag); });
         setViralTags(viral); setTrendingTags(trending);
     });
-
     const q = query(collection(firestore, 'creator_reputation'), orderBy('qualityScore', 'desc'), limit(200));
-    const unsubRep = onSnapshot(q, (snap) => {
-      const map: Record<string, any> = {};
-      snap.docs.forEach(d => { map[d.id] = { qualityScore: d.data().qualityScore || 50, violationScore: d.data().violationScore || 0 }; });
-      setCreatorReputation(map);
-    });
-
+    const unsubRep = onSnapshot(q, (snap) => { const map: Record<string, any> = {}; snap.docs.forEach(d => { map[d.id] = { qualityScore: d.data().qualityScore || 50, violationScore: d.data().violationScore || 0 }; }); setCreatorReputation(map); });
     return () => { unsubTrends(); unsubRep(); };
   }, [firestore]);
 
-  const clearDisplayTimer = useCallback(() => {
-    if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
-  }, []);
+  const clearDisplayTimer = useCallback(() => { if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; } }, []);
 
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
@@ -314,47 +247,24 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     
     let relatedTags = new Set<string>();
     if ((current.tags || []).length > 0 && firestore) {
-        try {
-            const res = await Promise.all(current.tags!.slice(0, 3).map(tag => getRelatedHashtags(firestore, tag)));
-            res.flat().forEach(r => { if (r.weight > 5) relatedTags.add(r.tag.toLowerCase()); });
-        } catch (e) { console.warn("Graph lookup failed"); }
+        try { const res = await Promise.all(current.tags!.slice(0, 3).map(tag => getRelatedHashtags(firestore, tag))); res.flat().forEach(r => { if (r.weight > 5) relatedTags.add(r.tag.toLowerCase()); }); } catch (e) { console.warn("Graph lookup failed"); }
     }
 
     const rankedResults = buildSmartQueue(current, pool, mood, scorer, trends, viral, trending, relatedTags, reputations);
     let finalPosts = rankedResults.map(r => r.post);
 
-    // 🤖 STAGE 5: AI RE-RANKING (Genkit Flow)
     if (finalPosts.length > 5) {
         try {
-            const aiReRank = await getRecommendedVibes({
-                currentPostContent: current.content,
-                userInterests: getTopInterests(10),
-                availablePosts: finalPosts.slice(0, 15).map(p => ({
-                    id: p.id,
-                    content: p.content,
-                    tags: p.tags
-                }))
-            });
-
+            const aiReRank = await getRecommendedVibes({ currentPostContent: current.content, userInterests: getTopInterests(10), availablePosts: finalPosts.slice(0, 15).map(p => ({ id: p.id, content: p.content, tags: p.tags })) });
             const aiOrder = new Map(aiReRank.recommendedPostIds.map((id, i) => [id, i]));
-            const topTier = finalPosts.filter(p => aiOrder.has(p.id))
-                .sort((a, b) => aiOrder.get(id)! - aiOrder.get(b.id)!);
+            const topTier = finalPosts.filter(p => aiOrder.has(p.id)).sort((a, b) => aiOrder.get(a.id)! - aiOrder.get(b.id)!);
             const others = finalPosts.filter(p => !aiOrder.has(p.id));
-            
             finalPosts = [...topTier, ...others];
-        } catch (e) {
-            console.warn("Liaison AI Re-Ranking drifted. Falling back to local score.");
-        }
+        } catch (e) { console.warn("Liaison AI Re-Ranking drifted."); }
     }
 
     const diversePool = enforceDiversity(finalPosts).slice(0, 30);
-    
-    const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
-      ranked.slice(0, 15).map(p => ({
-        post: p,
-        score: computeVibeScore(current, p, scorer, trends, viral, trending, relatedTags, reputations, mood),
-        reason: 'AI Orchestrated Match',
-      }));
+    const makeUpNext = (ranked: SocialPost[]): QueueEntry[] => ranked.slice(0, 15).map(p => ({ post: p, score: computeVibeScore(current, p, scorer, trends, viral, trending, relatedTags, reputations, mood), reason: 'AI Orchestrated Match', }));
 
     setQueue([current, ...diversePool]);
     setUpNext(makeUpNext(diversePool));
@@ -368,25 +278,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     }
   }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
 
-  // 📡 PREFETCH & SMART CANCELLATION ENGINE: Lookahead buffering for instant playback
   useEffect(() => {
     if (!activePostId || upNext.length === 0 || !activePost) return;
-
     const prefetchTimer = setTimeout(() => {
       const nextThreePosts = upNext.slice(0, 3).map(entry => entry.post);
-      
-      // 🚀 SMART CANCELLATION: Maintain only the current and next 3 vibrations.
       vibeBufferManager.maintain([activePost.id, ...nextThreePosts.map(p => p.id)]);
-
-      // Prefetch the new survivors
-      nextThreePosts.forEach(post => {
-        vibeBufferManager.preload(post);
-      });
+      nextThreePosts.forEach(post => { vibeBufferManager.preload(post); });
     }, 800); 
-
-    return () => {
-      clearTimeout(prefetchTimer);
-    };
+    return () => { clearTimeout(prefetchTimer); };
   }, [activePostId, upNext, activePost]);
 
   const recordPlay = useCallback((p: SocialPost) => {
@@ -417,9 +316,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     return [...posts].sort((a, b) => getPersonalScore(b) - getPersonalScore(a));
   }, [isProfileLoaded, getPersonalScore]);
 
-  const pushToHistory = useCallback((post: SocialPost) => {
-    setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX));
-  }, []);
+  const pushToHistory = useCallback((post: SocialPost) => { setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX)); }, []);
 
   const startDisplayTimer = useCallback((post: SocialPost) => {
     clearDisplayTimer();
@@ -443,10 +340,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     startDisplayTimer(post);
   }, [rebuildQueue, pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
-  const setActiveMood = useCallback((mood: VibeMood) => {
-    setActiveMoodState(mood); const cur = activePostRef.current;
-    if (cur) rebuildQueue(cur, allPostsRef.current, mood);
-  }, [rebuildQueue]);
+  const setActiveMood = useCallback((mood: VibeMood) => { setActiveMoodState(mood); const cur = activePostRef.current; if (cur) rebuildQueue(cur, allPostsRef.current, mood); }, [rebuildQueue]);
 
   const playNext = useCallback(() => {
     const q = queueRef.current; const id = activePostIdRef.current;
@@ -457,13 +351,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const playPrev = useCallback(() => {
-    setHistory(prev => {
-      if (prev.length < 2) return prev;
-      const prevPost = prev[1]; clearDisplayTimer();
-      setActivePostId(prevPost.id); setActivePostState(prevPost);
-      rebuildQueue(prevPost, allPostsRef.current, activeMoodRef.current);
-      startDisplayTimer(prevPost); return prev.slice(1);
-    });
+    setHistory(prev => { if (prev.length < 2) return prev; const prevPost = prev[1]; clearDisplayTimer(); setActivePostId(prevPost.id); setActivePostState(prevPost); rebuildQueue(prevPost, allPostsRef.current, activeMoodRef.current); startDisplayTimer(prevPost); return prev.slice(1); });
   }, [rebuildQueue, clearDisplayTimer, startDisplayTimer]);
 
   const addToQueue = useCallback((posts: SocialPost[]) => {
@@ -480,10 +368,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [rebuildQueue]);
 
   const sendReaction = useCallback((emoji: VibeReaction, post: SocialPost) => {
-    setReactionCounts(prev => {
-      const counts = prev[post.id] || { '🔥': 0, '🌊': 0, '💎': 0, '👑': 0, '⚡': 0 };
-      return { ...prev, [post.id]: { ...counts, [emoji]: counts[emoji] + 1 } };
-    });
+    setReactionCounts(prev => { const counts = prev[post.id] || { '🔥': 0, '🌊': 0, '💎': 0, '👑': 0, '⚡': 0 }; return { ...prev, [post.id]: { ...counts, [emoji]: counts[emoji] + 1 } }; });
     recordSignal(post, 'reaction'); if (firestore) recordEngagement(firestore, post.id, 'like', post.authorId, post.createdAt);
     const burst: ReactionBurst = { id: `${Date.now()}-${Math.random()}`, emoji, x: 20 + Math.random() * 60, y: 20 + Math.random() * 60 };
     setReactionBursts(prev => [...prev, burst]); setTimeout(() => setReactionBursts(p => p.filter(b => b.id !== burst.id)), 1200);

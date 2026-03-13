@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit, getDocs, startAfter, type DocumentSnapshot } from 'firebase/firestore';
 import type { SocialPost, SrcPost } from '@/lib/types';
@@ -64,7 +64,7 @@ export default function CampusPulseFeed({
                 setIsEmbedding(false);
             }
 
-            // Retrieval Logic: Paginated Batch
+            // 🏎️ RETRIEVAL LOGIC: Paginated Batch
             let batchQuery = tagToFilter 
                 ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(BATCH_SIZE))
                 : query(pulseRef, orderBy('createdAt', 'desc'), limit(BATCH_SIZE));
@@ -84,6 +84,8 @@ export default function CampusPulseFeed({
             const newPosts = snap.docs.map(d => ({ id: d.id, ...d.data() } as SocialPost));
 
             setPosts(prev => isLoadMore ? [...prev, ...newPosts] : newPosts);
+            
+            // Register new content into the global Vibe Player pool
             addToQueue(newPosts);
 
             // Auto-Start Loop: Set first post as active if none is active on initial load
@@ -91,6 +93,7 @@ export default function CampusPulseFeed({
                 setActivePost(newPosts[0]);
             }
 
+            // Fetch SRC bulletins only on initial load
             if (!isLoadMore) {
                 const srcQuery = query(
                     collection(firestore, 'src_posts'),
@@ -134,17 +137,13 @@ export default function CampusPulseFeed({
         if (!posts || posts.length === 0) return [];
 
         const strategyId = currentStrategy || DEFAULT_STRATEGY;
-        const config = FEED_STRATEGIES[strategyId];
-
-        // 🎰 STAGE 1: CLASSIFY BATCH CANDIDATES
-        // Since we fetch in small batches now, we rank within the batch to preserve diversity
+        
+        // 🎰 STAGE 1: RANK CANDIDATES BY PERSONAL SCORE
         const rankedBatch = posts
             .map(p => ({ ...p, pScore: getPersonalScore(p) }))
             .sort((a, b) => b.pScore - a.pScore);
 
-        const diverseBatch = enforceDiversity(rankedBatch);
-
-        // STAGE 2: MAPPED SRC (Pinned at top of initial load)
+        // STAGE 2: MAPPED SRC (Pinned at top of initial load only)
         const mappedSrc: SocialPost[] = (srcPosts || []).map(p => ({
             id: p.id,
             authorId: p.authorId,
@@ -153,7 +152,6 @@ export default function CampusPulseFeed({
             campusId: p.campusId,
             campusAcronym: p.campusId.toUpperCase(),
             content: p.content,
-            title: p.title,
             mediaType: p.mediaUrls && p.mediaUrls.length > 0 ? 'image' : 'text',
             imageUrl: p.mediaUrls && p.mediaUrls.length > 0 ? p.mediaUrls[0] : null,
             createdAt: p.createdAt?.toDate ? p.createdAt.toDate().toISOString() : new Date().toISOString(),
@@ -163,7 +161,8 @@ export default function CampusPulseFeed({
             isOfficial: true
         }));
 
-        return lastDoc ? diverseBatch : [...mappedSrc, ...diverseBatch];
+        // If we are loading more, don't re-pin the SRC posts
+        return lastDoc && posts.length > BATCH_SIZE ? rankedBatch : [...mappedSrc, ...rankedBatch];
     }, [posts, srcPosts, currentStrategy, getPersonalScore, lastDoc]);
 
     return (
@@ -236,35 +235,20 @@ export default function CampusPulseFeed({
                 </div>
             </div>
 
-            {isLoading && posts.length === 0 ? (
+            <VibeFeed 
+                posts={filteredPosts} 
+                searchQuery={searchQuery} 
+                hasMore={hasMore} 
+                onLoadMore={() => fetchBatch(true)} 
+                isLoadingMore={isLoading && posts.length > 0}
+            />
+
+            {isLoading && posts.length === 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Skeleton className="h-96 rounded-[2.5rem]" />
                     <Skeleton className="h-96 rounded-[2.5rem]" />
                     <Skeleton className="h-96 rounded-[2.5rem]" />
                 </div>
-            ) : filteredPosts.length === 0 ? (
-                <div className="p-20 text-center bg-white dark:bg-card rounded-[3rem] border-2 border-dashed">
-                    <SearchIcon className="mx-auto h-12 w-12 text-slate-200 mb-4" />
-                    <p className="font-black text-slate-400 uppercase tracking-widest">The Signal is Quiet</p>
-                    <p className="text-xs text-slate-300 mt-2">No matching vibes found. Try searching for broader topics.</p>
-                </div>
-            ) : (
-                <>
-                    <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
-                    {hasMore && (
-                        <div className="flex justify-center pt-8">
-                            <Button 
-                                variant="ghost" 
-                                onClick={() => fetchBatch(true)} 
-                                disabled={isLoading}
-                                className="rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-slate-400 hover:text-primary transition-all"
-                            >
-                                {isLoading ? <Loader2 className="animate-spin mr-2" /> : <FastForward className="mr-2" />}
-                                Load More Vibrations
-                            </Button>
-                        </div>
-                    )}
-                </>
             )}
         </div>
     );
