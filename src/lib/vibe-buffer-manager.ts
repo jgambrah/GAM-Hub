@@ -5,14 +5,14 @@
  * Orchestrates TikTok-style prefetching for the Yard.
  * Maintains a pool of pre-loaded video elements to ensure instant playback.
  * 
- * Refinement: Implements strict memory safeguards and eviction policies.
+ * Refinement: Implements Smart Prefetch Cancellation and memory safe-guards.
  */
 
 import type { SocialPost } from "./types";
 
 class VibeBufferManager {
   private buffer = new Map<string, HTMLVideoElement>();
-  private maxBufferSize = 3; // LIAISON PROTOCOL: Max 3 videos ahead to prevent memory bloat
+  private maxBufferSize = 5; // LIAISON PROTOCOL: Window for fast-scrolling lookahead
 
   /**
    * preload
@@ -28,7 +28,6 @@ class VibeBufferManager {
     if (this.buffer.has(post.id)) return;
 
     // 🏗️ EVICTION PROTOCOL: Prevent memory leaks by capping buffer size
-    // We use a FIFO (First-In-First-Out) strategy for the buffer queue.
     if (this.buffer.size >= this.maxBufferSize) {
       const oldestId = this.buffer.keys().next().value;
       if (oldestId) {
@@ -37,7 +36,6 @@ class VibeBufferManager {
     }
 
     // 📡 PREFETCH HANDSHAKE
-    // Creating a detached video element triggers the browser's lookahead prefetch.
     try {
       const video = document.createElement("video");
       video.style.display = "none";
@@ -56,9 +54,24 @@ class VibeBufferManager {
   }
 
   /**
+   * maintain
+   * --------
+   * SMART CANCELLATION: Evicts and cancels downloads for any video not in the active window.
+   * Call this when the user's position in the feed changes.
+   */
+  public maintain(activeIds: string[]) {
+    const currentBufferedIds = Array.from(this.buffer.keys());
+    currentBufferedIds.forEach(id => {
+      if (!activeIds.includes(id)) {
+        this.cleanup(id);
+      }
+    });
+  }
+
+  /**
    * cleanup
    * -------
-   * Forces the browser to release resources for a specific video ID.
+   * Forces the browser to release resources and ABORT pending downloads.
    */
   private cleanup(id: string) {
     const el = this.buffer.get(id);
@@ -70,14 +83,14 @@ class VibeBufferManager {
       el.load(); 
       el.remove();
       this.buffer.delete(id);
-      console.log(`🧹 Liaison Buffer: Evicted vibe ${id.slice(-6)} to free memory.`);
+      console.log(`🧹 Liaison Buffer: Cancelled/Evicted vibe ${id.slice(-6)} to save bandwidth.`);
     }
   }
 
   /**
    * clear
    * -----
-   * Full cache wipe for session resets or identity switches.
+   * Full cache wipe for session resets.
    */
   public clear() {
     const ids = Array.from(this.buffer.keys());

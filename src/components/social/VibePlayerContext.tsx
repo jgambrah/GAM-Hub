@@ -12,6 +12,7 @@
  * 7. Multi-Armed Bandit (Strategy Learning)
  * 8. AI Re-Ranking (LLM Refinement)
  * 9. TIKTOK-STYLE PREFETCHING (Lookahead Buffering)
+ * 10. SMART CANCELLATION (Fast-Scroll Optimization)
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -367,21 +368,27 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     }
   }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
 
-  // 📡 PREFETCH ENGINE: Lookahead buffering for instant playback
-  // This effect reacts to changes in the smart queue (upNext) or active post.
+  // 📡 PREFETCH & SMART CANCELLATION ENGINE: Lookahead buffering for instant playback
   useEffect(() => {
-    if (!activePostId || upNext.length === 0) return;
+    if (!activePostId || upNext.length === 0 || !activePost) return;
 
     const prefetchTimer = setTimeout(() => {
-      // 🚀 TIKTOK-STYLE LOOKAHEAD: Prefetch the next 3 vibrations in the smart queue.
-      // This caches the manifests and initial fragments before the user scrolls.
-      upNext.slice(0, 3).forEach(entry => {
-        vibeBufferManager.preload(entry.post);
-      });
-    }, 800); // 800ms debounce ensures we don't spam prefetch on fast flick-scrolling
+      const nextThreePosts = upNext.slice(0, 3).map(entry => entry.post);
+      
+      // 🚀 SMART CANCELLATION: Maintain only the current and next 3 vibrations.
+      // Aborts background downloads for any vibes that were previously buffered but are no longer relevant.
+      vibeBufferManager.maintain([activePost.id, ...nextThreePosts.map(p => p.id)]);
 
-    return () => clearTimeout(prefetchTimer);
-  }, [activePostId, upNext]);
+      // Prefetch the new survivors
+      nextThreePosts.forEach(post => {
+        vibeBufferManager.preload(post);
+      });
+    }, 800); // 800ms debounce prevents prefetch spamming during fast flick-scrolling
+
+    return () => {
+      clearTimeout(prefetchTimer);
+    };
+  }, [activePostId, upNext, activePost]);
 
   const recordPlay = useCallback((p: SocialPost) => {
     recordSignal(p, 'watch');
