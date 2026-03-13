@@ -113,13 +113,18 @@ exports.compressVideo = onObjectFinalized({
 
 /**
  * ⛅ HYBRID STORAGE LIFECYCLE (Tier 2 & 3)
- * Runs daily to migrate cold videos to Nearline or delete zombies.
+ * Runs daily to migrate cold videos to Nearline/Coldline or delete zombies.
  */
 exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   const db = admin.firestore();
   const bucket = admin.storage().bucket();
+  const now = new Date();
+  
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   console.log("🧹 Starting Hybrid Storage Lifecycle sweep...");
 
@@ -140,20 +145,46 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
       await doc.ref.delete();
     }
 
-    // B. TIER MIGRATION (Rule: Old + Low Engagement -> Warm Storage)
+    // B. TIER 3: COLD MIGRATION (Rule: Very Old + Low Engagement -> Cold Storage)
     const coldSnap = await db.collection("campus_pulse")
+      .where("mediaType", "==", "video")
+      .where("likes", "<", 50)
+      .where("createdAt", "<", ninetyDaysAgo.toISOString())
+      .get();
+
+    for (const doc of coldSnap.docs) {
+      const data = doc.data();
+      if (data.storageTier === 'cold') continue; // Already cold
+
+      if (data.mediaUrl && data.mediaUrl.includes(bucket.name)) {
+        const oldPath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
+        const newPath = oldPath.replace("videos/hot/", "videos/cold/").replace("videos/warm/", "videos/cold/");
+        
+        if (oldPath !== newPath) {
+            await bucket.file(oldPath).move(newPath);
+            await bucket.file(newPath).setStorageClass("COLDLINE");
+
+            const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
+            await doc.ref.update({ mediaUrl: newUrl, storageTier: 'cold' });
+        }
+      }
+    }
+
+    // C. TIER 2: WARM MIGRATION (Rule: Old + Low Engagement -> Warm Storage)
+    const warmSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
       .where("likes", "<", 10)
       .where("createdAt", "<", thirtyDaysAgo.toISOString())
       .get();
 
-    for (const doc of coldSnap.docs) {
+    for (const doc of warmSnap.docs) {
       const data = doc.data();
+      if (data.storageTier === 'warm' || data.storageTier === 'cold') continue;
+
       if (data.mediaUrl && data.mediaUrl.includes("videos/hot/")) {
         const oldPath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
         const newPath = oldPath.replace("videos/hot/", "videos/warm/");
         
-        // Move to Warm Storage (Nearline Class)
         await bucket.file(oldPath).move(newPath);
         await bucket.file(newPath).setStorageClass("NEARLINE");
 
@@ -162,7 +193,7 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
       }
     }
 
-    console.log(`✅ Lifecycle complete. Pruned ${zombieSnap.size}, Migrated ${coldSnap.size}.`);
+    console.log(`✅ Lifecycle complete. Pruned ${zombieSnap.size}, Coldified ${coldSnap.size}, Warmed ${warmSnap.size}.`);
   } catch (err) {
     console.error("❌ Lifecycle Error:", err);
   }
