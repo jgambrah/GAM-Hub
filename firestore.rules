@@ -3,10 +3,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // -------------------------------------------------------------------------
-    // 1. MASTER HELPERS (The Fortress Gate)
-    // -------------------------------------------------------------------------
-
     function isSignedIn() { return request.auth != null; }
 
     function isAdmin() {
@@ -19,58 +15,9 @@ service cloud.firestore {
       );
     }
 
-    function getUserDocData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function getCampus() {
-      return request.auth.token.campusId != null ? request.auth.token.campusId : getUserDocData().campusId;
-    }
-
-    function getRole() {
-      return request.auth.token.role != null ? request.auth.token.role : getUserDocData().role;
-    }
-
-    // -------------------------------------------------------------------------
-    // 2. CORE IDENTITY & CAMPUSES
-    // -------------------------------------------------------------------------
-
     match /users/{userId} {
       allow read: if isSignedIn();
       allow write: if isAdmin() || request.auth.uid == userId;
-      
-      match /ai_assistant/{msgId} { allow read, write: if request.auth.uid == userId; }
-      match /bandit_stats/current { allow read, write: if request.auth.uid == userId || isAdmin(); }
-    }
-
-    match /campuses/{campusId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    // -------------------------------------------------------------------------
-    // 3. THE CAMPUS PULSE (FLAT ARCHITECTURE)
-    // -------------------------------------------------------------------------
-    
-    match /campus_pulse/{postId} {
-      allow read, list, get: if isSignedIn();
-
-      allow create: if isAdmin() || (
-        request.auth.token.email_verified == true &&
-        request.resource.data.campusId == getCampus() &&
-        request.resource.data.content != null
-      );
-
-      allow update: if isAdmin() || 
-                    request.auth.uid == resource.data.authorId ||
-                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore']));
-      
-      allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
-                            
-      match /comments/{id} { allow read, list: if isSignedIn(); allow create: if isSignedIn(); }
-      match /likedBy/{id} { allow read: if isSignedIn(); allow write: if isSignedIn(); }
-      match /burnedBy/{id} { allow read: if isSignedIn(); allow write: if isSignedIn(); }
-      match /comebacks/{id} { allow read, list: if isSignedIn(); allow create: if isSignedIn(); }
     }
 
     match /video_hashes/{hash} {
@@ -78,100 +25,29 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
-    // -------------------------------------------------------------------------
-    // 4. MARKETPLACE & COMMERCE
-    // -------------------------------------------------------------------------
+    match /campus_pulse/{postId} {
+      allow read, list, get: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.authorId ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore'])
+      );
+      allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
+    }
 
     match /products/{productId} {
       allow read, list: if isSignedIn();
-      allow create: if isAdmin() || getRole() == 'vendor';
-      allow update: if isAdmin() || 
-                    resource.data.vendorId == request.auth.uid ||
-                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'salesCount', 'favoriteCount', 'shareCount', 'trendScore', 'clicks', 'conversions']));
-      allow delete: if isAdmin() || resource.data.vendorId == request.auth.uid;
+      allow write: if isAdmin() || (isSignedIn() && request.auth.token.role == 'vendor');
     }
 
     match /orders/{orderId} {
       allow read: if isSignedIn() && (isAdmin() || resource.data.buyerId == request.auth.uid || resource.data.vendorId == request.auth.uid);
-      allow list: if isSignedIn() && (isAdmin() || request.query.limit <= 100);
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (isAdmin() || resource.data.buyerId == request.auth.uid || resource.data.vendorId == request.auth.uid);
     }
 
-    match /market_requests/{requestId} {
-      allow read, list: if isSignedIn() && (
-        isAdmin() || 
-        resource.data.userId == request.auth.uid ||
-        (getRole() == 'vendor' && getCampus() == resource.data.campusId)
-      );
-      allow create: if isSignedIn() && (
-        isAdmin() || 
-        (request.resource.data.userId == request.auth.uid && request.resource.data.campusId == getCampus())
-      );
-      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-    }
-
-    match /demand_signals/{signalId} {
-      allow read, list: if isSignedIn() && (isAdmin() || (getRole() == 'vendor' && getCampus() == resource.data.campusId));
-      allow write: if isAdmin();
-    }
-
-    match /payout_requests/{requestId} {
-      allow read: if isSignedIn() && (isAdmin() || resource.data.vendorId == request.auth.uid);
-      allow create: if isSignedIn() && getRole() == 'vendor';
-      allow update, delete: if isAdmin();
-    }
-
-    match /reviews/{reviewId} {
-      allow read, list: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if isAdmin();
-    }
-
-    // -------------------------------------------------------------------------
-    // 5. INTELLIGENCE & ANALYTICS
-    // -------------------------------------------------------------------------
-
     match /user_intelligence/{userId} {
       allow read, write: if isAdmin() || request.auth.uid == userId;
-    }
-
-    match /user_market_profiles/{userId} {
-      allow read, write: if isAdmin() || request.auth.uid == userId;
-    }
-
-    match /knowledge_graph/{nodeId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn(); // System builds graph from user actions
-    }
-
-    match /hashtags/{tagId} {
-      allow read, list: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /hashtagGraph/{tagId}/edges/{edgeId} {
-      allow read, list: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /trending_stats/{postId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /post_velocity/{allPaths=**} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /video_product_clicks/{clickId} {
-      allow read: if isAdmin();
-      allow create: if isSignedIn();
-    }
-
-    match /trend_events/{eventId} {
-      allow create: if isSignedIn();
-      allow read: if isAdmin();
     }
 
     match /trend_scores/{docId} {
@@ -179,114 +55,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /bandit_stats/{docId} {
-      allow read: if isSignedIn();
-      allow update: if isSignedIn(); // Users report back their rewards/views
-      allow create, delete: if isAdmin();
-    }
-
-    // -------------------------------------------------------------------------
-    // 6. COMMUNITIES & ACADEMICS
-    // -------------------------------------------------------------------------
-
-    match /groups/{groupId} {
-      allow read, list: if isSignedIn() && (
-        resource.data.campusId == getCampus() || 
-        isAdmin()
-      );
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (
-        request.auth.uid in resource.data.admins || 
-        isAdmin() ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) && isSignedIn())
-      );
-      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid in resource.data.admins);
-
-      match /messages/{msgId} { 
-        allow read, write: if isSignedIn() && (
-          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members || 
-          isAdmin()
-        );
-      }
-    }
-
-    match /group_requests/{reqId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if isSignedIn();
-    }
-
-    match /study_rooms/{roomId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      
-      match /ai_assistance/{msgId} { allow read, write: if isSignedIn(); }
-    }
-
-    // -------------------------------------------------------------------------
-    // 7. PRIVATE MESSAGING
-    // -------------------------------------------------------------------------
-
-    match /chats/{chatId} {
-      allow read, list: if isSignedIn() && (request.auth.uid in resource.data.users || isAdmin());
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (request.auth.uid in resource.data.users || isAdmin());
-
-      match /messages/{msgId} {
-        allow read, write: if isSignedIn() && (
-          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.users || 
-          isAdmin()
-        );
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // 8. OFFICIAL CHANNELS & ADS
-    // -------------------------------------------------------------------------
-
-    match /registry_posts/{postId} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin() || getRole() == 'management';
-    }
-
-    match /src_posts/{postId} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin() || getRole() == 'src';
-    }
-
-    match /ad_campaigns/{adId} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin();
-      
-      match /impressions/{id} { allow create: if isSignedIn(); }
-      match /clicks/{id} { allow create: if isSignedIn(); }
-    }
-
-    match /manifestos/{docId} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin() || (isSignedIn() && request.auth.token.isCandidate == true);
-      
-      match /endorsements/{id} { allow read: if isSignedIn(); allow write: if isSignedIn(); }
-    }
-
-    match /candidate_applications/{appId} {
-      allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn();
-      allow update: if isAdmin();
-    }
-
-    match /live_broadcasts/{campusId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin() || (isSignedIn() && (getRole() == 'src' || getRole() == 'management'));
-    }
-
-    match /platform_stats/{allPaths=**} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    // Global Catch-all
     match /{document=**} {
       allow read, write: if isAdmin();
     }

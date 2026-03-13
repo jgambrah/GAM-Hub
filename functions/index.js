@@ -18,8 +18,8 @@ if (!admin.apps.length) {
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🎥 STARTUP-SAFE VIDEO COMPRESSION & THUMBNAIL ENGINE (Tier 1)
- * Upgraded with Deduplication Sync.
+ * 🎥 STARTUP-SAFE VIDEO COMPRESSION & THUMBNAIL ENGINE
+ * Processes raw uploads into optimized 720p vibrations and generates 20KB previews.
  */
 exports.compressVideo = onObjectFinalized({
   cpu: 2,
@@ -33,10 +33,11 @@ exports.compressVideo = onObjectFinalized({
 
   if (!contentType || !contentType.startsWith("video/")) return null;
   
-  // Support hot storage path or product videos path
+  // Logic: Support both Pulse vibrations and Marketplace demos
   const isEligiblePath = filePath.startsWith("videos/hot/") || filePath.startsWith("product_videos/");
   if (!isEligiblePath) return null;
   
+  // Guard: Prevent infinite loops
   if (object.metadata && object.metadata.processed === "true") return null;
 
   const fileName = path.basename(filePath);
@@ -48,6 +49,7 @@ exports.compressVideo = onObjectFinalized({
   try {
     await bucket.file(filePath).download({destination: tempFilePath});
 
+    // 1. COMPRESSION: Standardize to 720p H.264
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .size("720x?") 
@@ -59,6 +61,7 @@ exports.compressVideo = onObjectFinalized({
         .save(targetFilePath);
     });
 
+    // 2. THUMBNAIL: Capture frame at 1s for instant feed loading
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .screenshots({
@@ -73,6 +76,7 @@ exports.compressVideo = onObjectFinalized({
 
     const thumbStoragePath = `videos/thumbs/${thumbFileName}`;
     
+    // 3. PERSISTENCE: Upload back to storage
     await Promise.all([
       bucket.upload(targetFilePath, {
         destination: filePath,
@@ -93,23 +97,28 @@ exports.compressVideo = onObjectFinalized({
 
     const db = admin.firestore();
     const publicBase = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/`;
-    const originalUrlMatch = `${publicBase}${encodeURIComponent(filePath)}?alt=media`;
+    const finalMediaUrl = `${publicBase}${encodeURIComponent(filePath)}?alt=media`;
     const thumbUrl = `${publicBase}${encodeURIComponent(thumbStoragePath)}?alt=media`;
 
     const batch = db.batch();
     
-    // 1. Update all Pulse posts referencing this file
-    const pulseSnap = await db.collection("campus_pulse").where("mediaUrl", "==", originalUrlMatch).get();
+    // 4. HANDSHAKE: Update all Pulse posts referencing this file
+    const pulseSnap = await db.collection("campus_pulse").where("videoHash", "==", object.metadata?.hash || "").get();
     pulseSnap.forEach(doc => {
-      batch.update(doc.ref, { imageUrl: thumbUrl, storageTier: 'hot', storagePath: filePath });
+      batch.update(doc.ref, { 
+        mediaUrl: finalMediaUrl,
+        imageUrl: thumbUrl, 
+        storageTier: 'hot', 
+        storagePath: filePath 
+      });
     });
 
-    // 2. Update Deduplication Registry 🧬
+    // 5. DEDUPLICATION: Update central registry
     const fileHash = object.metadata?.hash;
     if (fileHash) {
       const hashRef = db.collection("video_hashes").doc(fileHash);
       batch.set(hashRef, {
-        mediaUrl: originalUrlMatch,
+        mediaUrl: finalMediaUrl,
         imageUrl: thumbUrl,
         storagePath: filePath,
         storageTier: 'hot',
@@ -120,6 +129,7 @@ exports.compressVideo = onObjectFinalized({
 
     await batch.commit();
 
+    // Cleanup local temp
     [tempFilePath, targetFilePath, thumbTempPath].forEach(p => {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     });
@@ -133,15 +143,14 @@ exports.compressVideo = onObjectFinalized({
 
 /**
  * 🛡️ DEDUPLICATION-SAFE DELETION TRIGGER
- * Ensures shared video files are only deleted when NO more posts reference them.
+ * Ensures physical files are only purged when NO more posts reference them.
  */
 exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event) => {
   const post = event.data.data();
-  const db = admin.firestore();
-  const bucket = admin.storage().bucket();
-
   if (!post || post.mediaType !== 'video' || !post.videoHash) return null;
 
+  const db = admin.firestore();
+  const bucket = admin.storage().bucket();
   const hashRef = db.collection("video_hashes").doc(post.videoHash);
   
   return db.runTransaction(async (transaction) => {
@@ -152,14 +161,12 @@ exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event
     const newUploads = (data.uploads || 1) - 1;
 
     if (newUploads > 0) {
-      // Still other posts using this file. Just decrement count.
       transaction.update(hashRef, { uploads: newUploads });
-      console.log(`Deduplication Safety: File ${post.videoHash} preserved. ${newUploads} references remain.`);
+      console.log(`Deduplication Safety: Reference preserved. ${newUploads} remaining.`);
     } else {
-      // LAST POST DELETED: Safe to purge the physical file 🧹
+      // LAST POST: Purge physical file 🧹
       if (data.storagePath) {
         await bucket.file(data.storagePath).delete().catch(() => null);
-        // Also delete thumbnail if exists
         const thumbPath = data.storagePath.replace('videos/hot/', 'videos/thumbs/').replace('.mp4', '.jpg');
         await bucket.file(thumbPath).delete().catch(() => null);
       }
@@ -171,6 +178,7 @@ exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event
 
 /**
  * ⛅ HYBRID STORAGE LIFECYCLE (Tier 2 & 3)
+ * Automatically migrates old/inactive vibrations to cheaper storage classes.
  */
 exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   const db = admin.firestore();
@@ -181,19 +189,7 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   try {
-    // 1. ZOMBIE CLEANUP: Identify posts to delete. 
-    // The onPulseDeleted trigger will handle the physical file safety.
-    const zombieSnap = await db.collection("campus_pulse")
-      .where("mediaType", "==", "video")
-      .where("likes", "==", 0)
-      .where("createdAt", "<", thirtyDaysAgo.toISOString())
-      .get();
-
-    for (const doc of zombieSnap.docs) {
-      await doc.ref.delete();
-    }
-
-    // 2. TIER 3: COLD STORAGE MIGRATION
+    // 1. COLD STORAGE MIGRATION (Tier 3: 90% cheaper)
     const coldSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
       .where("likes", "<", 50)
@@ -202,20 +198,20 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
 
     for (const doc of coldSnap.docs) {
       const data = doc.data();
-      if (data.storageTier === 'cold') continue;
-      if (data.mediaUrl && data.mediaUrl.includes(bucket.name)) {
-        const oldPath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
-        const newPath = oldPath.replace("videos/hot/", "videos/cold/").replace("videos/warm/", "videos/cold/");
-        if (oldPath !== newPath) {
-            await bucket.file(oldPath).move(newPath);
-            await bucket.file(newPath).setStorageClass("COLDLINE");
-            const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
-            await doc.ref.update({ mediaUrl: newUrl, storageTier: 'cold', storagePath: newPath });
-        }
+      if (data.storageTier === 'cold' || !data.storagePath) continue;
+      
+      const oldPath = data.storagePath;
+      const newPath = oldPath.replace("videos/hot/", "videos/cold/").replace("videos/warm/", "videos/cold/");
+      
+      if (oldPath !== newPath) {
+          await bucket.file(oldPath).move(newPath);
+          await bucket.file(newPath).setStorageClass("COLDLINE");
+          const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
+          await doc.ref.update({ mediaUrl: newUrl, storageTier: 'cold', storagePath: newPath });
       }
     }
 
-    // 3. TIER 2: WARM STORAGE MIGRATION
+    // 2. WARM STORAGE MIGRATION (Tier 2: 50% cheaper)
     const warmSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
       .where("likes", "<", 10)
@@ -224,34 +220,19 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
 
     for (const doc of warmSnap.docs) {
       const data = doc.data();
-      if (data.storageTier === 'warm' || data.storageTier === 'cold') continue;
-      if (data.mediaUrl && data.mediaUrl.includes("videos/hot/")) {
-        const oldPath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
+      if (data.storageTier === 'warm' || data.storageTier === 'cold' || !data.storagePath) continue;
+      
+      if (data.storagePath.includes("videos/hot/")) {
+        const oldPath = data.storagePath;
         const newPath = oldPath.replace("videos/hot/", "videos/warm/");
-        if (oldPath !== newPath) {
-            await bucket.file(oldPath).move(newPath);
-            await bucket.file(newPath).setStorageClass("NEARLINE");
-            const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
-            await doc.ref.update({ mediaUrl: newUrl, storageTier: 'warm', storagePath: newPath });
-        }
+        
+        await bucket.file(oldPath).move(newPath);
+        await bucket.file(newPath).setStorageClass("NEARLINE");
+        const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
+        await doc.ref.update({ mediaUrl: newUrl, storageTier: 'warm', storagePath: newPath });
       }
     }
   } catch (err) {
     console.error("❌ Lifecycle Error:", err);
   }
-});
-
-exports.aggregateGlobalTrends = onSchedule("every 5 minutes", async (event) => {
-  const db = admin.firestore();
-  const since = admin.firestore.Timestamp.fromMillis(Date.now() - (60 * 60 * 1000));
-  try {
-    const snapshot = await db.collection("trend_events").where("timestamp", ">", since).get();
-    const scores = { _updatedAt: admin.firestore.FieldValue.serverTimestamp() };
-    snapshot.forEach(doc => {
-      const e = doc.data();
-      if (e.entityId) scores[e.entityId] = (scores[e.entityId] || 0) + 1;
-      if (e.tag) { const t = e.tag.toLowerCase(); scores[t] = (scores[t] || 0) + 1; }
-    });
-    await db.collection("trend_scores").doc("current").set(scores);
-  } catch (err) { console.error(err); }
 });

@@ -1,8 +1,9 @@
+
 'use client';
 
 /**
  * @fileOverview Video Infrastructure Utility.
- * Implements startup-safe validation and deduplication logic.
+ * Implements startup-safe validation and cryptographic deduplication logic.
  * 
  * Rules:
  * 1. Max Size: 50MB
@@ -33,7 +34,7 @@ export async function generateFileHash(file: File): Promise<string> {
 /**
  * validateVideo
  * -------------
- * Deep audit of a video file before allowing upload.
+ * Deep audit of a video file before allowing upload to protect storage costs.
  */
 export async function validateVideo(file: File) {
   const maxSize = VIDEO_CONFIG.MAX_SIZE_MB * 1024 * 1024;

@@ -22,30 +22,14 @@ export type User = {
   momoName?: string;
   momoBankCode?: 'MTN' | 'VOD' | 'ATL';
   payoutAccountSetup?: boolean;
-  balance_pending?: number;
   balance_available?: number;
-  balance_withdrawing?: number;
-  total_earned?: number;
   lead_credits?: number; 
   trial_leads_count?: number; 
   rating?: number;
   reviewCount?: number;
-  qualityScore?: number; 
-  creatorTier?: 'elite' | 'trusted' | 'rising' | 'new'; 
-  violationScore?: number; 
-  candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
-  candidatePosition?: string;
-  isAuthority?: boolean;
-  installedAt?: any;
-  installedBy?: any;
-  authorityRole?: 'management' | 'src';
   campusAcronym?: string;
   idVerificationStatus?: 'unverified' | 'pending' | 'approved';
   ghanaCardUrl?: string;
-  idSubmittedAt?: any;
-  isFullyVerified?: boolean;
-  verifiedAt?: any;
-  verifiedBy?: string;
   businessName?: string;
 };
 
@@ -56,91 +40,21 @@ export type UserIntelligence = {
     creators: Record<string, number>;
     vendors: Record<string, number>;
   };
-  pricePreference: {
-    min: number;
-    max: number;
-  };
+  pricePreference: { min: number; max: number; };
   engagementLevel: number;
-  vibeEmbedding?: number[];
   updatedAt: string;
-  // Multi-Armed Bandit Fields
   currentStrategy?: 'A' | 'B' | 'C' | 'D';
-  strategyStats?: Record<string, {
-    totalEngagementScore: number;
-    sessionsCount: number;
-    lastActive: string;
-  }>;
 };
 
-export type KnowledgeGraphNode = {
-  id: string;
-  type: 'tag' | 'category' | 'creator' | 'vendor' | 'location' | 'product';
-  name: string;
-  connections: Record<string, { weight: number; lastUpdated: any }>;
-  updatedAt: any;
-};
-
-export type NotificationSettings = {
-  userId: string;
-  priceDrops: boolean;
-  trendingProducts: boolean;
-  vendorUpdates: boolean;
-  recommendations: boolean;
-  lastSentAt?: string;
-  dailyCount?: number;
-  quietHours: {
-    start: number;
-    end: number;
-  };
-};
-
-export type MarketIntent = {
-  category?: string;
-  tags?: string[];
-  priceMin?: number;
-  priceMax?: number;
-  intent?: string;
-};
-
-export type Product = {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  averagePrice?: number; 
+export type VideoHash = {
+  id: string; // The SHA-256 hash
+  mediaUrl: string;
   imageUrl: string;
-  imageHint: string;
-  videoUrl?: string | null; 
-  nativeVideoUrl?: string | null; 
-  stock: number;
-  vendorId: string;
-  vendorName: string;
-  campusId: string;
-  campusAcronym: string;
-  category: string;
-  tags?: string[]; 
-  salesCount?: number; 
-  viewCount?: number; 
-  favoriteCount?: number; 
-  shareCount?: number; 
-  rating?: number; 
-  trendScore?: number; 
-  recentSales?: number; 
-  targetAudience: 'all' | 'student' | 'staff';
-  isSponsored?: boolean;
-  sponsoredMajor?: string; 
-  targetType?: 'major' | 'group' | 'all';
-  targetValue?: string;
-  targetGroupId?: string; 
-  adHeadline?: string; 
-  adSlogan?: string; 
-  clicks?: number;
-  conversions?: number;
-  createdAt?: any;
-  productType: 'physical' | 'service';
-  interestRate?: string;
-  actionLabel?: string;
-  aiReason?: string[]; 
+  storagePath: string;
+  storageTier: 'hot' | 'warm' | 'cold';
+  processed: boolean;
+  uploads: number;
+  updatedAt: string;
 };
 
 export type SocialPost = {
@@ -154,19 +68,49 @@ export type SocialPost = {
   mediaType?: 'youtube' | 'tiktok' | 'image' | 'text' | 'video';
   mediaUrl?: string | null;
   imageUrl?: string | null;
-  imageHint?: string;
+  videoHash?: string | null;
+  storageTier?: 'hot' | 'warm' | 'cold';
+  storagePath?: string | null;
   createdAt: string;
   likes: number;
   commentCount: number;
   tags?: string[];
   aiTags?: string[]; 
-  aiTopics?: string[]; 
-  mood?: string; 
   embedding?: number[]; 
   trendScore?: number; 
-  authorQualityScore?: number; 
   productTags?: string[];
-  commerceClicks?: number; 
+  isArenaEntry?: boolean;
+  isOfficial?: boolean;
+  type?: 'regular' | 'src_official' | 'vetted_announcement' | 'election_winner';
+};
+
+export type Product = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl: string;
+  imageHint: string;
+  videoUrl?: string | null; 
+  nativeVideoUrl?: string | null; 
+  videoHash?: string | null;
+  stock: number;
+  vendorId: string;
+  vendorName: string;
+  campusId: string;
+  campusAcronym: string;
+  category: string;
+  tags?: string[]; 
+  salesCount?: number; 
+  viewCount?: number; 
+  targetAudience: 'all' | 'student' | 'staff';
+  isSponsored?: boolean;
+  targetType?: 'major' | 'group' | 'all';
+  targetValue?: string;
+  createdAt?: any;
+  productType: 'physical' | 'service';
+  interestRate?: string;
+  actionLabel?: string;
 };
 
 export type Order = {
@@ -192,8 +136,6 @@ export type Order = {
     longitude?: number;
   };
   createdAt: string;
-  affiliateCreatorId?: string; 
-  commissionRate?: number; 
 };
 
 export type Campus = {
@@ -210,6 +152,7 @@ export type Campus = {
   longitude?: number;
   radioName?: string;
   radioStreamUrl?: string;
+  radioWebsite?: string;
 };
 
 export type NavItem = {
@@ -228,7 +171,32 @@ export type Connection = {
     status: 'pending' | 'accepted' | 'rejected';
     createdAt: string;
     isInterCampus?: boolean;
-}
+};
+
+export type ArenaPost = SocialPost & {
+    vibeType: 'shade' | 'celebration';
+    authorCampus: string;
+    authorColor: string;
+    stats: { likes: number; burns: number; };
+    targetCampus?: string;
+    comebackCount?: number;
+    moderationNote?: string;
+    status?: 'active' | 'blocked';
+};
+
+export type ArenaComeback = {
+    id: string;
+    text: string;
+    authorId: string;
+    authorName: string;
+    authorCampus: string;
+    authorColor: string;
+    isCounter: boolean;
+    isBot?: boolean;
+    mediaUrl?: string;
+    mediaType?: 'image' | 'video' | 'youtube' | 'tiktok';
+    createdAt: any;
+};
 
 export type PayoutRequest = {
   id: string;
@@ -239,10 +207,7 @@ export type PayoutRequest = {
   momoBankCode: string;
   status: 'pending' | 'paid' | 'rejected';
   createdAt: any;
-}
-
-export type MarketplaceSignal = 'view' | 'click' | 'purchase' | 'favorite' | 'intent';
-export type VibeSignal = 'watch' | 'like' | 'share' | 'comment' | 'skip' | 'reaction';
+};
 
 export type DemandSignal = {
   id: string;
@@ -265,4 +230,108 @@ export type MarketRequest = {
   location: string;
   createdAt: any;
   status: 'open' | 'closed';
+};
+
+export type SpotlightItem = {
+  id: string;
+  title: string;
+  type: 'vendor' | 'student' | 'vlog' | 'event' | 'announcement';
+  itemId?: string;
+  data?: any;
+  score?: number;
+  isOfficial?: boolean;
+  campusId: string;
+  authorCampus?: string;
+  vibeColor?: string;
+  image?: string;
+  imageHint?: string;
+  content?: string;
+  category?: string;
+  updatedAt: string;
+};
+
+export type RegistryPost = {
+  id: string;
+  title: string;
+  content: string;
+  isUrgent: boolean;
+  targetAudience: 'all' | 'staff' | 'student';
+  attachments?: string[];
+  campusId: string;
+  authorId: string;
+  createdAt: string;
+};
+
+export type LiveBroadcast = {
+  id: string;
+  status: 'live' | 'off-air';
+  videoUrl: string;
+  hostName: string;
+  hostId: string;
+  title: string;
+  viewerCount: number;
+  currentTime: number;
+  updatedAt: any;
+};
+
+export type HallOfFameEntry = {
+  id: string;
+  campusId: string;
+  totalBurns: number;
+  weekEnding: any;
+};
+
+export type MarketplaceSignal = 'view' | 'click' | 'purchase' | 'favorite' | 'intent';
+export type VibeSignal = 'watch' | 'like' | 'share' | 'comment' | 'skip' | 'reaction';
+
+export type PickupPoint = {
+  id: string;
+  name: string;
+  description: string;
+  campusId: string;
+  latitude: number;
+  longitude: number;
+  isOfficial: boolean;
+  status: 'active' | 'inactive';
+  createdAt: string;
+};
+
+export type MarketProfile = {
+    favoriteProducts: string[];
+    followedVendors: string[];
+};
+
+export type LeadPrice = {
+  id: string;
+  category: string;
+  price: number;
+  updatedAt: string;
+};
+
+export type VibeReaction = '🔥' | '🌊' | '💎' | '👑' | '⚡';
+
+export type Chat = {
+  id: string;
+  users: string[];
+  lastMessage: string;
+  updatedAt: string;
+  userAInfo?: { id: string; name: string; avatarUrl: string };
+  userBInfo?: { id: string; name: string; avatarUrl: string };
+  type?: 'private' | 'support';
+};
+
+export type Message = {
+  id: string;
+  text?: string;
+  mediaUrl?: string;
+  senderId: string;
+  senderName: string;
+  type: 'text' | 'image' | 'file';
+  createdAt: string;
+  isForwarded?: boolean;
+  replyTo?: {
+    messageId: string;
+    text: string;
+    senderName: string;
+  } | null;
 };
