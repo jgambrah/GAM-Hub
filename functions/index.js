@@ -1,11 +1,96 @@
 
 const {onDocumentUpdated, onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {onObjectFinalized} = require("firebase-functions/v2/storage");
 const {setGlobalOptions} = require("firebase-functions");
 const admin = require("firebase-admin");
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
+const path = require("path");
+const os = require("os");
+const fs = require("fs");
+
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
+
+/**
+ * 🎥 STARTUP-SAFE VIDEO COMPRESSION ENGINE
+ * Automatically compresses uploaded videos to reduce storage/bandwidth costs by ~90%.
+ * Target: 720p, 800k bitrate, H.264.
+ */
+exports.compressVideo = onObjectFinalized({
+  cpu: 2,
+  memory: "2GiB",
+  timeoutSeconds: 300,
+}, async (event) => {
+  const object = event.data;
+  const bucket = admin.storage().bucket(object.bucket);
+  const filePath = object.name;
+  const contentType = object.contentType;
+
+  // 1. Exit if not a video or already processed
+  if (!contentType || !contentType.startsWith("video/")) return null;
+  if (object.metadata && object.metadata.processed === "true") {
+    console.log(`Video ${filePath} already processed. Skipping.`);
+    return null;
+  }
+
+  const fileName = path.basename(filePath);
+  const tempFilePath = path.join(os.tmpdir(), fileName);
+  const targetFilePath = path.join(os.tmpdir(), `compressed-${fileName}`);
+
+  try {
+    // 2. Download original to temp disk
+    console.log(`Downloading original video: ${filePath}`);
+    await bucket.file(filePath).download({destination: tempFilePath});
+
+    // 3. Execute FFmpeg Compression
+    console.log(`Compressing video: ${fileName}`);
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempFilePath)
+        .size("720x?") // Resize to 720p (width auto-calculated)
+        .videoBitrate("800k") // Targeted bitrate for mobile delivery
+        .videoCodec("libx264")
+        .format("mp4")
+        .on("start", (cmd) => console.log("Spawned FFmpeg with command: " + cmd))
+        .on("end", resolve)
+        .on("error", (err) => {
+          console.error("FFmpeg Error:", err);
+          reject(err);
+        })
+        .save(targetFilePath);
+    });
+
+    // 4. Upload back to same path with 'processed' metadata
+    console.log(`Uploading compressed video back to: ${filePath}`);
+    await bucket.upload(targetFilePath, {
+      destination: filePath,
+      metadata: {
+        contentType: "video/mp4",
+        metadata: {
+          processed: "true",
+          originalName: fileName,
+          compressedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    // 5. Cleanup temp files
+    fs.unlinkSync(tempFilePath);
+    fs.unlinkSync(targetFilePath);
+    console.log(`Compression success for ${filePath}`);
+
+  } catch (err) {
+    console.error(`Compression failed for ${filePath}:`, err);
+    // Cleanup if files exist
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+    if (fs.existsSync(targetFilePath)) fs.unlinkSync(targetFilePath);
+  }
+
+  return null;
+});
 
 /**
  * 🛰️ LIAISON NOTIFICATION SERVICE: Throttling & Delivery with Analytics
