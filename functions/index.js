@@ -141,6 +141,44 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
 });
 
 /**
+ * 🚀 REAL-TIME TREND AGGREGATOR
+ * Runs every 5 minutes to detect viral entities and topics from the last hour.
+ */
+exports.aggregateGlobalTrends = onSchedule("every 5 minutes", async (event) => {
+  const db = admin.firestore();
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  const since = admin.firestore.Timestamp.fromMillis(oneHourAgo);
+
+  try {
+    const snapshot = await db.collection("trend_events")
+      .where("timestamp", ">", since)
+      .get();
+
+    const scores = {
+      entities: {},
+      tags: {},
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    snapshot.forEach(doc => {
+      const e = doc.data();
+      if (e.entityId) {
+        scores.entities[e.entityId] = (scores.entities[e.entityId] || 0) + 1;
+      }
+      if (e.tag) {
+        const normalizedTag = e.tag.toLowerCase();
+        scores.tags[normalizedTag] = (scores.tags[normalizedTag] || 0) + 1;
+      }
+    });
+
+    await db.collection("trend_scores").doc("current").set(scores);
+    console.log(`✅ Trend Aggregation Complete: Processed ${snapshot.size} events.`);
+  } catch (err) {
+    console.error("❌ Trend Aggregation Error:", err);
+  }
+});
+
+/**
  * 🔔 SMART NOTIFICATION ENGINE: Vendor New Post Alert & Request Matching
  */
 exports.onProductCreatedNotify = onDocumentCreated("products/{productId}", async (event) => {

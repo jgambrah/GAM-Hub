@@ -169,6 +169,11 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
+    match /trend_scores/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     // -------------------------------------------------------------------------
     // 6. COMMUNITIES & ACADEMICS
     // -------------------------------------------------------------------------

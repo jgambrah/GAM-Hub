@@ -1,6 +1,11 @@
 
 'use client';
 
+/**
+ * @fileOverview Liaison Trend Detection Engine: Data Collection Utility.
+ * Captures raw real-time behavioral signals across the Yard.
+ */
+
 import { collection, serverTimestamp, Firestore } from 'firebase/firestore';
 import { addDocumentNonBlocking } from '@/firebase';
 
@@ -16,12 +21,12 @@ export type TrendEventType =
 /**
  * logTrendEvent
  * -------------
- * Non-blocking logger for raw real-time behavioral signals.
- * These raw events power the high-velocity trend detection engine of the Yard.
+ * Non-blocking logger for raw vibrations.
+ * This powers the Real-Time Aggregator Cloud Function.
  */
 export function logTrendEvent(
   firestore: Firestore,
-  params: {
+  event: {
     type: TrendEventType;
     entityId: string;
     campusId: string;
@@ -33,11 +38,7 @@ export function logTrendEvent(
   
   const colRef = collection(firestore, 'trend_events');
   addDocumentNonBlocking(colRef, {
-    type: params.type,
-    entityId: params.entityId,
-    campusId: params.campusId,
-    tag: params.tag || null,
-    metadata: params.metadata || {},
+    ...event,
     timestamp: serverTimestamp(),
   });
 }

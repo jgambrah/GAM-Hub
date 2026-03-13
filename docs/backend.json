@@ -159,6 +159,16 @@
         "timestamp": { "type": "string", "format": "date-time" },
         "metadata": { "type": "object" }
       }
+    },
+    "TrendScores": {
+      "title": "TrendScores",
+      "type": "object",
+      "description": "Aggregated trending data for the national hub.",
+      "properties": {
+        "entities": { "type": "object" },
+        "tags": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -175,6 +185,7 @@
     "/chats/{chatId}/messages/{msgId}": { "schema": "#/backend/entities/Message", "description": "Individual chat messages." },
     "/groups/{groupId}": { "schema": { "title": "Group", "type": "object" }, "description": "Campus communities." },
     "/groups/{groupId}/messages/{msgId}": { "schema": "#/backend/entities/Message", "description": "Group community messages." },
-    "/trend_events/{eventId}": { "schema": "#/backend/entities/TrendEvent", "description": "Raw real-time behavioral signals." }
+    "/trend_events/{eventId}": { "schema": "#/backend/entities/TrendEvent", "description": "Raw real-time behavioral signals." },
+    "/trend_scores/{docId}": { "schema": "#/backend/entities/TrendScores", "description": "Aggregated trending intelligence." }
   }
 }
