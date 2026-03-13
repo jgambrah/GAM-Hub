@@ -1,3 +1,4 @@
+
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -9,6 +10,8 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
+    // 📡 CDN DELIVERY (Rule 8)
+    // Optimizes bandwidth costs by serving through Google's Global CDN
     remotePatterns: [
       {
         protocol: 'https',

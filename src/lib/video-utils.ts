@@ -1,7 +1,8 @@
+
 'use client';
 
 /**
- * @fileOverview Video Infrastructure Utility.
+ * @fileOverview Video Infrastructure Utility. (Rule 2)
  * Implements startup-safe validation to minimize storage and bandwidth costs.
  * 
  * Rules:
