@@ -106,7 +106,7 @@ service cloud.firestore {
     }
 
     match /demand_signals/{signalId} {
-      allow read, list: if isSignedIn() && (isAdmin() || getRole() == 'vendor');
+      allow read, list: if isSignedIn() && (isAdmin() || (getRole() == 'vendor' && getCampus() == resource.data.campusId));
       allow write: if isAdmin();
     }
 
@@ -162,10 +162,10 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
 
     match /groups/{groupId} {
+      // Allow read/list for metadata discovery to anyone on the same campus
       allow read: if isSignedIn() && (
-        resource.data.isPrivate == false || 
-        request.auth.uid in resource.data.members ||
-        isAdmin()
+        isAdmin() || 
+        resource.data.campusId == getCampus()
       );
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
@@ -175,7 +175,13 @@ service cloud.firestore {
       );
       allow delete: if isAdmin() || (isSignedIn() && request.auth.uid in resource.data.admins);
 
-      match /messages/{msgId} { allow read, write: if isSignedIn(); }
+      match /messages/{msgId} { 
+        // Strictly protect messages to group members only
+        allow read, write: if isSignedIn() && (
+          request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members || 
+          isAdmin()
+        );
+      }
     }
 
     match /group_requests/{reqId} {
