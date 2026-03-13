@@ -18,11 +18,8 @@ if (!admin.apps.length) {
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🎥 STARTUP-SAFE VIDEO COMPRESSION & THUMBNAIL ENGINE
- * Automatically compresses uploaded videos and extracts a 20KB thumbnail.
- * Target: 720p, 800k bitrate, H.264 + 320px JPG Thumbnail.
- * 
- * Liaison Note: This reduces storage costs by up to 90%.
+ * 🎥 STARTUP-SAFE VIDEO COMPRESSION & THUMBNAIL ENGINE (Tier 1)
+ * Automatically processes videos in 'videos/hot/'
  */
 exports.compressVideo = onObjectFinalized({
   cpu: 2,
@@ -34,12 +31,10 @@ exports.compressVideo = onObjectFinalized({
   const filePath = object.name;
   const contentType = object.contentType;
 
-  // 1. Exit if not a video or already processed
+  // 1. Exit if not a video in the 'hot' tier or already processed
   if (!contentType || !contentType.startsWith("video/")) return null;
-  if (object.metadata && object.metadata.processed === "true") {
-    console.log(`Video ${filePath} already processed. Skipping.`);
-    return null;
-  }
+  if (!filePath.startsWith("videos/hot/")) return null;
+  if (object.metadata && object.metadata.processed === "true") return null;
 
   const fileName = path.basename(filePath);
   const tempFilePath = path.join(os.tmpdir(), fileName);
@@ -48,27 +43,21 @@ exports.compressVideo = onObjectFinalized({
   const thumbTempPath = path.join(os.tmpdir(), thumbFileName);
 
   try {
-    // 2. Download original to temp disk
-    console.log(`Downloading original video: ${filePath}`);
     await bucket.file(filePath).download({destination: tempFilePath});
 
-    // 3. Execute FFmpeg Compression & Thumbnail Extraction
-    console.log(`Processing media: ${fileName}`);
-    
-    // Transcode Video to 720p (Rule 6)
+    // Transcode Video to 720p Optimized
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .size("720x?") 
         .videoBitrate("800k") 
         .videoCodec("libx264")
         .format("mp4")
-        .on("start", (cmd) => console.log("Spawned Video Transcoder: " + cmd))
         .on("end", resolve)
         .on("error", reject)
         .save(targetFilePath);
     });
 
-    // Capture Thumbnail (Rule 4)
+    // Capture 20KB Thumbnail
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .screenshots({
@@ -81,13 +70,10 @@ exports.compressVideo = onObjectFinalized({
         .on("error", reject);
     });
 
-    // 4. Upload back to Storage
-    const thumbStoragePath = `thumbnails/${path.dirname(filePath)}/${thumbFileName}`;
-    
-    console.log(`Uploading processed assets for ${filePath}`);
+    const thumbStoragePath = `videos/thumbs/${thumbFileName}`;
     
     await Promise.all([
-      // Replace original with compressed (Rule 3)
+      // Replace original with compressed
       bucket.upload(targetFilePath, {
         destination: filePath,
         metadata: {
@@ -95,15 +81,13 @@ exports.compressVideo = onObjectFinalized({
           metadata: { processed: "true", compressedAt: new Date().toISOString() },
         },
       }),
-      // Upload new thumbnail
+      // Upload to thumbs hub
       bucket.upload(thumbTempPath, {
         destination: thumbStoragePath,
         metadata: { contentType: "image/jpeg" },
       })
     ]);
 
-    // 5. UPDATE FIRESTORE: Link the thumbnail to the Post
-    // This allows feeds to load thumbnails first (Rule 4)
     const db = admin.firestore();
     const publicBase = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/`;
     const originalUrlMatch = `${publicBase}${encodeURIComponent(filePath)}?alt=media`;
@@ -116,13 +100,10 @@ exports.compressVideo = onObjectFinalized({
     });
     await batch.commit();
 
-    // 6. Cleanup temp files
     [tempFilePath, targetFilePath, thumbTempPath].forEach(p => {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     });
     
-    console.log(`Media optimization success for ${filePath}`);
-
   } catch (err) {
     console.error(`Media optimization failed for ${filePath}:`, err);
   }
@@ -131,60 +112,64 @@ exports.compressVideo = onObjectFinalized({
 });
 
 /**
- * 🧹 ZOMBIE VIDEO CLEANUP (Rule 5)
- * Runs every 24 hours to delete videos with < 5 likes after 30 days.
- * Keeps storage costs lean.
+ * ⛅ HYBRID STORAGE LIFECYCLE (Tier 2 & 3)
+ * Runs daily to migrate cold videos to Nearline or delete zombies.
  */
-exports.cleanupLowEngagementVideos = onSchedule("every 24 hours", async (event) => {
+exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   const db = admin.firestore();
+  const bucket = admin.storage().bucket();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  console.log("🧹 Starting Zombie Video Cleanup sweep...");
+  console.log("🧹 Starting Hybrid Storage Lifecycle sweep...");
 
   try {
-    const snapshot = await db.collection("campus_pulse")
+    // A. ZOMBIE CLEANUP (Rule: Old + No Engagement)
+    const zombieSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
-      .where("likes", "<", 5)
+      .where("likes", "==", 0)
       .where("createdAt", "<", thirtyDaysAgo.toISOString())
       .get();
 
-    if (snapshot.empty) {
-      console.log("✅ Yard is clean. No zombie content found.");
-      return null;
-    }
-
-    const bucket = admin.storage().bucket();
-    const deletePromises = [];
-
-    for (const doc of snapshot.docs) {
+    for (const doc of zombieSnap.docs) {
       const data = doc.data();
-      
-      // Delete from Storage if it's a native video
       if (data.mediaUrl && data.mediaUrl.includes(bucket.name)) {
         const filePath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
-        deletePromises.push(bucket.file(filePath).delete().catch(() => null));
-        
-        // Also delete associated thumbnail if exists
-        if (data.imageUrl && data.imageUrl.includes("thumbnails/")) {
-          const thumbPath = decodeURIComponent(data.imageUrl.split("/o/")[1].split("?")[0]);
-          deletePromises.push(bucket.file(thumbPath).delete().catch(() => null));
-        }
+        await bucket.file(filePath).delete().catch(() => null);
       }
-
-      // Delete from Firestore
-      deletePromises.push(doc.ref.delete());
+      await doc.ref.delete();
     }
 
-    await Promise.all(deletePromises);
-    console.log(`🗑️ Successfully pruned ${snapshot.size} low-engagement vibrations.`);
+    // B. TIER MIGRATION (Rule: Old + Low Engagement -> Warm Storage)
+    const coldSnap = await db.collection("campus_pulse")
+      .where("mediaType", "==", "video")
+      .where("likes", "<", 10)
+      .where("createdAt", "<", thirtyDaysAgo.toISOString())
+      .get();
+
+    for (const doc of coldSnap.docs) {
+      const data = doc.data();
+      if (data.mediaUrl && data.mediaUrl.includes("videos/hot/")) {
+        const oldPath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
+        const newPath = oldPath.replace("videos/hot/", "videos/warm/");
+        
+        // Move to Warm Storage (Nearline Class)
+        await bucket.file(oldPath).move(newPath);
+        await bucket.file(newPath).setStorageClass("NEARLINE");
+
+        const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
+        await doc.ref.update({ mediaUrl: newUrl, storageTier: 'warm' });
+      }
+    }
+
+    console.log(`✅ Lifecycle complete. Pruned ${zombieSnap.size}, Migrated ${coldSnap.size}.`);
   } catch (err) {
-    console.error("❌ Cleanup Service Error:", err);
+    console.error("❌ Lifecycle Error:", err);
   }
 });
 
 /**
- * 🛰️ LIAISON NOTIFICATION SERVICE: Throttling & Delivery with Analytics
+ * 🛰️ LIAISON NOTIFICATION SERVICE: Throttling & Delivery
  */
 async function checkThrottlingAndNotify(userId, payload, db) {
   const prefRef = db.collection("user_notifications").doc(userId);

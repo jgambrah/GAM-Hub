@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -26,8 +27,7 @@ import { validateVideo } from '@/lib/video-utils';
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
- * Upgraded with Creator-Commerce Engine and Knowledge Graph Seeding.
- * Enforces Startup-Safe Video Protocols.
+ * Upgraded with Hybrid Storage Tiers (videos/hot).
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -101,7 +101,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
   const handleVideoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // 🛡️ INFRASTRUCTURE: Instant Validation
+      // 🛡️ INFRASTRUCTURE: Startup-Safe Validation
       try {
         await validateVideo(file);
         setVideoFile(file);
@@ -123,12 +123,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       return;
     }
     
-    const rawTags = (content.match(/#\w+/g) || []);
-    if (rawTags.length > 10) {
-        toast({ variant: 'destructive', title: 'Policy Violation', description: 'Maximum 10 hashtags per vibration allowed.' });
-        return;
-    }
-
     const hasMedia = (postType === 'image' && imageFile) || 
                      (postType === 'native' && videoFile) || 
                      (postType === 'link' && externalUrl.trim());
@@ -156,7 +150,8 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaUrl = imageUrl;
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
-        const fileRef = ref(storage, `social_videos/${auth.currentUser.uid}/${Date.now()}_${videoFile.name}`);
+        // Tier 1: Hot Storage Path
+        const fileRef = ref(storage, `videos/hot/${auth.currentUser.uid}/${Date.now()}_${videoFile.name}`);
         await uploadBytes(fileRef, videoFile);
         mediaUrl = await getDownloadURL(fileRef);
       } else if (postType === 'link' && externalUrl) {
@@ -182,6 +177,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         type: 'regular',
         isArenaEntry: false, 
         isLiaisonSeed: isGlobal && isAdmin,
+        storageTier: mediaType === 'video' ? 'hot' : 'standard',
         createdAt: new Date().toISOString(),
       };
 
@@ -209,7 +205,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                   embedding: embedding
               });
 
-              // 🕸️ AUTOMATIC GRAPH SEEDING
               const graphEntities: {id: string, type: KnowledgeGraphNode['type']}[] = [
                   { id: auth.currentUser!.uid, type: 'creator' },
                   { id: targetCampusId, type: 'location' },
@@ -253,7 +248,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[5000] flex items-center justify-center p-4">
-      <div className="bg-card rounded-[3.5rem] w-full max-w-lg overflow-hidden shadow-2xl relative animate-in zoom-in duration-300 border border-border">
+      <div className="bg-card rounded-[3rem] w-full max-w-lg overflow-hidden shadow-2xl relative animate-in zoom-in duration-300 border border-border">
         <button onClick={onClose} className="absolute top-6 right-6 p-2 bg-muted rounded-full z-20 hover:bg-muted/80 transition-all"><X size={20}/></button>
         
         <div className="p-8">
@@ -286,7 +281,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
             <div className="space-y-2">
                 <textarea 
-                    placeholder="What's the frequency, Citizen? 😊 Liaison AI will automatically expand your tags." 
+                    placeholder="What's the frequency, Citizen? 😊" 
                     className="w-full p-6 rounded-[2rem] bg-muted/50 border-none outline-none text-lg font-medium min-h-[120px] focus:bg-muted transition-all text-foreground placeholder:text-muted-foreground/50" 
                     value={content}
                     onChange={(e) => setContent(e.target.value)} 
@@ -378,23 +373,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                                 })}
                             </div>
                         )}
-
-                        {selectedProducts.length > 0 && (
-                            <div className="flex flex-wrap gap-2 pt-4 border-t border-slate-200 dark:border-slate-800">
-                                {selectedProducts.map(p => (
-                                    <div key={p.id} className="bg-slate-900 text-white text-[9px] font-black px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-lg animate-in zoom-in">
-                                        <span className="truncate max-w-[100px] uppercase tracking-tighter">{p.name}</span>
-                                        <button type="button" onClick={() => handleToggleTag(p)} className="p-0.5 hover:bg-red-500 rounded-md transition-colors"><X size={10} /></button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        
-                        {!productSearch && searchResults.length === 0 && (
-                            <div className="text-center py-4 opacity-40">
-                                <p className="text-[10px] font-bold uppercase tracking-widest">Type to find campus deals</p>
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
@@ -436,7 +414,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 )}
             >
               {loading ? <Loader2 className="animate-spin" size={24} /> : <Send size={20}/>}
-              {isGlobal ? 'Analyze & Seed to National Hub' : 'Analyze & Broadcast Vibe'}
+              Broadcast Vibe
             </button>
           </form>
         </div>

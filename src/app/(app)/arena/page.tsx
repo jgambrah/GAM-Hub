@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef } from 'react';
@@ -30,8 +31,7 @@ const LOAD_MORE_BATCH = 50;
  * ArenaPage Component
  * 
  * National inter-uni battleground. 
- * Now with AI Semantic Hashtags and Hashtag Graph relationships.
- * Upgraded with Startup-Safe Video Infrastructure.
+ * Upgraded with Hybrid Storage Tiers (videos/hot).
  */
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
@@ -78,13 +78,6 @@ export default function ArenaPage() {
         e.preventDefault();
         if (!user || (!content.trim() && !file && !videoUrl.trim())) return;
 
-        // POLICY: Anti-Spam Hashtag Validation (Manual Check)
-        const rawTags = (content.match(/#\w+/g) || []);
-        if (rawTags.length > 10) {
-            toast({ variant: 'destructive', title: 'Too many tags!', description: 'Limit your battle tags to 10 for maximum vibe impact.' });
-            return;
-        }
-
         // 🛡️ INFRASTRUCTURE: Startup-Safe Video Validation
         if (file && file.type.startsWith('video')) {
             try {
@@ -109,15 +102,18 @@ export default function ArenaPage() {
                 createdAt: new Date().toISOString(),
                 isArenaEntry: true,
                 campusId: user.campusId,
+                storageTier: 'hot'
             };
 
-            // 1. Process Media
+            // 1. Process Media (Direct to Tier 1: videos/hot)
             if (file) {
-                const filePath = `arena_media/${user.id}/${Date.now()}_${file.name}`;
+                const isVideo = file.type.startsWith('video');
+                const basePath = isVideo ? 'videos/hot' : `arena_media/${user.id}`;
+                const filePath = `${basePath}/${Date.now()}_${file.name}`;
                 const fileRef = ref(storage, filePath);
                 await uploadBytes(fileRef, file);
                 postData.mediaUrl = await getDownloadURL(fileRef);
-                postData.mediaType = file.type.startsWith('image') ? 'image' : 'video';
+                postData.mediaType = isVideo ? 'video' : 'image';
             } else if (videoUrl.trim()) {
                 postData.mediaUrl = videoUrl.trim();
                 postData.mediaType = videoUrl.includes('youtube') ? 'youtube' : 'tiktok';
@@ -139,7 +135,7 @@ export default function ArenaPage() {
             const finalHashtags = Array.from(new Set([...manualTags, ...aiTags])).slice(0, 10);
             postData.tags = finalHashtags;
 
-            // 3. Generate Semantic Embedding (Includes AI tags)
+            // 3. Generate Semantic Embedding
             const embedding = await generatePostEmbedding({
                 content: content,
                 tags: finalHashtags
@@ -149,7 +145,7 @@ export default function ArenaPage() {
             // 4. Launch to Yard
             await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
             
-            // 5. Update Global Hashtag Index & Graph Relationships
+            // 5. Update Global Hashtag Index
             if (finalHashtags.length > 0) {
                 await updateHashtagIndex(firestore, finalHashtags);
                 if (finalHashtags.length >= 2) {
@@ -205,7 +201,7 @@ export default function ArenaPage() {
                                 {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
                             </Button>
                         </div>
-                        <p className="text-[9px] text-muted-foreground px-6 italic">Liaison AI semantic indexing active. 🛡️✨</p>
+                        <p className="text-[9px] text-muted-foreground px-6 italic">Liaison AI hybrid storage active. 🛡️✨</p>
                     </form>
                 </div>
             )}
