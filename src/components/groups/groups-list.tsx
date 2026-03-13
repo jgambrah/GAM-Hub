@@ -20,6 +20,7 @@ export function GroupsList() {
         return query(
             collection(firestore, 'groups'),
             where('members', 'array-contains', user.id),
+            where('campusId', '==', user.campusId),
             orderBy('createdAt', 'desc')
         );
     }, [firestore, user]);
