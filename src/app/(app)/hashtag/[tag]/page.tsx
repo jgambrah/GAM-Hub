@@ -1,31 +1,47 @@
 
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import CampusPulseFeed from '@/components/social/CampusPulseFeed';
 import { useAuth } from '@/hooks/use-auth';
+import { useFirebase } from '@/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, Hash, TrendingUp, Info } from 'lucide-react';
 import TrendingTags from '@/components/social/TrendingTags';
 import UpNextPanel from '@/components/social/UpNextPanel';
+import { logTrendEvent } from '@/lib/trend-logger';
 
 /**
  * HashtagFeedPage Component
  * 
  * A professional-grade feed dedicated to a specific #hashtag.
  * Leverages the Blended Retrieval system with a mandatory tag constraint.
+ * Now logs hashtag clicks to the trend detection engine.
  */
 export default function HashtagFeedPage() {
   const params = useParams();
   const router = useRouter();
   const { user, isUserLoading } = useAuth();
+  const { firestore } = useFirebase();
   const tag = params.tag as string;
+
+  // 🚀 TREND ENGINE: Log hashtag interest
+  useEffect(() => {
+    if (firestore && user && tag) {
+        logTrendEvent(firestore, {
+            type: 'hashtag_click',
+            entityId: tag.toLowerCase(),
+            campusId: user.campusId,
+            tag: tag.toLowerCase()
+        });
+    }
+  }, [firestore, user, tag]);
 
   if (isUserLoading || !user) {
     return (
-      <div className="max-w-6xl mx-auto p-6 space-y-8">
+      <div className="max-w-7xl mx-auto pt-6 space-y-8 px-4">
         <Skeleton className="h-40 w-full rounded-[3rem]" />
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">

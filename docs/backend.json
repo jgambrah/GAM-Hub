@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Campus": {
@@ -144,6 +145,20 @@
         "type": { "type": "string", "enum": ["text", "image", "file"] },
         "createdAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "TrendEvent": {
+      "title": "TrendEvent",
+      "type": "object",
+      "description": "A raw behavioral signal recorded for real-time trend detection.",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["video_view", "video_like", "video_share", "product_view", "product_purchase", "vendor_visit", "hashtag_click"] },
+        "entityId": { "type": "string" },
+        "tag": { "type": "string" },
+        "campusId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "object" }
+      }
     }
   },
   "auth": {
@@ -159,6 +174,7 @@
     "/chats/{chatId}": { "schema": "#/backend/entities/Chat", "description": "Private conversation threads." },
     "/chats/{chatId}/messages/{msgId}": { "schema": "#/backend/entities/Message", "description": "Individual chat messages." },
     "/groups/{groupId}": { "schema": { "title": "Group", "type": "object" }, "description": "Campus communities." },
-    "/groups/{groupId}/messages/{msgId}": { "schema": "#/backend/entities/Message", "description": "Group community messages." }
+    "/groups/{groupId}/messages/{msgId}": { "schema": "#/backend/entities/Message", "description": "Group community messages." },
+    "/trend_events/{eventId}": { "schema": "#/backend/entities/TrendEvent", "description": "Raw real-time behavioral signals." }
   }
 }

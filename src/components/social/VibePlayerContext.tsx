@@ -1,14 +1,16 @@
+
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import type { SocialPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
-import { useVibeProfile, type SignalType } from '@/hooks/use-vibe-profile';
+import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
-import { collection, query, orderBy, limit, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, onSnapshot } from 'firebase/firestore';
 import { getRelatedHashtags } from '@/lib/hashtag-utils';
 import { enforceDiversity } from '@/lib/diversity-engine';
+import { logTrendEvent } from '@/lib/trend-logger';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -71,12 +73,6 @@ export function explorationBoost(post: SocialPost) {
   return 0;
 }
 
-/**
- * computeVibeScore
- * ---------------
- * The multi-signal discovery equation.
- * Upgraded with GRAPH DISCOVERY: Uses expanded tastes to find related vibes.
- */
 export function computeVibeScore(
   current: SocialPost, 
   candidate: SocialPost, 
@@ -88,67 +84,37 @@ export function computeVibeScore(
   activeMoodId: VibeMood = 'all'
 ) {
   let score = 0;
-
-  // 🎯 1. GRAPH-ENHANCED PERSONALIZATION (Highest Weight)
-  // This score now factors in expanded interests (e.g. You like #fashion -> Boost #shoes)
   score += getPersonalScore(candidate);
-
-  // 2. CONTENT INTELLIGENCE MATCH
-  const currentTags = new Set([
-    ...(current.tags || []),
-    ...(current.aiTags || [])
-  ].map(t => t.toLowerCase()));
-  
-  const candidateTags = [
-    ...(candidate.tags || []),
-    ...(candidate.aiTags || [])
-  ].map(t => t.toLowerCase());
-
+  const currentTags = new Set([...(current.tags || []), ...(current.aiTags || [])].map(t => t.toLowerCase()));
+  const candidateTags = [...(candidate.tags || []), ...(candidate.aiTags || [])].map(t => t.toLowerCase());
   const aiMatches = candidateTags.filter(t => currentTags.has(t));
-  score += aiMatches.length * 15; // Increased weight for content matching
-
-  // 3. VECTOR SIMILARITY (Semantic depth)
+  score += aiMatches.length * 15;
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
     if (similarity > 0.85) score += 20;
   }
-
-  // 4. MOOD SYNCHRONIZATION
   if (candidate.mood && activeMoodId !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === activeMoodId);
     if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
   }
-
-  // 5. GLOBAL TREND SIGNALS
   if (candidate.trendScore && candidate.trendScore > 30) {
     score += 35; 
   } else if (candidateTags.some(t => viralTags.has(t))) {
     score += 25;
   }
-
-  // 🛍️ 6. COMMERCE-CONVERSION BOOST
   if (candidate.commerceClicks) {
       score += Math.min(candidate.commerceClicks * 5, 50);
   }
-
-  // 7. EXPLORATION & CREATOR REPUTATION
   score += explorationBoost(candidate);
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
   score += (repData.qualityScore || 50) * 0.5;
-
-  // 8. FRESHNESS DECAY
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
     score += exponentialFreshness(date);
   }
-
   return score;
 }
 
-/**
- * buildSmartQueue
- * ---------------
- */
 export function buildSmartQueue(
   current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
   viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set(),
@@ -160,54 +126,39 @@ export function buildSmartQueue(
         post: p,
         score: computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags, creatorReputation, mood)
     }));
-
   scored.sort((a, b) => b.score - a.score);
-
   const finalRanked = [];
   const candidates = [...scored];
-  
   const seenClusters = new Map<string, number>();
   const creatorSessionCount = new Map<string, number>();
   const lastCreatorPositions = new Map<string, number>();
-  
   const MIN_CREATOR_GAP = 4;
-
   while (candidates.length > 0 && finalRanked.length < 50) {
       const currentIndex = finalRanked.length;
-      
       const window = candidates.slice(0, 20).map(c => {
           const cluster = (c.post.tags?.[0] || 'none').toLowerCase();
           const creatorId = c.post.authorId;
-          
           const clusterFreq = seenClusters.get(cluster) || 0;
           const creatorFreq = creatorSessionCount.get(creatorId) || 0;
           const lastPos = lastCreatorPositions.get(creatorId);
-          
           let diverseScore = c.score;
           diverseScore -= (clusterFreq * 6); 
           diverseScore -= (creatorFreq * 8); 
-          
           if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) {
               diverseScore -= 40; 
           }
-          
           return { ...c, diverseScore };
       });
-
       window.sort((a, b) => b.diverseScore - a.diverseScore);
       const best = window[0];
-      
       finalRanked.push(best);
-      
       const cluster = (best.post.tags?.[0] || 'none').toLowerCase();
       seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1);
       creatorSessionCount.set(best.post.authorId, (creatorSessionCount.get(best.post.authorId) || 0) + 1);
       lastCreatorPositions.set(best.post.authorId, currentIndex);
-
       const idx = candidates.findIndex(c => c.post.id === best.post.id);
       candidates.splice(idx, 1);
   }
-
   return finalRanked;
 }
 
@@ -281,14 +232,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         });
         setViralTags(viral); setTrendingTags(trending);
     });
-
     const q = query(collection(firestore, 'creator_reputation'), orderBy('qualityScore', 'desc'), limit(200));
     const unsubRep = onSnapshot(q, (snap) => {
       const map: Record<string, any> = {};
-      snap.docs.forEach(d => { 
-        const data = d.data();
-        map[d.id] = { qualityScore: data.qualityScore || 50, violationScore: data.violationScore || 0 }; 
-      });
+      snap.docs.forEach(d => { map[d.id] = { qualityScore: d.data().qualityScore || 50, violationScore: d.data().violationScore || 0 }; });
       setCreatorReputation(map);
     });
     return () => unsubRep();
@@ -304,7 +251,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const viral = viralTagsRef.current;
     const trending = trendingTagsRef.current;
     const reputations = creatorReputationRef.current;
-
     let relatedTags = new Set<string>();
     if ((current.tags || []).length > 0 && firestore) {
         try {
@@ -312,17 +258,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
             res.flat().forEach(r => { if (r.weight > 5) relatedTags.add(r.tag.toLowerCase()); });
         } catch (e) { console.warn("Graph lookup failed"); }
     }
-    
-    const rankedResults = buildSmartQueue(pool, pool, mood, scorer, viral, trending, relatedTags, reputations);
+    const rankedResults = buildSmartQueue(current, pool, mood, scorer, viral, trending, relatedTags, reputations);
     const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 30);
-    
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
         score: computeVibeScore(current, p, scorer, viral, trending, relatedTags, reputations, mood),
         reason: 'Recommended for you',
       }));
-
     setQueue([current, ...diversePool]);
     setUpNext(makeUpNext(diversePool));
     setIsLoadingQueue(false);
@@ -330,16 +273,17 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (activePost && allPosts.length > 0) {
-        const timer = setTimeout(() => {
-            rebuildQueue(activePost, allPosts, activeMood);
-        }, 500);
+        const timer = setTimeout(() => { rebuildQueue(activePost, allPosts, activeMood); }, 500);
         return () => clearTimeout(timer);
     }
   }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
 
   const recordPlay = useCallback((p: SocialPost) => {
     recordSignal(p, 'watch');
-    if (firestore) recordEngagement(firestore, p.id, 'view', p.authorId, p.createdAt);
+    if (firestore) {
+        recordEngagement(firestore, p.id, 'view', p.authorId, p.createdAt);
+        logTrendEvent(firestore, { type: 'video_view', entityId: p.id, campusId: p.campusId, tag: p.tags?.[0] });
+    }
   }, [recordSignal, firestore]);
 
   const recordWatchedToEnd = useCallback((p: SocialPost) => {
@@ -347,7 +291,13 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (firestore) recordEngagement(firestore, p.id, 'completion', p.authorId, p.createdAt);
   }, [recordSignal, firestore]);
 
-  const recordLike = useCallback((p: SocialPost) => recordSignal(p, 'like'), [recordSignal]);
+  const recordLike = useCallback((p: SocialPost) => {
+    recordSignal(p, 'like');
+    if (firestore) {
+        logTrendEvent(firestore, { type: 'video_like', entityId: p.id, campusId: p.campusId, tag: p.tags?.[0] });
+    }
+  }, [recordSignal, firestore]);
+
   const recordUnlike = useCallback((p: SocialPost) => recordSignal(p, 'like'), [recordSignal]);
   const recordSkip = useCallback((p: SocialPost) => recordSignal(p, 'skip'), [recordSignal]);
 
@@ -423,7 +373,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       const counts = prev[post.id] || { '🔥': 0, '🌊': 0, '💎': 0, '👑': 0, '⚡': 0 };
       return { ...prev, [post.id]: { ...counts, [emoji]: counts[emoji] + 1 } };
     });
-    recordSignal(post, 'reaction'); if (firestore) recordEngagement(firestore, p.id, 'like', post.authorId, post.createdAt);
+    recordSignal(post, 'reaction'); if (firestore) recordEngagement(firestore, post.id, 'like', post.authorId, post.createdAt);
     const burst: ReactionBurst = { id: `${Date.now()}-${Math.random()}`, emoji, x: 20 + Math.random() * 60, y: 20 + Math.random() * 60 };
     setReactionBursts(prev => [...prev, burst]); setTimeout(() => setReactionBursts(p => p.filter(b => b.id !== burst.id)), 1200);
   }, [recordSignal, firestore]);

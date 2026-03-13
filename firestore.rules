@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -62,7 +63,7 @@ service cloud.firestore {
       allow update: if isAdmin() || 
                     request.auth.uid == resource.data.authorId ||
                     // Allow engagement updates from any signed-in user
-                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore', 'burns', 'comebackCount']));
+                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore']));
       
       allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
                             
@@ -81,7 +82,7 @@ service cloud.firestore {
       allow create: if isAdmin() || getRole() == 'vendor';
       allow update: if isAdmin() || 
                     resource.data.vendorId == request.auth.uid ||
-                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'salesCount', 'favoriteCount', 'shareCount', 'trendScore', 'clicks', 'conversions']));
+                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'salesCount', 'favoriteCount', 'shareCount', 'trendScore']));
       allow delete: if isAdmin() || resource.data.vendorId == request.auth.uid;
     }
 
@@ -163,12 +164,17 @@ service cloud.firestore {
       allow create: if isSignedIn();
     }
 
+    match /trend_events/{eventId} {
+      allow create: if isSignedIn();
+      allow read: if isAdmin();
+    }
+
     // -------------------------------------------------------------------------
     // 6. COMMUNITIES & ACADEMICS
     // -------------------------------------------------------------------------
 
     match /groups/{groupId} {
-      allow read, list: if isSignedIn() && (
+      allow read: if isSignedIn() && (
         resource.data.campusId == getCampus() || 
         isAdmin()
       );

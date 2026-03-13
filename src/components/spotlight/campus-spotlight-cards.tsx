@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { SpotlightItem, User, SocialPost } from '@/lib/types';
@@ -8,6 +9,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import Image from 'next/image';
 import { Badge } from '../ui/badge';
 import { cn } from '@/lib/utils';
+import { logTrendEvent } from '@/lib/trend-logger';
+import { useFirebase } from '@/firebase';
 
 export const FeaturedStudentCard = ({ item }: { item: SpotlightItem }) => {
     const student = item.data as User;
@@ -54,7 +57,20 @@ export const FeaturedStudentCard = ({ item }: { item: SpotlightItem }) => {
 
 export const FeaturedVendorCard = ({ item }: { item: SpotlightItem }) => {
     const vendor = item.data as User;
+    const { firestore } = useFirebase();
     if (!vendor) return null;
+
+    const handleVendorClick = () => {
+        if (firestore) {
+            logTrendEvent(firestore, {
+                type: 'vendor_visit',
+                entityId: vendor.id,
+                campusId: vendor.campusId,
+                tag: vendor.vendorCategory
+            });
+        }
+    };
+
     return (
         <Card className="min-w-[320px] w-[320px] overflow-hidden rounded-[3rem] p-0 text-white shadow-2xl relative group">
             <div className="bg-gradient-to-br from-orange-500 via-red-600 to-orange-700 p-8 pt-12">
@@ -79,7 +95,7 @@ export const FeaturedVendorCard = ({ item }: { item: SpotlightItem }) => {
                     <span>Rating: {vendor.rating?.toFixed(1) || '5.0'} ({vendor.reviewCount || 0})</span>
                 </div>
 
-                <Button variant="secondary" className="mt-8 w-full bg-white text-orange-600 hover:bg-orange-50 rounded-2xl font-black text-xs uppercase tracking-widest h-12 shadow-xl active:scale-95 transition-all">
+                <Button onClick={handleVendorClick} variant="secondary" className="mt-8 w-full bg-white text-orange-600 hover:bg-orange-50 rounded-2xl font-black text-xs uppercase tracking-widest h-12 shadow-xl active:scale-95 transition-all">
                      <ShoppingBag className="mr-2 h-4 w-4" /> Visit Store
                 </Button>
             </div>
