@@ -3,39 +3,40 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface SoundContextType {
-  isMuted: boolean;
-  toggleMute: () => void;
-  setMuted: (val: boolean) => void;
+  soundOn: boolean;
+  toggleSound: () => void;
+  setSoundOn: (val: boolean) => void;
 }
 
 const SoundContext = createContext<SoundContextType | undefined>(undefined);
 
 export function SoundProvider({ children }: { children: React.ReactNode }) {
-  const [isMuted, setIsMuted] = useState(true);
+  // Default to false (muted) to comply with browser autoplay policies
+  const [soundOn, setSoundOnState] = useState(false);
 
   // Sync with localStorage so the user's preference persists across sessions
   useEffect(() => {
     const saved = localStorage.getItem('gamhub_sound_pref');
     if (saved !== null) {
-      setIsMuted(saved === 'muted');
+      setSoundOnState(saved === 'on');
     }
   }, []);
 
-  const handleToggle = () => {
-    setIsMuted(prev => {
+  const toggleSound = () => {
+    setSoundOnState(prev => {
       const newVal = !prev;
-      localStorage.setItem('gamhub_sound_pref', newVal ? 'muted' : 'unmuted');
+      localStorage.setItem('gamhub_sound_pref', newVal ? 'on' : 'off');
       return newVal;
     });
   };
 
-  const handleSetMuted = (val: boolean) => {
-    setIsMuted(val);
-    localStorage.setItem('gamhub_sound_pref', val ? 'muted' : 'unmuted');
+  const setSoundOn = (val: boolean) => {
+    setSoundOnState(val);
+    localStorage.setItem('gamhub_sound_pref', val ? 'on' : 'off');
   };
 
   return (
-    <SoundContext.Provider value={{ isMuted, toggleMute: handleToggle, setMuted: handleSetMuted }}>
+    <SoundContext.Provider value={{ soundOn, toggleSound, setSoundOn }}>
       {children}
     </SoundContext.Provider>
   );

@@ -17,7 +17,7 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
   const cardRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hasTrackedImpression = useRef(false);
-  const { isMuted, toggleMute } = useSound();
+  const { soundOn, toggleSound } = useSound();
 
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
@@ -46,9 +46,9 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
   // Sync the video element's muted state with the global SoundContext
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.muted = isMuted;
+      videoRef.current.muted = !soundOn;
     }
-  }, [isMuted]);
+  }, [soundOn]);
 
   return (
     <div
@@ -79,19 +79,19 @@ export default function VibeAdCard({ ad, onImpression, onClickCta }: VibeAdCardP
               ref={videoRef}
               src={ad.mediaUrl}
               poster={ad.thumbnailUrl}
-              muted={isMuted}
+              muted={!soundOn}
               loop
               playsInline
               className="w-full h-full object-cover"
             />
             <button
-              onClick={(e) => { e.stopPropagation(); toggleMute(); }}
+              onClick={(e) => { e.stopPropagation(); toggleSound(); }}
               className="absolute bottom-3 right-3 z-10 p-2 bg-black/60 backdrop-blur-sm text-white rounded-xl hover:bg-black/80 transition-all active:scale-95"
-              title={isMuted ? 'Unmute' : 'Mute'}
+              title={!soundOn ? 'Unmute' : 'Mute'}
             >
-              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              {!soundOn ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
-            {isMuted && isVideoPlaying && (
+            {!soundOn && isVideoPlaying && (
               <div className="absolute inset-0 flex items-end justify-center pb-12 pointer-events-none animate-in fade-in duration-500">
                 <div className="bg-black/50 backdrop-blur-sm text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full flex items-center gap-1">
                   <VolumeX size={9} /> Tap speaker to unmute

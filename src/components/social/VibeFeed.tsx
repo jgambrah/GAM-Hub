@@ -42,7 +42,7 @@ export default function VibeFeed({
     activeMood,
   } = useVibePlayer();
 
-  const { isMuted, toggleMute } = useSound();
+  const { soundOn, toggleSound } = useSound();
   const { getAdForSlot, recordImpression, recordClick } = useVibeAds(activeMood);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -125,11 +125,11 @@ export default function VibeFeed({
         <div className="flex items-center gap-2">
           {/* Global Sound Toggle */}
           <button 
-            onClick={toggleMute}
+            onClick={toggleSound}
             className="flex items-center gap-2 px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 border-border bg-white dark:bg-slate-900 shadow-sm transition-all active:scale-95"
           >
-            {isMuted ? <VolumeX size={14} className="text-red-500" /> : <Volume2 size={14} className="text-blue-500" />}
-            <span>{isMuted ? 'Muted' : 'Sound On'}</span>
+            {!soundOn ? <VolumeX size={14} className="text-red-500" /> : <Volume2 size={14} className="text-blue-500" />}
+            <span>{!soundOn ? 'Muted' : 'Sound On'}</span>
           </button>
 
           {isProfileLoaded && (

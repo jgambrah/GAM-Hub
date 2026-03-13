@@ -50,7 +50,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const { user, isAdmin } = useAuth();
   const { firestore } = useFirebase();
   const { toast } = useToast();
-  const { isMuted, toggleMute } = useSound();
+  const { soundOn, toggleSound } = useSound();
   const {
     activePostId, isContinuous, playNext,
     setActivePost, addToQueue,
@@ -317,10 +317,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       {isActiveVibe && mediaCategory === 'video' && (
         <div className="absolute bottom-24 right-6 z-30 animate-in fade-in zoom-in duration-500">
           <button 
-            onClick={(e) => { e.stopPropagation(); toggleMute(); }}
+            onClick={(e) => { e.stopPropagation(); toggleSound(); }}
             className="p-4 bg-white/10 backdrop-blur-xl border border-white/20 text-white rounded-2xl shadow-2xl hover:scale-110 active:scale-90 transition-all group"
           >
-            {isMuted ? <VolumeX size={24} className="group-hover:text-red-400" /> : <Volume2 size={24} className="group-hover:text-blue-400" />}
+            {!soundOn ? <VolumeX size={24} className="group-hover:text-red-400" /> : <Volume2 size={24} className="group-hover:text-blue-400" />}
           </button>
         </div>
       )}
@@ -352,7 +352,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               ) : (
                 <YouTube
                   videoId={youtubeId}
-                  opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: isActiveVibe ? 1 : 0, mute: isMuted ? 1 : 0, playsinline: 1 } }}
+                  opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: isActiveVibe ? 1 : 0, mute: !soundOn ? 1 : 0, playsinline: 1 } }}
                   className="w-full h-full"
                   onReady={onYoutubeReady}
                   onPlay={onYoutubePlay}
@@ -388,7 +388,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 </div>
               ) : (
                 <ReactPlayer
-                  url={videoSource} controls width="100%" height="100%" playing={isActiveVibe} playsinline muted={isMuted} onStart={() => setActivePost(post)} onEnded={handleEnd}
+                  url={videoSource} controls width="100%" height="100%" playing={isActiveVibe} playsinline muted={!soundOn} onStart={() => setActivePost(post)} onEnded={handleEnd}
                   config={{ file: { attributes: { playsInline: true, preload: 'auto' }, forceHLS: !!post.hlsUrl, hlsConfig: { maxBufferLength: 30, startFragPrefetch: true } } }}
                 />
               )}
