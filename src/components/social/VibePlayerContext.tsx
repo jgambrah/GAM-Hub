@@ -16,7 +16,6 @@ import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
 import { collection, query, orderBy, limit, getDocs, doc, onSnapshot } from 'firebase/firestore';
-import { getRelatedHashtags } from '@/lib/hashtag-utils';
 import { enforceDiversity } from '@/lib/diversity-engine';
 import { logTrendEvent } from '@/lib/trend-logger';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
@@ -94,8 +93,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const { sessionProfile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const [globalTrendScores, setGlobalTrendScores] = useState<Record<string, number>>({});
-  const [viralTags, setViralTags] = useState<Set<string>>(new Set());
-  const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const queueRef = useRef<SocialPost[]>([]);
@@ -115,20 +112,22 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!firestore) return;
     const unsubTrends = onSnapshot(doc(firestore, 'trend_scores', 'current'), (snap) => { if (snap.exists()) setGlobalTrendScores(snap.data() as Record<string, number>); });
-    getDocs(query(collection(firestore, 'hashtags'), orderBy('trendScore', 'desc'), limit(20))).then(snap => {
-        const viral = new Set<string>(); const trending = new Set<string>();
-        snap.docs.forEach(d => { const data = d.data(); const tag = data.tag?.toLowerCase(); if (!tag) return; if (data.trendScore > 30) viral.add(tag); else if (data.trendScore > 15) trending.add(tag); });
-        setViralTags(viral); setTrendingTags(trending);
-    });
-    return () => { unsubTrends(); };
+    return () => unsubTrends();
   }, [firestore]);
 
   const clearDisplayTimer = useCallback(() => { if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; } }, []);
 
+  /**
+   * rebuildQueue
+   * ------------
+   * Asynchronous ranking engine. Deployed safely via useEffect.
+   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
+    if (!current || pool.length === 0) return;
+    
     setIsLoadingQueue(true);
     
-    // 🧠 NEURAL RANKING LOGIC
+    // 🧠 STAGE 1: NEURAL RANKING
     const scoredCandidates = pool
       .filter(p => p.id !== current.id)
       .map(candidate => ({
@@ -145,7 +144,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
     let finalPosts = scoredCandidates.map(r => r.post);
 
-    // AI Re-Ranking Layer
+    // 🤖 STAGE 2: AI RE-RANKING (Semantic Loop)
     if (finalPosts.length > 5) {
         try {
             const aiReRank = await getRecommendedVibes({ 
@@ -165,27 +164,31 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setQueue([current, ...diversePool]);
     setUpNext(diversePool.slice(0, 15).map(p => ({ 
       post: p, 
-      score: 0, // Score used for sorting, not needed in UI
+      score: 0, 
       reason: 'AI Orchestrated Match' 
     })));
     setIsLoadingQueue(false);
   }, [getPersonalScore, globalTrendScores, sessionProfile, getTopInterests]);
 
+  // 🔄 LOOP SYNC: Rebuild queue whenever active post or pool changes
   useEffect(() => {
     if (activePost && allPosts.length > 0) {
-        const timer = setTimeout(() => { rebuildQueue(activePost, allPosts, activeMood); }, 500);
+        const timer = setTimeout(() => { 
+          rebuildQueue(activePost, allPosts, activeMood); 
+        }, 500); // 500ms Debounce to prevent Router/Render collisions
         return () => clearTimeout(timer);
     }
   }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
 
+  // 📶 PREFETCH SYNC
   useEffect(() => {
     if (!activePostId || upNext.length === 0 || !activePost) return;
     const prefetchTimer = setTimeout(() => {
       const nextThreePosts = upNext.slice(0, 3).map(entry => entry.post);
       vibeBufferManager.maintain([activePost.id, ...nextThreePosts.map(p => p.id)]);
       nextThreePosts.forEach(post => { vibeBufferManager.preload(post); });
-    }, 800); 
-    return () => { clearTimeout(prefetchTimer); };
+    }, 1000); 
+    return () => clearTimeout(prefetchTimer);
   }, [activePostId, upNext, activePost]);
 
   const recordPlay = useCallback((p: SocialPost) => {
@@ -233,14 +236,25 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [pushToHistory]);
 
   const setActivePost = useCallback((post: SocialPost | null) => {
-    if (!post) { if (activePostIdRef.current) { clearDisplayTimer(); setActivePostId(null); setActivePostState(null); } return; }
+    if (!post) { 
+      if (activePostIdRef.current) { 
+        clearDisplayTimer(); 
+        setActivePostId(null); 
+        setActivePostState(null); 
+      } 
+      return; 
+    }
     if (activePostIdRef.current === post.id) return;
-    clearDisplayTimer(); setActivePostId(post.id); setActivePostState(post); pushToHistory(post);
-    rebuildQueue(post, allPostsRef.current, activeMoodRef.current);
+    clearDisplayTimer(); 
+    setActivePostId(post.id); 
+    setActivePostState(post); 
+    pushToHistory(post);
     startDisplayTimer(post);
-  }, [rebuildQueue, pushToHistory, clearDisplayTimer, startDisplayTimer]);
+  }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
-  const setActiveMood = useCallback((mood: VibeMood) => { setActiveMoodState(mood); const cur = activePostRef.current; if (cur) rebuildQueue(cur, allPostsRef.current, mood); }, [rebuildQueue]);
+  const setActiveMood = useCallback((mood: VibeMood) => { 
+    setActiveMoodState(mood); 
+  }, []);
 
   const playNext = useCallback(() => {
     const q = queueRef.current; const id = activePostIdRef.current;
@@ -251,8 +265,8 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const playPrev = useCallback(() => {
-    setHistory(prev => { if (prev.length < 2) return prev; const prevPost = prev[1]; clearDisplayTimer(); setActivePostId(prevPost.id); setActivePostState(prevPost); rebuildQueue(prevPost, allPostsRef.current, activeMoodRef.current); startDisplayTimer(prevPost); return prev.slice(1); });
-  }, [rebuildQueue, clearDisplayTimer, startDisplayTimer]);
+    setHistory(prev => { if (prev.length < 2) return prev; const prevPost = prev[1]; clearDisplayTimer(); setActivePostId(prevPost.id); setActivePostState(prevPost); startDisplayTimer(prevPost); return prev.slice(1); });
+  }, [clearDisplayTimer, startDisplayTimer]);
 
   const addToQueue = useCallback((posts: SocialPost[]) => {
     setAllPosts(prev => {
@@ -261,11 +275,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       if (incoming.length === 0) return prev;
       let merged = [...prev, ...incoming];
       if (merged.length > MAX_POOL_SIZE) merged = merged.slice(-MAX_POOL_SIZE);
-      const cur = activePostRef.current; if (cur && isContinuousRef.current) rebuildQueue(cur, merged, activeMoodRef.current);
       return merged;
     });
     setQueue(prev => prev.length > 0 ? prev : [...posts]);
-  }, [rebuildQueue]);
+  }, []);
 
   const sendReaction = useCallback((emoji: VibeReaction, post: SocialPost) => {
     setReactionCounts(prev => { const counts = prev[post.id] || { '🔥': 0, '🌊': 0, '💎': 0, '👑': 0, '⚡': 0 }; return { ...prev, [post.id]: { ...counts, [emoji]: counts[emoji] + 1 } }; });
