@@ -162,8 +162,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
 
     match /groups/{groupId} {
-      // LIAISON FIX: Allow campus-wide listing for discovery and vendor ad targeting
-      // If listing, the query must be constrained by campusId to match the rule.
+      // Allow campus-wide listing for discovery and vendor ad targeting
       allow read, list: if isSignedIn() && (
         isAdmin() || 
         (resource != null && resource.data.campusId == getCampus())
@@ -196,7 +195,7 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update: if isSignedIn();
       
-      match /ai_assistance/{msgId} { allow read, write: if isSignedIn(); }
+      match /ai_assistant/{msgId} { allow read, write: if request.auth.uid == userId; }
     }
 
     // -------------------------------------------------------------------------

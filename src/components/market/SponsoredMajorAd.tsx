@@ -128,7 +128,7 @@ export default function SponsoredMajorAd({ userMajor }: { userMajor: string | un
           Grab This Deal <ExternalLink size={16} />
         </Button>
 
-        <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-blue-50/5 rounded-full blur-3xl pointer-events-none" />
       </div>
     </div>
   );
