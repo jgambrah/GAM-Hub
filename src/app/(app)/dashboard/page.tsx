@@ -20,6 +20,7 @@ import SRCDashboard from '@/components/src/SRCDashboard';
 import VendorDashboard from '@/components/dashboard/vendor-dashboard';
 import YardStrength from '@/components/social/YardStrength';
 import CampusRadio from '@/components/social/CampusRadio';
+import CampusMoodCard from '@/components/social/CampusMoodCard';
 
 export default function HomePage() {
   const { viewMode } = useView();
@@ -71,22 +72,25 @@ export default function HomePage() {
 
       <div className="max-w-4xl mx-auto pt-6 space-y-8">
         
-        {/* C. STAFF LOUNGE (Conditional Privilege) */}
+        {/* C. STAFF LOUNGE (Privilege Mode) */}
         {viewMode === 'staff' && (
           <div className="px-4 animate-in slide-in-from-top-4 duration-500">
             <StaffLounge user={user} />
           </div>
         )}
 
-        {/* D. LIVE CAMPUS RADIO (The Voice of the Yard) */}
+        {/* D. LIVE CAMPUS RADIO (Voice of the Yard) */}
         {(viewMode === 'student' || viewMode === 'staff') && user.campusId && (
           <CampusRadio campusId={user.campusId} />
         )}
 
-        {/* E. NATIONAL YARD STRENGTH (Economic/Productivity Prestige) */}
+        {/* E. AI CAMPUS MOOD (REAL-TIME TREND ANALYSIS) */}
+        <CampusMoodCard />
+
+        {/* F. NATIONAL YARD STRENGTH (Productivity GDP) */}
         <YardStrength />
 
-        {/* F. PULSE ENTRY GATEWAY (NEW) */}
+        {/* G. PULSE ENTRY GATEWAY */}
         <div className="px-4">
           <Link href="/pulse">
             <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-8 rounded-[3rem] text-white shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-all active:scale-95">
@@ -110,13 +114,13 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* G. DAILY SPOTLIGHT (The Winners) */}
+        {/* H. DAILY SPOTLIGHT (Top Performers) */}
         <CampusSpotlight />
 
-        {/* H. MY ORDER PULSE (Real-time tracking of GHS) */}
+        {/* I. MY ORDER PULSE (Escrow Tracking) */}
         <BuyerOrdersPulse />
 
-        {/* I. MAJOR-MATCH (Academic Networking) */}
+        {/* J. MAJOR-MATCH (Networking) */}
         <MajorMatch />
       </div>
     </div>

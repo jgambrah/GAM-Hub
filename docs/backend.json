@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Campus": {
@@ -166,6 +165,18 @@
       "description": "Aggregated trending data for the national hub.",
       "properties": {
         "scores": { "type": "object", "description": "Flat map of ID to current hourly weight (e.g. {video123: 120, afrobeats: 210})" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "CampusMood": {
+      "title": "CampusMood",
+      "type": "object",
+      "description": "AI-interpreted collective campus state.",
+      "properties": {
+        "moodTitle": { "type": "string" },
+        "description": { "type": "string" },
+        "advice": { "type": "string" },
+        "visualVibe": { "type": "string", "enum": ["calm", "energetic", "stressed", "celebratory", "commercial"] },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     }

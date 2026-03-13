@@ -15,3 +15,4 @@ import '@/ai/flows/generate-query-embedding.ts';
 import '@/ai/flows/market-intent-parser.ts';
 import '@/ai/flows/explain-recommendation.ts';
 import '@/ai/flows/parse-demand-request.ts';
+import '@/ai/flows/campus-mood-flow.ts';
