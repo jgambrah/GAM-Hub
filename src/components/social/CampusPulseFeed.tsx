@@ -14,13 +14,13 @@ import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
+import { FEED_STRATEGIES, DEFAULT_STRATEGY } from '@/lib/feed-strategies';
 
 /**
  * CampusPulseFeed Component
  * 
  * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
- * Upgraded with Personalized Hybrid Semantic Search (Vector Similarity + Hashtag Matching + Interest Boost).
- * Now supports 'shoppable' tab mode which prioritizes videos with product tags and high conversion clicks.
+ * Upgraded with Personalized Hybrid Semantic Search and MAB Feed Construction.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -36,7 +36,7 @@ export default function CampusPulseFeed({
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
     const { isContinuous, setIsContinuous, addToQueue } = useVibePlayer();
-    const { getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
+    const { getTopInterests, isLoaded: isProfileLoaded, currentStrategy, getPersonalScore } = useVibeProfile();
     
     const [posts, setPosts] = useState<SocialPost[]>();
     const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
@@ -45,10 +45,6 @@ export default function CampusPulseFeed({
     const [isEmbedding, setIsEmbedding] = useState(false);
     const [queryVector, setQueryVector] = useState<number[] | null>(null);
 
-    /**
-     * 🏗️ THE BLENDED RETRIEVAL COMMAND
-     * Pipeline: Firestore Retrieval (4 Buckets) -> Vector Blending -> Local Hybrid Ranking
-     */
     const fetchBlendedCandidates = async () => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return;
         
@@ -57,7 +53,6 @@ export default function CampusPulseFeed({
         const tagToFilter = activeTag || (searchQuery.startsWith('#') ? searchQuery.slice(1).toLowerCase() : null);
         
         try {
-            // 🧠 SEMANTIC PASS: Generate embedding for search queries
             if (searchQuery.trim() && !searchQuery.startsWith('#')) {
                 setIsEmbedding(true);
                 const vector = await generateQueryEmbedding(searchQuery);
@@ -67,38 +62,25 @@ export default function CampusPulseFeed({
                 setQueryVector(null);
             }
 
-            // Bucket 1: RECENT (National Hub) - Expanded to ensure better coverage
+            // Retrieval Buckets
             let recentQuery = tagToFilter 
                 ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(200))
                 : query(pulseRef, orderBy('createdAt', 'desc'), limit(400));
 
-            if (tab === 'shoppable') {
-                recentQuery = query(pulseRef, orderBy('createdAt', 'desc'), limit(400));
-            }
-
-            // Bucket 2: TRENDING (High Velocity)
             const trendingStatsQuery = query(
                 collection(firestore, 'trending_stats'),
                 orderBy('trendScore', 'desc'),
                 limit(150)
             );
 
-            // Bucket 3: LOCAL CAMPUS
             const campusQuery = tagToFilter
                 ? query(pulseRef, where('campusId', '==', activeCampusId), where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
                 : query(pulseRef, where('campusId', '==', activeCampusId), orderBy('createdAt', 'desc'), limit(150));
 
-            // Bucket 4: EXPLORATION
-            const explorationQuery = tagToFilter
-                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), limit(100))
-                : query(pulseRef, where('likes', '<', 10), orderBy('likes', 'asc'), orderBy('createdAt', 'desc'), limit(100));
-
-            // 🛰️ STAGE 1: Parallel broad candidate retrieval
-            const [recentSnap, trendingSnap, campusSnap, explorationSnap] = await Promise.all([
+            const [recentSnap, trendingSnap, campusSnap] = await Promise.all([
                 getDocs(recentQuery),
                 getDocs(trendingStatsQuery),
-                getDocs(campusQuery),
-                getDocs(explorationQuery)
+                getDocs(campusQuery)
             ]);
 
             const trendingDocs = trendingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -121,33 +103,11 @@ export default function CampusPulseFeed({
 
             addDocsToMap(recentSnap);
             addDocsToMap(campusSnap);
-            addDocsToMap(explorationSnap);
-
-            // 🏎️ TRENDING HYDRATION: Fetch post data for IDs in trending stats
-            const trendingIds = trendingDocs.map((d: any) => d.id);
-            const missingIds = trendingIds.filter((id: string) => !mergedMap.has(id));
-            if (missingIds.length > 0) {
-                const missingSnaps = await Promise.all(missingIds.slice(0, 50).map((id: string) => getDoc(doc(firestore, 'campus_pulse', id))));
-                missingSnaps.forEach(snap => {
-                    if (snap.exists()) {
-                        const stats = trendingMap.get(snap.id);
-                        const postData = { 
-                            id: snap.id, 
-                            ...snap.data(), 
-                            trendScore: stats?.trendScore || 0 
-                        } as SocialPost;
-                        if (!tagToFilter || postData.tags?.includes(tagToFilter)) {
-                            mergedMap.set(snap.id, postData);
-                        }
-                    }
-                });
-            }
 
             const finalPool = Array.from(mergedMap.values());
             setPosts(finalPool);
             addToQueue(finalPool);
 
-            // Fetch Official SRC Bulletin
             const srcQuery = query(
                 collection(firestore, 'src_posts'),
                 where('campusId', '==', activeCampusId),
@@ -178,6 +138,39 @@ export default function CampusPulseFeed({
     const filteredPosts = useMemo(() => {
         if (!posts) return [];
 
+        const strategyId = currentStrategy || DEFAULT_STRATEGY;
+        const config = FEED_STRATEGIES[strategyId];
+
+        // 🎰 STAGE 1: PARTITION INTO MAB BUCKETS
+        const trendingCandidates = posts
+            .filter(p => (p.trendScore || 0) > 15)
+            .sort((a, b) => (b.trendScore || 0) - (a.trendScore || 0));
+
+        const exploreCandidates = posts
+            .filter(p => p.likes < 10)
+            .sort(() => Math.random() - 0.5);
+
+        const personalizedCandidates = posts
+            .filter(p => !trendingCandidates.includes(p)) // Exclude obvious trending to rank specifically for user
+            .map(p => ({ ...p, pScore: getPersonalScore(p) }))
+            .sort((a, b) => b.pScore - a.pScore);
+
+        // 🎰 STAGE 2: APPLY STRATEGY WEIGHTS (Target size: 40)
+        const totalSize = 40;
+        const pCount = Math.floor(config.personalized * totalSize);
+        const tCount = Math.floor(config.trending * totalSize);
+        const eCount = Math.floor(config.explore * totalSize);
+
+        const constructedFeed = [
+            ...personalizedCandidates.slice(0, pCount),
+            ...trendingCandidates.slice(0, tCount),
+            ...exploreCandidates.slice(0, eCount)
+        ];
+
+        // 🎰 STAGE 3: SHUFFLE TO AVOID PATTERN BIAS
+        constructedFeed.sort(() => Math.random() - 0.5);
+
+        // STAGE 4: MAPPED SRC (Pinned at top)
         const mappedSrc: SocialPost[] = (srcPosts || []).map(p => ({
             id: p.id,
             authorId: p.authorId,
@@ -196,79 +189,8 @@ export default function CampusPulseFeed({
             isOfficial: true
         }));
 
-        let combined = [...mappedSrc, ...posts];
-
-        // 🧠 STAGE 2: HYBRID PERSONALIZED RANKING (Semantic + Keyword + Trend + Quality + Interest)
-        const userInterests = new Set(getTopInterests(20).map(t => t.toLowerCase()));
-        
-        combined = combined
-            .filter(post => {
-                // 🛍️ SHOPPABLE MODE FILTER
-                if (tab === 'shoppable') {
-                    return post.productTags && post.productTags.length > 0;
-                }
-                // 🎥 VLOGS MODE FILTER
-                if (tab === 'vlogs') {
-                    return post.mediaType === 'video' || post.mediaType === 'youtube' || post.mediaType === 'tiktok';
-                }
-                return true;
-            })
-            .map(post => {
-                // 1. Semantic Similarity (0.6 weight)
-                const similarity = (queryVector && post.embedding) ? cosineSimilarity(queryVector, post.embedding) : 0;
-                
-                // 2. Exact Keyword Match (0.2 weight)
-                const term = searchQuery.toLowerCase().trim();
-                const queryWords = term.split(/\s+/).filter(w => w.length > 2);
-                const postTags = new Set([
-                    ...(post.tags || []),
-                    ...(post.aiTags || [])
-                ].map(t => t.toLowerCase()));
-                
-                const tagMatchCount = queryWords.filter(w => postTags.has(w)).length;
-                const hashtagMatch = Math.min(tagMatchCount / Math.max(queryWords.length, 1), 1);
-                const contentMatch = post.content?.toLowerCase().includes(term) ? 0.2 : 0;
-
-                // 3. Trending Boost (0.1 weight)
-                let trendingBoost = post.trendScore ? Math.min(post.trendScore / 100, 1) : 0;
-                
-                // 🏎️ VIRAL SPREAD INTEGRATION: Apply the +35 point boost for high momentum
-                if (post.trendScore && post.trendScore > 30) {
-                    trendingBoost += 0.35; 
-                }
-
-                // 🛍️ SHOPPABLE BOOST (3x Click Multiplier)
-                if (tab === 'shoppable' && post.commerceClicks) {
-                    trendingBoost += Math.min((post.commerceClicks * 0.05), 0.5);
-                }
-
-                // 4. Creator Quality (0.1 weight)
-                const creatorScore = post.authorQualityScore ? post.authorQualityScore / 100 : 0.5;
-
-                // 🎯 5. PERSONALIZATION BOOST (0.15 weight)
-                let personalizationBoost = 0;
-                const matchesInterest = Array.from(postTags).some(t => userInterests.has(t));
-                if (matchesInterest) {
-                    personalizationBoost = 0.15;
-                }
-
-                // Compute Professional Hybrid Personalized Score
-                const finalScore = (similarity * 0.6) + (Math.max(hashtagMatch, contentMatch) * 0.2) + (trendingBoost * 0.1) + (creatorScore * 0.1) + personalizationBoost;
-
-                return { ...post, searchScore: finalScore, matchesInterest };
-            })
-            .filter(post => {
-                // If not searching, keep all posts but they are sorted by the ranking logic above
-                if (!searchQuery.trim()) return true;
-                
-                if (queryVector) return (post as any).searchScore > 0.25;
-                const term = searchQuery.toLowerCase().trim();
-                return post.content?.toLowerCase().includes(term) || post.authorName?.toLowerCase().includes(term) || (post as any).searchScore > 0.3;
-            })
-            .sort((a, b) => (b as any).searchScore - (a as any).searchScore);
-
-        return combined;
-    }, [posts, srcPosts, searchQuery, queryVector, getTopInterests, tab]);
+        return [...mappedSrc, ...constructedFeed];
+    }, [posts, srcPosts, currentStrategy, getPersonalScore]);
 
     return (
         <div className="space-y-8 pb-20">
@@ -300,12 +222,6 @@ export default function CampusPulseFeed({
                             </p>
                         </div>
                     </div>
-                    {queryVector && (
-                        <div className="bg-indigo-50 dark:bg-indigo-900/20 px-3 py-1 rounded-full border border-indigo-100 dark:border-indigo-800 animate-in zoom-in flex items-center gap-2">
-                            <UserCheck size={10} className="text-indigo-600" />
-                            <span className="text-[8px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Interest Matched</span>
-                        </div>
-                    )}
                 </div>
             )}
 
@@ -315,16 +231,16 @@ export default function CampusPulseFeed({
             )}>
                 <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
-                        {tab === 'shoppable' ? <ShoppingBag size={20} className="text-amber-400" /> : <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />}
+                        {tab === 'shoppable' ? <ShoppingBag size(20) className="text-amber-400" /> : <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />}
                     </div>
                     <div>
                         <h4 className="font-black text-sm tracking-tight">
-                            {tab === 'shoppable' ? 'Trending Shoppable Hub' : searchQuery ? 'Personalized Search Stream' : 'Blended Discovery'}
+                            {tab === 'shoppable' ? 'Trending Shoppable Hub' : searchQuery ? 'Personalized Search Stream' : 'Liaison Optimization'}
                         </h4>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Algorithm:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Strategy:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> {tab === 'shoppable' ? 'Commercial Velocity' : searchQuery ? 'Semantic + Profile' : 'Exploit + Explore'}
+                                <TrendingUp size={10} /> {currentStrategy || 'Learning...'}
                             </span>
                         </div>
                     </div>
@@ -356,7 +272,7 @@ export default function CampusPulseFeed({
                 <div className="p-20 text-center bg-white dark:bg-card rounded-[3rem] border-2 border-dashed">
                     <SearchIcon className="mx-auto h-12 w-12 text-slate-200 mb-4" />
                     <p className="font-black text-slate-400 uppercase tracking-widest">The Signal is Quiet</p>
-                    <p className="text-xs text-slate-300 mt-2">No matching vibes found. Try searching for broader topics like "campus life".</p>
+                    <p className="text-xs text-slate-300 mt-2">No matching vibes found. Try searching for broader topics.</p>
                 </div>
             ) : (
                 <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
