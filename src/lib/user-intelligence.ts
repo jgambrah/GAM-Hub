@@ -5,11 +5,14 @@
  * @fileOverview Unified User Intelligence Service.
  * Synchronizes social behavior (vibe engagement) and commercial behavior (shopping).
  * Powers the unified recommendation brain of the Yard.
+ * Now integrated with the Multi-Armed Bandit Learning Engine.
  */
 
 import { doc, setDoc, increment, serverTimestamp, getDoc, Firestore } from 'firebase/firestore';
 import type { UserIntelligence, MarketplaceSignal, VibeSignal, SocialPost, Product } from './types';
 import { recordEdge } from './knowledge-graph';
+import { recordBanditSignal, BANDIT_REWARDS } from './bandit-learning';
+import type { FeedStrategyId } from './feed-strategies';
 
 // LIAISON INTELLIGENCE WEIGHTS
 const SIGNAL_VALUES: Record<MarketplaceSignal | VibeSignal, number> = {
@@ -85,7 +88,6 @@ export async function updateMarketInterest(
   }
 
   // 3. 🕸️ GRAPH HANDSHAKE: Link category to vendor
-  // This powers "Suggested Vendors" based on category interests
   recordEdge(firestore, { id: categoryId, type: 'category' }, { id: product.vendorId, type: 'vendor' }, 2 * multiplier);
 
   // 4. Update Price preference
@@ -100,6 +102,9 @@ export async function updateMarketInterest(
 
 /**
  * recordUnifiedSignal
+ * ------------------
+ * Orchestrates unified intelligence logging. 
+ * Now relays signals to the Multi-Armed Bandit engine for feed optimization.
  */
 export async function recordUnifiedSignal(
   firestore: Firestore,
@@ -111,7 +116,8 @@ export async function recordUnifiedSignal(
     creatorId?: string, 
     vendorId?: string,
     price?: number 
-  }
+  },
+  currentStrategy?: FeedStrategyId | null
 ) {
   if (!firestore || !userId) return;
 
@@ -144,6 +150,16 @@ export async function recordUnifiedSignal(
       const min = context.price * 0.6;
       const max = context.price * 1.8;
       updates.pricePreference = { min, max };
+  }
+
+  // 🎰 BANDIT LEARNING RELAY
+  if (currentStrategy) {
+      if (type === 'view' || type === 'watch') {
+          recordBanditSignal(firestore, currentStrategy, 'view');
+      }
+      if (BANDIT_REWARDS.has(type)) {
+          recordBanditSignal(firestore, currentStrategy, 'reward');
+      }
   }
 
   try {

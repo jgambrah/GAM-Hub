@@ -62,7 +62,6 @@ service cloud.firestore {
 
       allow update: if isAdmin() || 
                     request.auth.uid == resource.data.authorId ||
-                    // Allow engagement updates from any signed-in user
                     (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore']));
       
       allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
@@ -174,12 +173,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /bandit_stats/{docId} {
+      allow read: if isSignedIn();
+      allow update: if isSignedIn(); // Users report back their rewards/views
+      allow create, delete: if isAdmin();
+    }
+
     // -------------------------------------------------------------------------
     // 6. COMMUNITIES & ACADEMICS
     // -------------------------------------------------------------------------
 
     match /groups/{groupId} {
-      allow read: if isSignedIn() && (
+      allow read, list: if isSignedIn() && (
         resource.data.campusId == getCampus() || 
         isAdmin()
       );

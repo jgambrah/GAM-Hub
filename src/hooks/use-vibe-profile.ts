@@ -2,18 +2,20 @@
 'use client';
 
 import { useCallback, useEffect, useState, useMemo } from 'react';
-import { doc, onSnapshot, Firestore } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc, setDoc, Firestore } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import type { SocialPost, UserIntelligence, VibeSignal } from '@/lib/types';
 import { recordUnifiedSignal, updateVideoInterest } from '@/lib/user-intelligence';
 import { expandInterests } from '@/lib/knowledge-graph';
+import { selectStrategy, type GlobalBanditStats } from '@/lib/bandit-learning';
+import type { FeedStrategyId } from '@/lib/feed-strategies';
 
 /**
  * useVibeProfile Hook
  * -------------------
  * Manages the local state for the Unified User Intelligence Engine.
- * Upgraded with Knowledge Graph "Expansion" for smarter discovery.
+ * Orchestrates the Multi-Armed Bandit feed strategy selection.
  */
 export function useVibeProfile() {
   const { firestore } = useFirebase();
@@ -25,12 +27,11 @@ export function useVibeProfile() {
     engagementLevel: 0
   });
   
-  // 🕸️ THE GRAPH EXPANSION CACHE
-  // Stores related topics discovered via graph traversal
   const [expandedInterestsMap, setExpandedInterests] = useState<Record<string, number>>({});
+  const [currentStrategy, setCurrentStrategy] = useState<FeedStrategyId | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // 🏎️ Real-time Listener for the Unified Brain
+  // 1. Unified Brain Sync
   useEffect(() => {
     if (!firestore || !user?.id) {
       setIsLoaded(true);
@@ -42,11 +43,11 @@ export function useVibeProfile() {
         const data = snap.data() as UserIntelligence;
         setIntelligence(data);
 
-        // 🕸️ GRAPH EXPANSION: Discover related topics the user might like
+        // 🕸️ GRAPH EXPANSION
         if (data.interests) {
             const topDirect = Object.entries(data.interests)
                 .sort(([, a], [, b]) => b - a)
-                .slice(0, 15) // Expand from top 15 direct interests
+                .slice(0, 15)
                 .map(([id]) => id);
             
             try {
@@ -63,11 +64,30 @@ export function useVibeProfile() {
     return () => unsub();
   }, [firestore, user?.id]);
 
+  // 2. 🎰 BANDIT STRATEGY SELECTION
+  useEffect(() => {
+    if (!firestore || !user?.id || !isLoaded) return;
+
+    if (intelligence.currentStrategy) {
+      setCurrentStrategy(intelligence.currentStrategy as FeedStrategyId);
+    } else {
+      // Choose an initial strategy using global performance stats
+      const statsRef = doc(firestore, 'bandit_stats', 'global');
+      getDoc(statsRef).then(snap => {
+        const stats = snap.exists() ? snap.data() as GlobalBanditStats : {} as GlobalBanditStats;
+        const selected = selectStrategy(stats);
+        setCurrentStrategy(selected);
+        
+        // Persist choice to the user's permanent brain
+        setDoc(doc(firestore, 'user_intelligence', user.id), { 
+            currentStrategy: selected 
+        }, { merge: true });
+      });
+    }
+  }, [firestore, user?.id, isLoaded, intelligence.currentStrategy]);
+
   /**
    * getPersonalScore
-   * ----------------
-   * KNOWLEDGE GRAPH DISCOVERY Formula:
-   * Boosts content by 2x for direct matches and 0.8x for graph-expanded matches.
    */
   const getPersonalScore = useCallback((post: SocialPost): number => {
     if (!isLoaded || !intelligence.interests) return 0;
@@ -79,18 +99,16 @@ export function useVibeProfile() {
     ].map(t => t.toLowerCase());
 
     postTags.forEach(tag => {
-      // 🎯 1. Direct Signal Boost (2x Weight)
+      // Direct Signal Boost (2x Weight)
       const directWeight = intelligence.interests![tag] || 0;
       score += directWeight * 2.0; 
 
-      // 🕸️ 2. Graph Relationship Boost (0.8x Weight)
-      // This surfaces content that is 'near' your interests in the graph
-      // e.g. You like #sneakers -> Boost #fashion and #style
+      // Graph Relationship Boost (0.8x Weight)
       const graphWeight = expandedInterestsMap[tag] || 0;
       score += graphWeight * 0.8;
     });
 
-    // Creator Affinity (Engagement weight)
+    // Creator Affinity
     if (post.authorId && intelligence.affinities?.creators?.[post.authorId]) {
       score += (intelligence.affinities.creators[post.authorId]) * 1.5;
     }
@@ -108,14 +126,17 @@ export function useVibeProfile() {
 
   return { 
     profile: intelligence, 
+    sessionProfile: intelligence, // Backwards compat
     isLoaded, 
+    currentStrategy,
     recordSignal: (post: SocialPost, signal: VibeSignal) => {
         if (!firestore || !user?.id) return;
         if (signal === 'watch') updateVideoInterest(firestore, user.id, post);
+        
         recordUnifiedSignal(firestore, user.id, signal, {
             tags: [...(post.tags || []), ...(post.aiTags || [])],
             creatorId: post.authorId
-        });
+        }, currentStrategy);
     },
     getPersonalScore, 
     getTopInterests 

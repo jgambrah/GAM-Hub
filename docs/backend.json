@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Campus": {
@@ -56,7 +57,8 @@
           }
         },
         "engagementLevel": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "currentStrategy": { "type": "string", "enum": ["A", "B", "C", "D"] }
       }
     },
     "SocialPost": {
@@ -127,9 +129,7 @@
         "id": { "type": "string" },
         "users": { "type": "array", "items": { "type": "string" } },
         "lastMessage": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "userAInfo": { "type": "object" },
-        "userBInfo": { "type": "object" }
+        "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
     "Message": {
@@ -155,8 +155,7 @@
         "entityId": { "type": "string" },
         "tag": { "type": "string" },
         "campusId": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "metadata": { "type": "object" }
+        "timestamp": { "type": "string", "format": "date-time" }
       }
     },
     "TrendScores": {
@@ -164,20 +163,19 @@
       "type": "object",
       "description": "Aggregated trending data for the national hub.",
       "properties": {
-        "scores": { "type": "object", "description": "Flat map of ID to current hourly weight (e.g. {video123: 120, afrobeats: 210})" },
+        "scores": { "type": "object" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
-    "CampusMood": {
-      "title": "CampusMood",
+    "BanditStats": {
+      "title": "BanditStats",
       "type": "object",
-      "description": "AI-interpreted collective campus state.",
+      "description": "Performance tracking for Multi-Armed Bandit feed strategies.",
       "properties": {
-        "moodTitle": { "type": "string" },
-        "description": { "type": "string" },
-        "advice": { "type": "string" },
-        "visualVibe": { "type": "string", "enum": ["calm", "energetic", "stressed", "celebratory", "commercial"] },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "A": { "type": "object", "properties": { "views": { "type": "number" }, "reward": { "type": "number" } } },
+        "B": { "type": "object", "properties": { "views": { "type": "number" }, "reward": { "type": "number" } } },
+        "C": { "type": "object", "properties": { "views": { "type": "number" }, "reward": { "type": "number" } } },
+        "D": { "type": "object", "properties": { "views": { "type": "number" }, "reward": { "type": "number" } } }
       }
     }
   },
@@ -196,6 +194,7 @@
     "/groups/{groupId}": { "schema": { "title": "Group", "type": "object" }, "description": "Campus communities." },
     "/groups/{groupId}/messages/{msgId}": { "schema": "#/backend/entities/Message", "description": "Group community messages." },
     "/trend_events/{eventId}": { "schema": "#/backend/entities/TrendEvent", "description": "Raw real-time behavioral signals." },
-    "/trend_scores/{docId}": { "schema": "#/backend/entities/TrendScores", "description": "Aggregated trending intelligence." }
+    "/trend_scores/{docId}": { "schema": "#/backend/entities/TrendScores", "description": "Aggregated trending intelligence." },
+    "/bandit_stats/{docId}": { "schema": "#/backend/entities/BanditStats", "description": "Multi-Armed Bandit performance hub." }
   }
 }
