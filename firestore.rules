@@ -163,9 +163,10 @@ service cloud.firestore {
 
     match /groups/{groupId} {
       // LIAISON FIX: Allow campus-wide listing for discovery and vendor ad targeting
-      allow read: if isSignedIn() && (
+      // If listing, the query must be constrained by campusId to match the rule.
+      allow read, list: if isSignedIn() && (
         isAdmin() || 
-        resource.data.campusId == getCampus()
+        (resource != null && resource.data.campusId == getCampus())
       );
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
@@ -225,6 +226,12 @@ service cloud.firestore {
       allow write: if isAdmin() || (isSignedIn() && request.auth.token.isCandidate == true);
       
       match /endorsements/{id} { allow read: if isSignedIn(); allow write: if isSignedIn(); }
+    }
+
+    // Official Voter Security Rule - Transaction Integrity for Endorsements
+    match /manifestos/{docId}/endorsements/{voterId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.auth.uid == voterId;
     }
 
     match /candidate_applications/{appId} {

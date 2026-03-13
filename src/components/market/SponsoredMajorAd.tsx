@@ -19,7 +19,9 @@ export default function SponsoredMajorAd({ userMajor }: { userMajor: string | un
 
   // 1. Fetch groups current user belongs to
   const userGroupsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    // LIAISON FIX: Vendors don't need to see targeted ads for themselves based on group membership.
+    // This stops the permission error when Vendors visit the products page.
+    if (!firestore || !user || user.role === 'vendor') return null;
     return query(collection(firestore, 'groups'), where('members', 'array-contains', user.id));
   }, [firestore, user]);
   const { data: userGroups } = useCollection<Group>(userGroupsQuery);
