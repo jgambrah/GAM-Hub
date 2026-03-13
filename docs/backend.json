@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Campus": {
@@ -126,6 +125,20 @@
         "affiliateCreatorId": { "type": "string" },
         "commissionRate": { "type": "number" }
       }
+    },
+    "Review": {
+      "title": "Review",
+      "type": "object",
+      "description": "Customer feedback for a vendor purchase.",
+      "properties": {
+        "id": { "type": "string" },
+        "orderId": { "type": "string" },
+        "vendorId": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -138,6 +151,7 @@
     "/products/{productId}": { "schema": "#/backend/entities/Product", "description": "Campus marketplace inventory." },
     "/orders/{orderId}": { "schema": "#/backend/entities/Order", "description": "Escrow transaction records." },
     "/market_requests/{requestId}": { "schema": "#/backend/entities/MarketRequest", "description": "Direct student demand signals." },
+    "/reviews/{reviewId}": { "schema": "#/backend/entities/Review", "description": "Vendor feedback records." },
     "/knowledge_graph/{nodeId}": { "schema": { "title": "KnowledgeGraphNode", "type": "object", "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "connections": { "type": "object" } } }, "description": "Semantic relationship network." }
   }
 }

@@ -116,6 +116,12 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /reviews/{reviewId} {
+      allow read, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
     // -------------------------------------------------------------------------
     // 5. INTELLIGENCE & ANALYTICS
     // -------------------------------------------------------------------------
@@ -162,10 +168,10 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
 
     match /groups/{groupId} {
-      // Allow campus-wide listing for discovery and vendor ad targeting
-      allow read, list: if isSignedIn() && (
-        isAdmin() || 
-        (resource != null && resource.data.campusId == getCampus())
+      allow read: if isSignedIn() && (
+        resource.data.isPrivate == false || 
+        request.auth.uid in resource.data.members ||
+        isAdmin()
       );
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
@@ -176,7 +182,6 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isSignedIn() && request.auth.uid in resource.data.admins);
 
       match /messages/{msgId} { 
-        // Strictly protect messages to group members only
         allow read, write: if isSignedIn() && (
           request.auth.uid in get(/databases/$(database)/documents/groups/$(groupId)).data.members || 
           isAdmin()
@@ -195,7 +200,7 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update: if isSignedIn();
       
-      match /ai_assistant/{msgId} { allow read, write: if request.auth.uid == userId; }
+      match /ai_assistance/{msgId} { allow read, write: if isSignedIn(); }
     }
 
     // -------------------------------------------------------------------------
@@ -225,12 +230,6 @@ service cloud.firestore {
       allow write: if isAdmin() || (isSignedIn() && request.auth.token.isCandidate == true);
       
       match /endorsements/{id} { allow read: if isSignedIn(); allow write: if isSignedIn(); }
-    }
-
-    // Official Voter Security Rule - Transaction Integrity for Endorsements
-    match /manifestos/{docId}/endorsements/{voterId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.auth.uid == voterId;
     }
 
     match /candidate_applications/{appId} {
