@@ -1,56 +1,60 @@
-
 'use client';
 
 /**
  * @fileOverview Video Infrastructure Utility.
- * Implements startup-safe validation to minimize storage and bandwidth costs.
+ * Implements startup-safe validation and deduplication logic.
  * 
  * Rules:
- * 1. Max Size: 50MB (Prevents cost explosion)
- * 2. Max Duration: 30s (Enforces snappy campus vibes - The "Startup Trick")
- * 3. Formats: MP4, WebM, MOV (High-compatibility)
+ * 1. Max Size: 50MB
+ * 2. Max Duration: 30s
+ * 3. Deduplication: SHA-256 Hashing
  */
 
 export const VIDEO_CONFIG = {
   MAX_SIZE_MB: 50,
-  MAX_DURATION_SEC: 30, // Strictly 30 seconds for early growth
+  MAX_DURATION_SEC: 30,
   ALLOWED_TYPES: ['video/mp4', 'video/webm', 'video/quicktime'],
 };
 
 /**
+ * generateFileHash
+ * ----------------
+ * Generates a SHA-256 fingerprint of a file to prevent duplicate storage.
+ */
+export async function generateFileHash(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  return hash;
+}
+
+/**
  * validateVideo
  * -------------
- * Performs a deep audit of a video file before allowing upload to Firebase Storage.
+ * Deep audit of a video file before allowing upload.
  */
 export async function validateVideo(file: File) {
   const maxSize = VIDEO_CONFIG.MAX_SIZE_MB * 1024 * 1024;
 
-  // 1. Type Check
   if (!VIDEO_CONFIG.ALLOWED_TYPES.includes(file.type)) {
     throw new Error("Invalid format. Please upload MP4, WebM or MOV.");
   }
 
-  // 2. Size Check
   if (file.size > maxSize) {
-    throw new Error(`File too large. Max ${VIDEO_CONFIG.MAX_SIZE_MB}MB allowed for campus vibes.`);
+    throw new Error(`File too large. Max ${VIDEO_CONFIG.MAX_SIZE_MB}MB allowed.`);
   }
 
-  // 3. Duration Check (Client-side Metadata Audit)
   try {
     const duration = await getVideoDuration(file);
     if (duration > VIDEO_CONFIG.MAX_DURATION_SEC) {
-      throw new Error(`Video too long. The Yard limit is ${VIDEO_CONFIG.MAX_DURATION_SEC} seconds to keep vibes snappy.`);
+      throw new Error(`Video too long. Max ${VIDEO_CONFIG.MAX_DURATION_SEC}s allowed.`);
     }
   } catch (err) {
-    console.warn("Video metadata check failed, proceeding with size check only.");
+    console.warn("Video metadata check skipped.");
   }
 }
 
-/**
- * getVideoDuration
- * ----------------
- * Spawns a temporary browser video element to extract the true duration.
- */
 async function getVideoDuration(file: File): Promise<number> {
   return new Promise((resolve, reject) => {
     const video = document.createElement('video');
@@ -59,7 +63,7 @@ async function getVideoDuration(file: File): Promise<number> {
       window.URL.revokeObjectURL(video.src);
       resolve(video.duration);
     };
-    video.onerror = () => reject("Could not read video metadata.");
+    video.onerror = () => reject("Metadata error.");
     video.src = URL.createObjectURL(file);
   });
 }

@@ -3,7 +3,7 @@
 
 import React, { useState, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, query, orderBy, limit, where, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import type { ArenaPost, Campus } from '@/lib/types';
 import { Swords, Trophy, Send, Loader2, Star, Flame, Smile, Youtube, ImagePlus, X, PlusCircle } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
@@ -22,17 +22,11 @@ import { cn } from '@/lib/utils';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/hashtag-utils';
 import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
-import { validateVideo } from '@/lib/video-utils';
+import { validateVideo, generateFileHash } from '@/lib/video-utils';
 
 const INITIAL_LIMIT = 100;
 const LOAD_MORE_BATCH = 50;
 
-/**
- * ArenaPage Component
- * 
- * National inter-uni battleground. 
- * Upgraded with Hybrid Storage Tiers (videos/hot).
- */
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
     const { user, isTokenReady } = useAuth();
@@ -78,16 +72,6 @@ export default function ArenaPage() {
         e.preventDefault();
         if (!user || (!content.trim() && !file && !videoUrl.trim())) return;
 
-        // 🛡️ INFRASTRUCTURE: Startup-Safe Video Validation
-        if (file && file.type.startsWith('video')) {
-            try {
-                await validateVideo(file);
-            } catch (err: any) {
-                toast({ variant: 'destructive', title: 'Video Denied', description: err.message });
-                return;
-            }
-        }
-
         setIsLoading(true);
         try {
             let postData: any = {
@@ -105,59 +89,80 @@ export default function ArenaPage() {
                 storageTier: 'hot'
             };
 
-            // 1. Process Media (Direct to Tier 1: videos/hot)
+            // 1. Process Multimedia with Deduplication
             if (file) {
                 const isVideo = file.type.startsWith('video');
-                const basePath = isVideo ? 'videos/hot' : `arena_media/${user.id}`;
-                const filePath = `${basePath}/${Date.now()}_${file.name}`;
-                const fileRef = ref(storage, filePath);
-                await uploadBytes(fileRef, file);
-                postData.mediaUrl = await getDownloadURL(fileRef);
-                postData.mediaType = isVideo ? 'video' : 'image';
+                if (isVideo) {
+                    await validateVideo(file);
+                    // 🧬 DEDUPLICATION HANDSHAKE
+                    const hash = await generateFileHash(file);
+                    const hashRef = doc(firestore, 'video_hashes', hash);
+                    const hashSnap = await getDoc(hashRef);
+
+                    if (hashSnap.exists()) {
+                        const existing = hashSnap.data();
+                        postData.mediaUrl = existing.mediaUrl;
+                        postData.mediaType = 'video';
+                        postData.imageUrl = existing.imageUrl;
+                        postData.storageTier = existing.storageTier;
+                        postData.videoHash = hash;
+                        toast({ title: "Viral Vibe Detected!", description: "Reusing existing high-quality version." });
+                    } else {
+                        const filePath = `videos/hot/${user.id}/${Date.now()}_${file.name}`;
+                        const fileRef = ref(storage, filePath);
+                        await uploadBytes(fileRef, file, { customMetadata: { hash } });
+                        postData.mediaUrl = await getDownloadURL(fileRef);
+                        postData.mediaType = 'video';
+                        postData.videoHash = hash;
+                        
+                        // Optimistic registry entry
+                        await setDoc(hashRef, {
+                            mediaUrl: postData.mediaUrl,
+                            storagePath: filePath,
+                            storageTier: 'hot',
+                            processed: false,
+                            updatedAt: serverTimestamp()
+                        });
+                    }
+                } else {
+                    const filePath = `arena_media/${user.id}/${Date.now()}_${file.name}`;
+                    const fileRef = ref(storage, filePath);
+                    await uploadBytes(fileRef, file);
+                    postData.mediaUrl = await getDownloadURL(fileRef);
+                    postData.mediaType = 'image';
+                }
             } else if (videoUrl.trim()) {
                 postData.mediaUrl = videoUrl.trim();
                 postData.mediaType = videoUrl.includes('youtube') ? 'youtube' : 'tiktok';
             }
 
-            // 2. AI SEMANTIC UPGRADE: Generate Battle Tags
+            // 2. AI SEMANTIC UPGRADE
             const manualTags = extractHashtags(content);
             let aiTags: string[] = [];
             try {
-                const aiResult = await generateSemanticHashtags({ 
-                    content: content, 
-                    campusAcronym: userCampusInfo?.acronym 
-                });
+                const aiResult = await generateSemanticHashtags({ content, campusAcronym: userCampusInfo?.acronym });
                 aiTags = aiResult.tags;
-            } catch (e) {
-                console.warn("Arena AI: Semantic tagging failed.");
-            }
+            } catch (e) { console.warn("AI Tagging drifted."); }
 
             const finalHashtags = Array.from(new Set([...manualTags, ...aiTags])).slice(0, 10);
             postData.tags = finalHashtags;
 
-            // 3. Generate Semantic Embedding
-            const embedding = await generatePostEmbedding({
-                content: content,
-                tags: finalHashtags
-            });
+            const embedding = await generatePostEmbedding({ content, tags: finalHashtags });
             postData.embedding = embedding;
 
-            // 4. Launch to Yard
+            // 3. Launch to Yard
             await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
             
-            // 5. Update Global Hashtag Index
             if (finalHashtags.length > 0) {
                 await updateHashtagIndex(firestore, finalHashtags);
-                if (finalHashtags.length >= 2) {
-                    await updateHashtagGraph(firestore, finalHashtags);
-                }
+                if (finalHashtags.length >= 2) await updateHashtagGraph(firestore, finalHashtags);
             }
 
             toast({ title: 'Vibe Shared in The Arena!' });
             resetInputs();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast({ variant: 'destructive', title: 'Post Failed' });
+            toast({ variant: 'destructive', title: 'Action Blocked', description: error.message });
         } finally {
             setIsLoading(false);
         }
@@ -194,14 +199,14 @@ export default function ArenaPage() {
                     <form onSubmit={handlePost} className="space-y-4">
                         <div className="relative flex items-center gap-2 bg-muted p-1.5 rounded-[2rem] border border-border focus-within:bg-background transition-all">
                             <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="p-2.5 text-muted-foreground hover:text-amber-500 rounded-full"><Smile size={18}/></button>
-                            <input type="file" ref={fileInputRef} onChange={(e) => { const f = e.target.files?.[0]; if(f){ setFile(f); setPreviewUrl(URL.createObjectURL(f));}}} className="hidden" />
+                            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
                             <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-muted-foreground hover:text-blue-500 rounded-full"><ImagePlus size={18}/></button>
-                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Broadcasting battle vibes... AI will tag this." className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
+                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Broadcasting battle vibes... Deduplication Active 🧬" className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
                             <Button type="submit" disabled={isLoading} className={cn("p-4 rounded-full shadow-lg h-auto", vibeType === 'shade' ? 'bg-red-600' : 'bg-green-600')}>
                                 {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
                             </Button>
                         </div>
-                        <p className="text-[9px] text-muted-foreground px-6 italic">Liaison AI hybrid storage active. 🛡️✨</p>
+                        <p className="text-[9px] text-muted-foreground px-6 italic">Liaison AI hybrid storage & deduplication active. 🛡️✨</p>
                     </form>
                 </div>
             )}
@@ -211,7 +216,7 @@ export default function ArenaPage() {
                     <Skeleton className="h-48 w-full rounded-3xl" />
                 ) : posts?.map(post => <ArenaPostCard key={post.id} post={post} />)}
 
-                {hasMore ? (
+                {hasMore && (
                     <div className="flex flex-col items-center pt-8">
                         <Button 
                             onClick={() => setLimitCount(prev => prev + LOAD_MORE_BATCH)}
@@ -221,10 +226,6 @@ export default function ArenaPage() {
                             {isLoadingPosts ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" />}
                             Load More Battles
                         </Button>
-                    </div>
-                ) : posts && posts.length > 0 && (
-                    <div className="text-center py-10 opacity-30">
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em]">End of Arena Archive</p>
                     </div>
                 )}
             </div>

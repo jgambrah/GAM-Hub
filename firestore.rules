@@ -73,6 +73,11 @@ service cloud.firestore {
       match /comebacks/{id} { allow read, list: if isSignedIn(); allow create: if isSignedIn(); }
     }
 
+    match /video_hashes/{hash} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
     // -------------------------------------------------------------------------
     // 4. MARKETPLACE & COMMERCE
     // -------------------------------------------------------------------------
