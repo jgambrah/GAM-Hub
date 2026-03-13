@@ -73,10 +73,16 @@ export function explorationBoost(post: SocialPost) {
   return 0;
 }
 
+/**
+ * computeVibeScore
+ * ---------------
+ * Upgraded with Real-Time Global Trend Injection.
+ */
 export function computeVibeScore(
   current: SocialPost, 
   candidate: SocialPost, 
   getPersonalScore: (p: SocialPost) => number,
+  globalTrendScores: Record<string, number> = {},
   viralTags: Set<string>, 
   trendingTags: Set<string>, 
   relatedTags: Set<string>,
@@ -84,39 +90,60 @@ export function computeVibeScore(
   activeMoodId: VibeMood = 'all'
 ) {
   let score = 0;
+  
+  // 1. Personalization Match
   score += getPersonalScore(candidate);
+
+  // 2. 🚀 REAL-TIME TREND BOOST (5x Weight)
+  const globalTrendValue = globalTrendScores[candidate.id] || 0;
+  score += globalTrendValue * 5;
+
+  // 3. Tag & Semantic Continuity
   const currentTags = new Set([...(current.tags || []), ...(current.aiTags || [])].map(t => t.toLowerCase()));
   const candidateTags = [...(candidate.tags || []), ...(candidate.aiTags || [])].map(t => t.toLowerCase());
-  const aiMatches = candidateTags.filter(t => currentTags.has(t));
-  score += aiMatches.length * 15;
+  
+  const tagMatches = candidateTags.filter(t => currentTags.has(t));
+  score += tagMatches.length * 15;
+
+  // Boost based on trending tags
+  candidateTags.forEach(tag => {
+      const tagTrend = globalTrendScores[tag] || 0;
+      score += tagTrend * 2;
+  });
+
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
     if (similarity > 0.85) score += 20;
   }
+
+  // 4. Mood Alignment
   if (candidate.mood && activeMoodId !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === activeMoodId);
     if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
   }
-  if (candidate.trendScore && candidate.trendScore > 30) {
-    score += 35; 
-  } else if (candidateTags.some(t => viralTags.has(t))) {
-    score += 25;
-  }
+
+  // 5. Commerce Velocity Boost
   if (candidate.commerceClicks) {
       score += Math.min(candidate.commerceClicks * 5, 50);
   }
+
+  // 6. Discovery & Freshness
   score += explorationBoost(candidate);
+  
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
   score += (repData.qualityScore || 50) * 0.5;
+
   if (candidate.createdAt) {
     const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
     score += exponentialFreshness(date);
   }
+
   return score;
 }
 
 export function buildSmartQueue(
   current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
+  globalTrendScores: Record<string, number> = {},
   viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set(),
   creatorReputation: Record<string, any> = {}
 ) {
@@ -124,15 +151,18 @@ export function buildSmartQueue(
     .filter(p => p.id !== current.id)
     .map(p => ({
         post: p,
-        score: computeVibeScore(current, p, getPersonalScore, viralTags, trendingTags, relatedTags, creatorReputation, mood)
+        score: computeVibeScore(current, p, getPersonalScore, globalTrendScores, viralTags, trendingTags, relatedTags, creatorReputation, mood)
     }));
+
   scored.sort((a, b) => b.score - a.score);
+
   const finalRanked = [];
   const candidates = [...scored];
   const seenClusters = new Map<string, number>();
   const creatorSessionCount = new Map<string, number>();
   const lastCreatorPositions = new Map<string, number>();
   const MIN_CREATOR_GAP = 4;
+
   while (candidates.length > 0 && finalRanked.length < 50) {
       const currentIndex = finalRanked.length;
       const window = candidates.slice(0, 20).map(c => {
@@ -141,21 +171,26 @@ export function buildSmartQueue(
           const clusterFreq = seenClusters.get(cluster) || 0;
           const creatorFreq = creatorSessionCount.get(creatorId) || 0;
           const lastPos = lastCreatorPositions.get(creatorId);
+          
           let diverseScore = c.score;
           diverseScore -= (clusterFreq * 6); 
           diverseScore -= (creatorFreq * 8); 
+          
           if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) {
               diverseScore -= 40; 
           }
           return { ...c, diverseScore };
       });
+
       window.sort((a, b) => b.diverseScore - a.diverseScore);
       const best = window[0];
       finalRanked.push(best);
+
       const cluster = (best.post.tags?.[0] || 'none').toLowerCase();
       seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1);
       creatorSessionCount.set(best.post.authorId, (creatorSessionCount.get(best.post.authorId) || 0) + 1);
       lastCreatorPositions.set(best.post.authorId, currentIndex);
+
       const idx = candidates.findIndex(c => c.post.id === best.post.id);
       candidates.splice(idx, 1);
   }
@@ -194,6 +229,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [reactionBursts, setReactionBursts] = useState<ReactionBurst[]>([]);
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
   const [isMiniPlayerVisible, setIsMiniPlayerVisible] = useState(true);
+  
+  // Intelligence Signals
+  const [globalTrendScores, setGlobalTrendScores] = useState<Record<string, number>>({});
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());
   const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
   const [creatorReputation, setCreatorReputation] = useState<Record<string, any>>({});
@@ -207,6 +245,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const isContinuousRef = useRef(false);
   const activeMoodRef = useRef<VibeMood>('all');
   const getPersonalScoreRef = useRef(getPersonalScore);
+  const globalTrendScoresRef = useRef(globalTrendScores);
   const viralTagsRef = useRef(viralTags);
   const trendingTagsRef = useRef(trendingTags);
   const creatorReputationRef = useRef(creatorReputation);
@@ -218,12 +257,21 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
   useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
   useEffect(() => { getPersonalScoreRef.current = getPersonalScore; }, [getPersonalScore]);
+  useEffect(() => { globalTrendScoresRef.current = globalTrendScores; }, [globalTrendScores]);
   useEffect(() => { viralTagsRef.current = viralTags; }, [viralTags]);
   useEffect(() => { trendingTagsRef.current = trendingTags; }, [trendingTags]);
   useEffect(() => { creatorReputationRef.current = creatorReputation; }, [creatorReputation]);
 
   useEffect(() => {
     if (!firestore) return;
+
+    // 🛰️ REAL-TIME TREND SYNC
+    const unsubTrends = onSnapshot(doc(firestore, 'trend_scores', 'current'), (snap) => {
+        if (snap.exists()) {
+            setGlobalTrendScores(snap.data() as Record<string, number>);
+        }
+    });
+
     getDocs(query(collection(firestore, 'hashtags'), orderBy('trendScore', 'desc'), limit(20))).then(snap => {
         const viral = new Set<string>(); const trending = new Set<string>();
         snap.docs.forEach(d => {
@@ -232,13 +280,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         });
         setViralTags(viral); setTrendingTags(trending);
     });
+
     const q = query(collection(firestore, 'creator_reputation'), orderBy('qualityScore', 'desc'), limit(200));
     const unsubRep = onSnapshot(q, (snap) => {
       const map: Record<string, any> = {};
       snap.docs.forEach(d => { map[d.id] = { qualityScore: d.data().qualityScore || 50, violationScore: d.data().violationScore || 0 }; });
       setCreatorReputation(map);
     });
-    return () => unsubRep();
+
+    return () => { unsubTrends(); unsubRep(); };
   }, [firestore]);
 
   const clearDisplayTimer = useCallback(() => {
@@ -248,9 +298,11 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
+    const trends = globalTrendScoresRef.current;
     const viral = viralTagsRef.current;
     const trending = trendingTagsRef.current;
     const reputations = creatorReputationRef.current;
+    
     let relatedTags = new Set<string>();
     if ((current.tags || []).length > 0 && firestore) {
         try {
@@ -258,14 +310,17 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
             res.flat().forEach(r => { if (r.weight > 5) relatedTags.add(r.tag.toLowerCase()); });
         } catch (e) { console.warn("Graph lookup failed"); }
     }
-    const rankedResults = buildSmartQueue(current, pool, mood, scorer, viral, trending, relatedTags, reputations);
+
+    const rankedResults = buildSmartQueue(current, pool, mood, scorer, trends, viral, trending, relatedTags, reputations);
     const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 30);
+    
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
-        score: computeVibeScore(current, p, scorer, viral, trending, relatedTags, reputations, mood),
+        score: computeVibeScore(current, p, scorer, trends, viral, trending, relatedTags, reputations, mood),
         reason: 'Recommended for you',
       }));
+
     setQueue([current, ...diversePool]);
     setUpNext(makeUpNext(diversePool));
     setIsLoadingQueue(false);

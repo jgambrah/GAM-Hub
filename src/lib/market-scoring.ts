@@ -3,7 +3,7 @@
 
 /**
  * @fileOverview Marketplace Ranking Engine.
- * Upgraded to use the Unified Intelligence Brain + Knowledge Graph expansion.
+ * Upgraded to use the Unified Intelligence Brain + Knowledge Graph expansion + Global Trend Boosting.
  */
 
 import type { Product, UserIntelligence, User, MarketIntent } from './types';
@@ -17,11 +17,12 @@ export function computeVendorScore(product: Product) {
 /**
  * computeMarketScore
  * ------------------
- * Commercial Discovery with Knowledge Graph Support.
+ * Commercial Discovery with Knowledge Graph Support and Viral Boosting.
  */
 export function computeMarketScore(
   product: Product,
   unifiedIntelligence: Partial<UserIntelligence> | null,
+  globalTrendScores: Record<string, number> = {},
   user: User | null,
   searchQuery: string = '',
   parsedIntent?: MarketIntent | null,
@@ -29,7 +30,15 @@ export function computeMarketScore(
 ) {
   let score = 0;
 
-  // 1. AI Intent & Keyword Matching
+  // 1. 🚀 REAL-TIME TREND BOOST (4x Weight)
+  const trendBoost = globalTrendScores[product.id] || 0;
+  score += trendBoost * 4;
+
+  // Boost based on trending category
+  const categoryTrend = globalTrendScores[product.category.toLowerCase()] || 0;
+  score += categoryTrend * 2;
+
+  // 2. AI Intent & Keyword Matching
   if (parsedIntent) {
       if (parsedIntent.category && product.category.toLowerCase() === parsedIntent.category.toLowerCase()) score += 35;
       if (parsedIntent.intent && product.tags?.includes(parsedIntent.intent)) score += 20;
@@ -39,7 +48,7 @@ export function computeMarketScore(
     if (product.category.toLowerCase().includes(term)) score += 15;
   }
 
-  // 2. 🧠 UNIFIED BRAIN + 🕸️ GRAPH SIGNALS
+  // 3. 🧠 UNIFIED BRAIN + 🕸️ GRAPH SIGNALS
   if (unifiedIntelligence?.interests) {
     const productCategory = product.category.toLowerCase();
     
@@ -72,11 +81,11 @@ export function computeMarketScore(
     }
   }
 
-  // 3. Proximity & Momentum
+  // 4. Proximity & Momentum
   if (user && product.campusId === user.campusId) score += 5;
   if (product.trendScore) score += product.trendScore * 0.5;
 
-  // 4. Freshness Decay
+  // 5. Freshness Decay
   if (product.createdAt) {
     const date = typeof product.createdAt === 'string' ? new Date(product.createdAt) : product.createdAt.toDate();
     const ageHours = (Date.now() - date.getTime()) / 3600000;

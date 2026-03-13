@@ -3,7 +3,7 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, orderBy, limit, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, doc, onSnapshot } from 'firebase/firestore';
 import type { Product, UserIntelligence, MarketIntent } from '@/lib/types';
 import { computeMarketScore } from '@/lib/market-scoring';
 import { enforceMarketDiversity } from '@/lib/market-diversity';
@@ -15,7 +15,7 @@ import { expandInterests } from '@/lib/knowledge-graph';
  * useMarketRecommendations Hook
  * ----------------------------
  * The primary discovery engine for the marketplace.
- * Synchronizes with the Unified User Intelligence brain + Knowledge Graph.
+ * Synchronizes with the Unified User Intelligence brain + Knowledge Graph + Trend Scores.
  */
 export function useMarketRecommendations(searchQuery: string = '') {
   const { firestore } = useFirebase();
@@ -23,6 +23,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
   
   const [parsedIntent, setParsedIntent] = useState<MarketIntent | null>(null);
   const [expandedInterests, setExpandedInterests] = useState<Record<string, number>>({});
+  const [globalTrendScores, setGlobalTrendScores] = useState<Record<string, number>>({});
   const [isParsing, setIsParsing] = useState(false);
   const [isExplaining, setIsExplaining] = useState(false);
 
@@ -32,6 +33,16 @@ export function useMarketRecommendations(searchQuery: string = '') {
     return doc(firestore, 'user_intelligence', user.id);
   }, [firestore, user?.id]);
   const { data: unifiedIntelligence, isLoading: isLoadingProfile } = useDoc<UserIntelligence>(intelRef);
+
+  // 🚀 REAL-TIME TREND SYNC
+  useEffect(() => {
+    if (!firestore) return;
+    return onSnapshot(doc(firestore, 'trend_scores', 'current'), (snap) => {
+        if (snap.exists()) {
+            setGlobalTrendScores(snap.data() as Record<string, number>);
+        }
+    });
+  }, [firestore]);
 
   // 2. GRAPH EXPANSION: Discover related commerce topics
   useEffect(() => {
@@ -60,7 +71,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 4. 🏎️ HYBRID PERSONALIZED RANKING (Knowledge Graph Enhanced)
+  // 4. 🏎️ HYBRID PERSONALIZED RANKING (Knowledge Graph + Trends Enhanced)
   const processed = useMemo(() => {
     if (!candidates) return { ranked: [], trending: [], deals: [], topRated: [] };
     
@@ -70,6 +81,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
         score: computeMarketScore(
             product, 
             unifiedIntelligence || null, 
+            globalTrendScores,
             user, 
             searchQuery, 
             parsedIntent,
@@ -81,8 +93,12 @@ export function useMarketRecommendations(searchQuery: string = '') {
     const ranked = enforceMarketDiversity(scored.map(r => r.product));
 
     const trending = candidates
-      .filter(p => (p.trendScore || 0) > 5)
-      .sort((a, b) => (b.trendScore || 0) - (a.trendScore || 0))
+      .filter(p => (p.trendScore || 0) > 5 || globalTrendScores[p.id] > 5)
+      .sort((a, b) => {
+          const scoreA = (a.trendScore || 0) + (globalTrendScores[a.id] || 0);
+          const scoreB = (b.trendScore || 0) + (globalTrendScores[b.id] || 0);
+          return scoreB - scoreA;
+      })
       .slice(0, 10);
 
     const deals = candidates
@@ -100,7 +116,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
       .slice(0, 10);
 
     return { ranked, trending, deals, topRated };
-  }, [candidates, unifiedIntelligence, user, searchQuery, parsedIntent, expandedInterests]);
+  }, [candidates, unifiedIntelligence, globalTrendScores, user, searchQuery, parsedIntent, expandedInterests]);
 
   // 5. AI INTENT PARSING
   useEffect(() => {
