@@ -3,21 +3,14 @@
 /**
  * @fileOverview Liaison Vibe Player Orchestrator.
  * 🚀 ACTIVE ENGINES:
- * 1. Two-Stage Ranking (Retrieval + Scoring)
- * 2. Discovery Mix (Interleaving + Diversity)
- * 3. Hashtag Intel (Graph co-occurrence)
- * 4. Unified Profile (Social-Commercial Merge)
- * 5. Knowledge Graph (Semantic Expansion)
- * 6. Real-Time Trend (5x Weight Injection)
- * 7. Multi-Armed Bandit (Strategy Learning)
- * 8. AI Re-Ranking (LLM Refinement)
- * 9. TIKTOK-STYLE PREFETCHING (Lookahead Buffering)
- * 10. INFINITE ENGAGEMENT LOOP (Auto-Fetch & Interaction Signals)
- * 11. SEMANTIC VECTOR MATCHING (Cosine Similarity)
+ * 1. Semantic AI Discovery (Cosine Similarity)
+ * 2. Infinite Feed Loop (Auto-Scroller)
+ * 3. TikTok-Style Prefetching
+ * 4. Multi-Armed Bandit Strategy
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import type { SocialPost } from '@/lib/types';
+import type { SocialPost, UserIntelligence, VibeSignal } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
@@ -28,7 +21,7 @@ import { enforceDiversity } from '@/lib/diversity-engine';
 import { logTrendEvent } from '@/lib/trend-logger';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { vibeBufferManager } from '@/lib/vibe-buffer-manager';
-import { cosineSimilarity } from '@/lib/utils';
+import { computeVibeScore } from '@/lib/vibe-scoring';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -64,98 +57,6 @@ export const REACTIONS: VibeReaction[] = ['🔥', '🌊', '💎', '👑', '⚡']
 
 export interface ReactionBurst {
   id: string; emoji: VibeReaction; x: number; y: number;
-}
-
-export function explorationBoost(post: SocialPost) {
-  const views = post.likes || 0; 
-  if (views < 50) return 15;
-  if (views < 200) return 8;
-  return 0;
-}
-
-export function computeVibeScore(
-  current: SocialPost, 
-  candidate: SocialPost, 
-  getPersonalScore: (p: SocialPost) => number,
-  globalTrendScores: Record<string, number> = {},
-  viralTags: Set<string>, 
-  trendingTags: Set<string>, 
-  relatedTags: Set<string>,
-  creatorReputation: Record<string, any> = {},
-  activeMoodId: VibeMood = 'all'
-) {
-  let score = 0;
-
-  // 1. Personalization (Unified Brain + Graph + Taste Vector)
-  score += getPersonalScore(candidate);
-
-  // 2. Global Trend Injection (5x Weight)
-  const globalTrendValue = globalTrendScores[candidate.id] || 0;
-  score += globalTrendValue * 5;
-
-  // 3. 📈 ENGAGEMENT BOOST (Likes, Comments, Shares)
-  const engagementScore = (candidate.likes || 0) * 2 + (candidate.commentCount || 0) * 3 + (candidate.trendScore || 0) * 5;
-  score += Math.min(engagementScore, 100); 
-
-  // 4. 👑 CREATOR MOMENTUM
-  const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
-  score += (repData.qualityScore || 50) * 0.8; 
-
-  // 5. Semantic Match (Current Context vs Candidate)
-  const currentTags = new Set([...(current.tags || []), ...(current.aiTags || [])].map(t => t.toLowerCase()));
-  const candidateTags = [...(candidate.tags || []), ...(candidate.aiTags || [])].map(t => t.toLowerCase());
-  const tagMatches = candidateTags.filter(t => currentTags.has(t));
-  score += tagMatches.length * 15;
-
-  // 6. 🧠 NEURAL SIMILARITY: Compare embeddings of the two vibes
-  if (current.embedding && candidate.embedding) {
-    const similarity = cosineSimilarity(current.embedding, candidate.embedding);
-    if (similarity > 0.85) score += similarity * 25;
-  }
-
-  // 7. Exploration & Proximity
-  score += explorationBoost(candidate);
-  if (candidate.createdAt) {
-    const date = typeof candidate.createdAt === 'string' ? new Date(candidate.createdAt) : (candidate.createdAt.toDate ? candidate.createdAt.toDate() : new Date(candidate.createdAt));
-    const ageHours = (Date.now() - date.getTime()) / 3600000;
-    score += 10 * Math.exp(-ageHours / 12);
-  }
-
-  return score;
-}
-
-export function buildSmartQueue(
-  current: SocialPost, pool: SocialPost[], mood: VibeMood, getPersonalScore: (p: SocialPost) => number,
-  globalTrendScores: Record<string, number> = {},
-  viralTags: Set<string> = new Set(), trendingTags: Set<string> = new Set(), relatedTags: Set<string> = new Set(),
-  creatorReputation: Record<string, any> = {}
-) {
-  const scored = pool
-    .filter(p => p.id !== current.id)
-    .map(p => ({
-        post: p,
-        score: computeVibeScore(current, p, getPersonalScore, globalTrendScores, viralTags, trendingTags, relatedTags, creatorReputation, mood)
-    }));
-  scored.sort((a, b) => b.score - a.score);
-  
-  const finalRanked = []; const candidates = [...scored]; const seenClusters = new Map<string, number>(); const creatorSessionCount = new Map<string, number>(); const lastCreatorPositions = new Map<string, number>(); 
-  const MIN_CREATOR_GAP = 3; 
-
-  while (candidates.length > 0 && finalRanked.length < 50) {
-      const currentIndex = finalRanked.length;
-      const window = candidates.slice(0, 20).map(c => {
-          const cluster = (c.post.tags?.[0] || 'none').toLowerCase(); const creatorId = c.post.authorId; const clusterFreq = seenClusters.get(cluster) || 0; const creatorFreq = creatorSessionCount.get(creatorId) || 0; const lastPos = lastCreatorPositions.get(creatorId);
-          let diverseScore = c.score; 
-          diverseScore -= (clusterFreq * 10); 
-          diverseScore -= (creatorFreq * 12); 
-          if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) diverseScore -= 50; 
-          return { ...c, diverseScore };
-      });
-      window.sort((a, b) => b.diverseScore - a.diverseScore); const best = window[0]; finalRanked.push(best);
-      const cluster = (best.post.tags?.[0] || 'none').toLowerCase(); seenClusters.set(cluster, (seenClusters.get(cluster) || 0) + 1); creatorSessionCount.set(best.post.authorId, (creatorSessionCount.get(best.post.authorId) || 0) + 1); lastCreatorPositions.set(best.post.authorId, currentIndex);
-      const idx = candidates.findIndex(c => c.post.id === best.post.id); candidates.splice(idx, 1);
-  }
-  return finalRanked;
 }
 
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
@@ -195,7 +96,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [globalTrendScores, setGlobalTrendScores] = useState<Record<string, number>>({});
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());
   const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
-  const [creatorReputation, setCreatorReputation] = useState<Record<string, any>>({});
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const queueRef = useRef<SocialPost[]>([]);
@@ -204,11 +104,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const activePostRef = useRef<SocialPost | null>(null);
   const isContinuousRef = useRef(true);
   const activeMoodRef = useRef<VibeMood>('all');
-  const getPersonalScoreRef = useRef(getPersonalScore);
-  const globalTrendScoresRef = useRef(globalTrendScores);
-  const viralTagsRef = useRef(viralTags);
-  const trendingTagsRef = useRef(trendingTags);
-  const creatorReputationRef = useRef(creatorReputation);
 
   useEffect(() => { queueRef.current = queue; }, [queue]);
   useEffect(() => { allPostsRef.current = allPosts; }, [allPosts]);
@@ -216,11 +111,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => { activePostRef.current = activePost; }, [activePost]);
   useEffect(() => { isContinuousRef.current = isContinuous; }, [isContinuous]);
   useEffect(() => { activeMoodRef.current = activeMood; }, [activeMood]);
-  useEffect(() => { getPersonalScoreRef.current = getPersonalScore; }, [getPersonalScore]);
-  useEffect(() => { globalTrendScoresRef.current = globalTrendScores; }, [globalTrendScores]);
-  useEffect(() => { viralTagsRef.current = viralTags; }, [viralTags]);
-  useEffect(() => { trendingTagsRef.current = trendingTags; }, [trendingTags]);
-  useEffect(() => { creatorReputationRef.current = creatorReputation; }, [creatorReputation]);
 
   useEffect(() => {
     if (!firestore) return;
@@ -230,32 +120,39 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         snap.docs.forEach(d => { const data = d.data(); const tag = data.tag?.toLowerCase(); if (!tag) return; if (data.trendScore > 30) viral.add(tag); else if (data.trendScore > 15) trending.add(tag); });
         setViralTags(viral); setTrendingTags(trending);
     });
-    const q = query(collection(firestore, 'creator_reputation'), orderBy('qualityScore', 'desc'), limit(200));
-    const unsubRep = onSnapshot(q, (snap) => { const map: Record<string, any> = {}; snap.docs.forEach(d => { map[d.id] = { qualityScore: d.data().qualityScore || 50, violationScore: d.data().violationScore || 0 }; }); setCreatorReputation(map); });
-    return () => { unsubTrends(); unsubRep(); };
+    return () => { unsubTrends(); };
   }, [firestore]);
 
   const clearDisplayTimer = useCallback(() => { if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; } }, []);
 
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
-    const scorer = getPersonalScoreRef.current;
-    const trends = globalTrendScoresRef.current;
-    const viral = viralTagsRef.current;
-    const trending = trendingTagsRef.current;
-    const reputations = creatorReputationRef.current;
     
-    let relatedTags = new Set<string>();
-    if ((current.tags || []).length > 0 && firestore) {
-        try { const res = await Promise.all(current.tags!.slice(0, 3).map(tag => getRelatedHashtags(firestore, tag))); res.flat().forEach(r => { if (r.weight > 5) relatedTags.add(r.tag.toLowerCase()); }); } catch (e) { console.warn("Graph lookup failed"); }
-    }
+    // 🧠 NEURAL RANKING LOGIC
+    const scoredCandidates = pool
+      .filter(p => p.id !== current.id)
+      .map(candidate => ({
+        post: candidate,
+        score: computeVibeScore(candidate, {
+          currentPost: current,
+          userIntelligence: sessionProfile,
+          globalTrendScores,
+          activeMood: mood,
+          getPersonalScore
+        })
+      }))
+      .sort((a, b) => b.score - a.score);
 
-    const rankedResults = buildSmartQueue(current, pool, mood, scorer, trends, viral, trending, relatedTags, reputations);
-    let finalPosts = rankedResults.map(r => r.post);
+    let finalPosts = scoredCandidates.map(r => r.post);
 
+    // AI Re-Ranking Layer
     if (finalPosts.length > 5) {
         try {
-            const aiReRank = await getRecommendedVibes({ currentPostContent: current.content, userInterests: getTopInterests(10), availablePosts: finalPosts.slice(0, 15).map(p => ({ id: p.id, content: p.content, tags: p.tags })) });
+            const aiReRank = await getRecommendedVibes({ 
+              currentPostContent: current.content, 
+              userInterests: getTopInterests(10), 
+              availablePosts: finalPosts.slice(0, 15).map(p => ({ id: p.id, content: p.content, tags: p.tags })) 
+            });
             const aiOrder = new Map(aiReRank.recommendedPostIds.map((id, i) => [id, i]));
             const topTier = finalPosts.filter(p => aiOrder.has(p.id)).sort((a, b) => aiOrder.get(a.id)! - aiOrder.get(b.id)!);
             const others = finalPosts.filter(p => !aiOrder.has(p.id));
@@ -264,12 +161,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     }
 
     const diversePool = enforceDiversity(finalPosts).slice(0, 30);
-    const makeUpNext = (ranked: SocialPost[]): QueueEntry[] => ranked.slice(0, 15).map(p => ({ post: p, score: computeVibeScore(current, p, scorer, trends, viral, trending, relatedTags, reputations, mood), reason: 'AI Orchestrated Match', }));
-
+    
     setQueue([current, ...diversePool]);
-    setUpNext(makeUpNext(diversePool));
+    setUpNext(diversePool.slice(0, 15).map(p => ({ 
+      post: p, 
+      score: 0, // Score used for sorting, not needed in UI
+      reason: 'AI Orchestrated Match' 
+    })));
     setIsLoadingQueue(false);
-  }, [firestore, getTopInterests]);
+  }, [getPersonalScore, globalTrendScores, sessionProfile, getTopInterests]);
 
   useEffect(() => {
     if (activePost && allPosts.length > 0) {

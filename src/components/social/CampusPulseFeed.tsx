@@ -1,10 +1,9 @@
-
 'use client';
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit, getDocs, startAfter, type DocumentSnapshot } from 'firebase/firestore';
-import type { SocialPost, SrcPost, Product } from '@/lib/types';
+import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
 import { RefreshCcw, Zap, TrendingUp, Shuffle, Search as SearchIcon } from 'lucide-react';
@@ -17,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
 import { DEFAULT_STRATEGY, type FeedStrategyId } from '@/lib/feed-strategies';
 import { recordBanditTrial } from '@/lib/bandit-learning';
+import { computeVibeScore } from '@/lib/vibe-scoring';
 
 const BATCH_SIZE = 20;
 
@@ -24,7 +24,7 @@ const BATCH_SIZE = 20;
  * CampusPulseFeed Component
  * 
  * The main scroller orchestrator.
- * Implements MAB Strategy Selection, Infinite Loop, and Marketplace Injection.
+ * Implements MAB Strategy Selection, Infinite Loop, and Semantic Search Injection.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -40,7 +40,7 @@ export default function CampusPulseFeed({
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
     const { isContinuous, setIsContinuous, addToQueue, setActivePost, activePostId } = useVibePlayer();
-    const { currentStrategy, getPersonalScore } = useVibeProfile();
+    const { currentStrategy, getPersonalScore, sessionProfile } = useVibeProfile();
     
     // 🛍️ COMMERCE ENGINE: Fetch product candidates for injection
     const { products: marketProducts } = useMarketRecommendations(searchQuery);
@@ -53,6 +53,7 @@ export default function CampusPulseFeed({
     const [queryVector, setQueryVector] = useState<number[] | null>(null);
     const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
     const [hasMore, setHasMore] = useState(true);
+    const [globalTrends, setGlobalTrends] = useState<Record<string, number>>({});
 
     const fetchBatch = async (isLoadMore = false) => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return;
@@ -62,6 +63,7 @@ export default function CampusPulseFeed({
         const tagToFilter = activeTag || (searchQuery.startsWith('#') ? searchQuery.slice(1).toLowerCase() : null);
         
         try {
+            // 🧠 SEMANTIC AI: Generate query vector for search
             if (!isLoadMore && searchQuery.trim() && !searchQuery.startsWith('#')) {
                 setIsEmbedding(true);
                 const vector = await generateQueryEmbedding(searchQuery);
@@ -98,7 +100,7 @@ export default function CampusPulseFeed({
                 setActivePost(newPosts[0]);
             }
 
-            // Initial metadata only
+            // Fetch metadata for ranking
             if (!isLoadMore) {
                 const srcQuery = query(
                     collection(firestore, 'src_posts'),
@@ -141,11 +143,19 @@ export default function CampusPulseFeed({
     const filteredPosts = useMemo(() => {
         if (!posts || posts.length === 0) return [];
 
-        const strategyId = currentStrategy || DEFAULT_STRATEGY;
-        
-        // 🎰 STAGE 1: RANK CANDIDATES
+        // 🎰 STAGE 1: NEURAL RANKING
+        // Rank candidates using Query Vector, Personal profile, and Trends
         const rankedBatch = posts
-            .map(p => ({ ...p, pScore: getPersonalScore(p) }))
+            .map(p => ({ 
+                ...p, 
+                pScore: computeVibeScore(p, {
+                    queryVector,
+                    userIntelligence: sessionProfile,
+                    globalTrendScores: globalTrends,
+                    activeMood: 'all',
+                    getPersonalScore
+                }) 
+            }))
             .sort((a, b) => b.pScore - a.pScore);
 
         // STAGE 2: SRC HANDSHAKE
@@ -167,7 +177,7 @@ export default function CampusPulseFeed({
         }));
 
         return lastDoc && posts.length > BATCH_SIZE ? rankedBatch : [...mappedSrc, ...rankedBatch];
-    }, [posts, srcPosts, currentStrategy, getPersonalScore, lastDoc]);
+    }, [posts, srcPosts, queryVector, globalTrends, getPersonalScore, sessionProfile, lastDoc]);
 
     return (
         <div className="space-y-8 pb-20">
@@ -179,11 +189,11 @@ export default function CampusPulseFeed({
                         </div>
                         <div>
                             <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tight italic">
-                                {isEmbedding ? 'Deciphering Intent...' : `Results for "${searchQuery}"`}
+                                {isEmbedding ? 'Neural Decoding...' : `Discoveries for "${searchQuery}"`}
                             </h3>
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Zap size={10} className="text-indigo-500 fill-indigo-500" /> 
-                                {queryVector ? 'Hybrid Neural Retrieval Active' : 'Keyword Matrix Pool'}
+                                {queryVector ? 'Semantic AI Match Active' : 'Keyword Matrix Pool'}
                             </p>
                         </div>
                     </div>
@@ -199,11 +209,11 @@ export default function CampusPulseFeed({
                         <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">Infinite Engagement Loop</h4>
+                        <h4 className="font-black text-sm tracking-tight">Vibration Pipeline</h4>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Arm:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ranker:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> Strategy {currentStrategy || 'Learning...'}
+                                <TrendingUp size={10} /> Neural Retrieval
                             </span>
                         </div>
                     </div>

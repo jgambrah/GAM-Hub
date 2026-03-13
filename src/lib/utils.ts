@@ -8,6 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Calculates the cosine similarity between two vectors.
  * Returns a score between -1 and 1 (usually 0 to 1 for text embeddings).
+ * This is the core mathematical engine for Semantic AI Discovery.
  */
 export function cosineSimilarity(a: number[], b: number[]) {
   if (!a || !b || a.length !== b.length) return 0;
