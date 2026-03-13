@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -12,6 +11,7 @@
  * 6. Real-Time Trend (5x Weight Injection)
  * 7. Multi-Armed Bandit (Strategy Learning)
  * 8. AI Re-Ranking (LLM Refinement)
+ * 9. TIKTOK-STYLE PREFETCHING (Lookahead Buffering)
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -25,6 +25,7 @@ import { getRelatedHashtags } from '@/lib/hashtag-utils';
 import { enforceDiversity } from '@/lib/diversity-engine';
 import { logTrendEvent } from '@/lib/trend-logger';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
+import { vibeBufferManager } from '@/lib/vibe-buffer-manager';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -365,6 +366,20 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         return () => clearTimeout(timer);
     }
   }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
+
+  // 📡 PREFETCH ENGINE: Lookahead logic for instant playback
+  useEffect(() => {
+    if (!activePostId || upNext.length === 0) return;
+
+    const prefetchTimer = setTimeout(() => {
+      // Look ahead at the next 3 vibrations in the smart queue
+      upNext.slice(0, 3).forEach(entry => {
+        vibeBufferManager.preload(entry.post);
+      });
+    }, 1000); // Wait 1s after active post stabilizes to avoid noise on fast scrolls
+
+    return () => clearTimeout(prefetchTimer);
+  }, [activePostId, upNext]);
 
   const recordPlay = useCallback((p: SocialPost) => {
     recordSignal(p, 'watch');
