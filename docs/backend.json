@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Campus": {
@@ -92,6 +93,7 @@
         "storagePath": { "type": "string" },
         "storageTier": { "type": "string" },
         "processed": { "type": "boolean" },
+        "uploads": { "type": "number" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },

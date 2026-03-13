@@ -1,5 +1,5 @@
 
-const {onDocumentUpdated, onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onDocumentUpdated, onDocumentCreated, onDocumentDeleted} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onObjectFinalized} = require("firebase-functions/v2/storage");
 const {setGlobalOptions} = require("firebase-functions");
@@ -104,7 +104,7 @@ exports.compressVideo = onObjectFinalized({
       batch.update(doc.ref, { imageUrl: thumbUrl, storageTier: 'hot', storagePath: filePath });
     });
 
-    // 2. Update Deduplication Registry Registry 🧬
+    // 2. Update Deduplication Registry 🧬
     const fileHash = object.metadata?.hash;
     if (fileHash) {
       const hashRef = db.collection("video_hashes").doc(fileHash);
@@ -132,6 +132,44 @@ exports.compressVideo = onObjectFinalized({
 });
 
 /**
+ * 🛡️ DEDUPLICATION-SAFE DELETION TRIGGER
+ * Ensures shared video files are only deleted when NO more posts reference them.
+ */
+exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event) => {
+  const post = event.data.data();
+  const db = admin.firestore();
+  const bucket = admin.storage().bucket();
+
+  if (!post || post.mediaType !== 'video' || !post.videoHash) return null;
+
+  const hashRef = db.collection("video_hashes").doc(post.videoHash);
+  
+  return db.runTransaction(async (transaction) => {
+    const hashSnap = await transaction.get(hashRef);
+    if (!hashSnap.exists()) return;
+
+    const data = hashSnap.data();
+    const newUploads = (data.uploads || 1) - 1;
+
+    if (newUploads > 0) {
+      // Still other posts using this file. Just decrement count.
+      transaction.update(hashRef, { uploads: newUploads });
+      console.log(`Deduplication Safety: File ${post.videoHash} preserved. ${newUploads} references remain.`);
+    } else {
+      // LAST POST DELETED: Safe to purge the physical file 🧹
+      if (data.storagePath) {
+        await bucket.file(data.storagePath).delete().catch(() => null);
+        // Also delete thumbnail if exists
+        const thumbPath = data.storagePath.replace('videos/hot/', 'videos/thumbs/').replace('.mp4', '.jpg');
+        await bucket.file(thumbPath).delete().catch(() => null);
+      }
+      transaction.delete(hashRef);
+      console.log(`Deduplication Purge: Physical file for hash ${post.videoHash} removed.`);
+    }
+  });
+});
+
+/**
  * ⛅ HYBRID STORAGE LIFECYCLE (Tier 2 & 3)
  */
 exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
@@ -143,6 +181,8 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   try {
+    // 1. ZOMBIE CLEANUP: Identify posts to delete. 
+    // The onPulseDeleted trigger will handle the physical file safety.
     const zombieSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
       .where("likes", "==", 0)
@@ -150,14 +190,10 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
       .get();
 
     for (const doc of zombieSnap.docs) {
-      const data = doc.data();
-      if (data.mediaUrl && data.mediaUrl.includes(bucket.name)) {
-        const filePath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
-        await bucket.file(filePath).delete().catch(() => null);
-      }
       await doc.ref.delete();
     }
 
+    // 2. TIER 3: COLD STORAGE MIGRATION
     const coldSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
       .where("likes", "<", 50)
@@ -179,6 +215,7 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
       }
     }
 
+    // 3. TIER 2: WARM STORAGE MIGRATION
     const warmSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
       .where("likes", "<", 10)
