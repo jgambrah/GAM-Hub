@@ -1,28 +1,28 @@
-
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { useFirebase, useMemoFirebase } from '@/firebase';
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
+import { useFirebase } from '@/firebase';
+import { collection, query, where, orderBy, limit, getDocs, startAfter, type DocumentSnapshot } from 'firebase/firestore';
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, PlusCircle, ArrowDown, TrendingUp, Shuffle, Hash, Search as SearchIcon, Loader2, UserCheck, ShoppingBag } from 'lucide-react';
+import { RefreshCcw, Zap, Globe, FastForward, TrendingUp, Shuffle, Hash, Search as SearchIcon, Loader2, ShoppingBag } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import { useVibePlayer, cosineSimilarity } from './VibePlayerContext';
+import { useVibePlayer } from './VibePlayerContext';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
-import { Button } from '../ui/button';
 import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
 import { FEED_STRATEGIES, DEFAULT_STRATEGY, type FeedStrategyId } from '@/lib/feed-strategies';
 import { recordBanditTrial } from '@/lib/bandit-learning';
 
+const BATCH_SIZE = 20;
+
 /**
  * CampusPulseFeed Component
  * 
- * Implements the "Blended Bucketed Retrieval Strategy" (Multi-Armed Bandit).
- * Upgraded with Personalized Hybrid Semantic Search and MAB Feed Construction.
+ * Implements the "Infinite Feed Engagement Loop".
+ * Upgraded with Pagination, Instant Start, and MAB Feed Construction.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -37,95 +37,77 @@ export default function CampusPulseFeed({
 }) {
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
-    const { isContinuous, setIsContinuous, addToQueue } = useVibePlayer();
+    const { isContinuous, setIsContinuous, addToQueue, setActivePost, activePostId } = useVibePlayer();
     const { isLoaded: isProfileLoaded, currentStrategy, getPersonalScore } = useVibeProfile();
     
-    const [posts, setPosts] = useState<SocialPost[]>();
+    const [posts, setPosts] = useState<SocialPost[]>([]);
     const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isEmbedding, setIsEmbedding] = useState(false);
     const [queryVector, setQueryVector] = useState<number[] | null>(null);
+    const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
+    const [hasMore, setHasMore] = useState(true);
 
-    const fetchBlendedCandidates = async () => {
+    const fetchBatch = async (isLoadMore = false) => {
         if (!firestore || !activeCampusId || !user || !isTokenReady) return;
         
-        setIsLoading(true);
+        if (!isLoadMore) setIsLoading(true);
         const pulseRef = collection(firestore, 'campus_pulse');
         const tagToFilter = activeTag || (searchQuery.startsWith('#') ? searchQuery.slice(1).toLowerCase() : null);
         
         try {
-            if (searchQuery.trim() && !searchQuery.startsWith('#')) {
+            if (!isLoadMore && searchQuery.trim() && !searchQuery.startsWith('#')) {
                 setIsEmbedding(true);
                 const vector = await generateQueryEmbedding(searchQuery);
                 setQueryVector(vector);
                 setIsEmbedding(false);
-            } else {
-                setQueryVector(null);
             }
 
-            // Retrieval Buckets
-            let recentQuery = tagToFilter 
-                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(200))
-                : query(pulseRef, orderBy('createdAt', 'desc'), limit(400));
+            // Retrieval Logic: Paginated Batch
+            let batchQuery = tagToFilter 
+                ? query(pulseRef, where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(BATCH_SIZE))
+                : query(pulseRef, orderBy('createdAt', 'desc'), limit(BATCH_SIZE));
 
-            const trendingStatsQuery = query(
-                collection(firestore, 'trending_stats'),
-                orderBy('trendScore', 'desc'),
-                limit(150)
-            );
+            if (isLoadMore && lastDoc) {
+                batchQuery = query(batchQuery, startAfter(lastDoc));
+            }
 
-            const campusQuery = tagToFilter
-                ? query(pulseRef, where('campusId', '==', activeCampusId), where('tags', 'array-contains', tagToFilter), orderBy('createdAt', 'desc'), limit(150))
-                : query(pulseRef, where('campusId', '==', activeCampusId), orderBy('createdAt', 'desc'), limit(150));
+            const snap = await getDocs(batchQuery);
+            if (snap.empty) {
+                setHasMore(false);
+                if (!isLoadMore) setIsLoading(false);
+                return;
+            }
 
-            const [recentSnap, trendingSnap, campusSnap] = await Promise.all([
-                getDocs(recentQuery),
-                getDocs(trendingStatsQuery),
-                getDocs(campusQuery)
-            ]);
+            setLastDoc(snap.docs[snap.docs.length - 1]);
+            const newPosts = snap.docs.map(d => ({ id: d.id, ...d.data() } as SocialPost));
 
-            const trendingDocs = trendingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            const trendingMap = new Map(trendingDocs.map(d => [d.id, d]));
+            setPosts(prev => isLoadMore ? [...prev, ...newPosts] : newPosts);
+            addToQueue(newPosts);
 
-            const mergedMap = new Map<string, SocialPost>();
-            
-            const addDocsToMap = (snap: any) => {
-                snap.docs.forEach((doc: any) => {
-                    if (!mergedMap.has(doc.id)) {
-                        const stats = trendingMap.get(doc.id);
-                        mergedMap.set(doc.id, { 
-                            id: doc.id, 
-                            ...doc.data(), 
-                            trendScore: stats?.trendScore || 0 
-                        } as SocialPost);
-                    }
-                });
-            };
+            // Auto-Start Loop: Set first post as active if none is active on initial load
+            if (!isLoadMore && newPosts.length > 0 && !activePostId) {
+                setActivePost(newPosts[0]);
+            }
 
-            addDocsToMap(recentSnap);
-            addDocsToMap(campusSnap);
+            if (!isLoadMore) {
+                const srcQuery = query(
+                    collection(firestore, 'src_posts'),
+                    where('campusId', '==', activeCampusId),
+                    orderBy('createdAt', 'desc'),
+                    limit(3)
+                );
+                const srcSnap = await getDocs(srcQuery);
+                setSrcPosts(srcSnap.docs.map(d => ({ id: d.id, ...d.data() } as SrcPost)));
 
-            const finalPool = Array.from(mergedMap.values());
-            setPosts(finalPool);
-            addToQueue(finalPool);
-
-            const srcQuery = query(
-                collection(firestore, 'src_posts'),
-                where('campusId', '==', activeCampusId),
-                orderBy('createdAt', 'desc'),
-                limit(3)
-            );
-            const srcSnap = await getDocs(srcQuery);
-            setSrcPosts(srcSnap.docs.map(d => ({ id: d.id, ...d.data() } as SrcPost)));
-
-            // 🎰 BANDIT TRIAL: Log that this strategy was played
-            if (currentStrategy) {
-                recordBanditTrial(firestore, currentStrategy as FeedStrategyId);
+                if (currentStrategy) {
+                    recordBanditTrial(firestore, currentStrategy as FeedStrategyId);
+                }
             }
 
         } catch (err) {
-            console.error("Liaison Blended Retrieval Error:", err);
+            console.error("Liaison Batch Retrieval Error:", err);
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
@@ -134,52 +116,35 @@ export default function CampusPulseFeed({
     };
 
     useEffect(() => {
-        fetchBlendedCandidates();
+        setPosts([]);
+        setLastDoc(null);
+        setHasMore(true);
+        fetchBatch();
     }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag, searchQuery, tab, currentStrategy]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
-        fetchBlendedCandidates();
+        setPosts([]);
+        setLastDoc(null);
+        setHasMore(true);
+        fetchBatch();
     };
 
     const filteredPosts = useMemo(() => {
-        if (!posts) return [];
+        if (!posts || posts.length === 0) return [];
 
         const strategyId = currentStrategy || DEFAULT_STRATEGY;
         const config = FEED_STRATEGIES[strategyId];
 
-        // 🎰 STAGE 1: PARTITION INTO MAB BUCKETS
-        const trendingCandidates = posts
-            .filter(p => (p.trendScore || 0) > 15)
-            .sort((a, b) => (b.trendScore || 0) - (a.trendScore || 0));
-
-        // EXPLORATION BUCKET: "Dark Matter" Query
-        // We hunt for low-view/low-like content to discover new growth.
-        const exploreCandidates = posts
-            .filter(p => (p.likes || 0) < 10)
-            .sort(() => Math.random() - 0.5);
-
-        const personalizedCandidates = posts
-            .filter(p => !trendingCandidates.includes(p)) // Exclude obvious trending to rank specifically for user
+        // 🎰 STAGE 1: CLASSIFY BATCH CANDIDATES
+        // Since we fetch in small batches now, we rank within the batch to preserve diversity
+        const rankedBatch = posts
             .map(p => ({ ...p, pScore: getPersonalScore(p) }))
             .sort((a, b) => b.pScore - a.pScore);
 
-        // 🎰 STAGE 2: APPLY STRATEGY WEIGHTS (Target size: 40)
-        const totalSize = 40;
-        const pCount = Math.floor(config.personalized * totalSize);
-        const tCount = Math.floor(config.trending * totalSize);
-        const eCount = Math.floor(config.explore * totalSize);
+        const diverseBatch = enforceDiversity(rankedBatch);
 
-        const constructedFeed = [
-            ...personalizedCandidates.slice(0, pCount),
-            ...trendingCandidates.slice(0, tCount),
-            ...exploreCandidates.slice(0, eCount)
-        ];
-
-        // 🎰 STAGE 3: SHUFFLE TO AVOID PATTERN BIAS
-        constructedFeed.sort(() => Math.random() - 0.5);
-
-        // STAGE 4: MAPPED SRC (Pinned at top)
+        // STAGE 2: MAPPED SRC (Pinned at top of initial load)
         const mappedSrc: SocialPost[] = (srcPosts || []).map(p => ({
             id: p.id,
             authorId: p.authorId,
@@ -198,8 +163,8 @@ export default function CampusPulseFeed({
             isOfficial: true
         }));
 
-        return [...mappedSrc, ...constructedFeed];
-    }, [posts, srcPosts, currentStrategy, getPersonalScore]);
+        return lastDoc ? diverseBatch : [...mappedSrc, ...diverseBatch];
+    }, [posts, srcPosts, currentStrategy, getPersonalScore, lastDoc]);
 
     return (
         <div className="space-y-8 pb-20">
@@ -271,7 +236,7 @@ export default function CampusPulseFeed({
                 </div>
             </div>
 
-            {isLoading && (!posts || posts.length === 0) ? (
+            {isLoading && posts.length === 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Skeleton className="h-96 rounded-[2.5rem]" />
                     <Skeleton className="h-96 rounded-[2.5rem]" />
@@ -284,7 +249,22 @@ export default function CampusPulseFeed({
                     <p className="text-xs text-slate-300 mt-2">No matching vibes found. Try searching for broader topics.</p>
                 </div>
             ) : (
-                <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
+                <>
+                    <VibeFeed posts={filteredPosts} searchQuery={searchQuery} />
+                    {hasMore && (
+                        <div className="flex justify-center pt-8">
+                            <Button 
+                                variant="ghost" 
+                                onClick={() => fetchBatch(true)} 
+                                disabled={isLoading}
+                                className="rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-slate-400 hover:text-primary transition-all"
+                            >
+                                {isLoading ? <Loader2 className="animate-spin mr-2" /> : <FastForward className="mr-2" />}
+                                Load More Vibrations
+                            </Button>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );

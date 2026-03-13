@@ -234,7 +234,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [queue, setQueue] = useState<SocialPost[]>([]);
   const [upNext, setUpNext] = useState<QueueEntry[]>([]);
   const [allPosts, setAllPosts] = useState<SocialPost[]>([]);
-  const [isContinuous, setIsContinuous] = useState(false);
+  const [isContinuous, setIsContinuous] = useState(true); // DEFAULT TO TRUE FOR ENGAGEMENT LOOP
   const [isLoadingQueue, setIsLoadingQueue] = useState(false);
   const [activeMood, setActiveMoodState] = useState<VibeMood>('all');
   const [history, setHistory] = useState<SocialPost[]>([]);
@@ -254,7 +254,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const allPostsRef = useRef<SocialPost[]>([]);
   const activePostIdRef = useRef<string | null>(null);
   const activePostRef = useRef<SocialPost | null>(null);
-  const isContinuousRef = useRef(false);
+  const isContinuousRef = useRef(true);
   const activeMoodRef = useRef<VibeMood>('all');
   const getPersonalScoreRef = useRef(getPersonalScore);
   const globalTrendScoresRef = useRef(globalTrendScores);
@@ -338,7 +338,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
             const aiOrder = new Map(aiReRank.recommendedPostIds.map((id, i) => [id, i]));
             const topTier = finalPosts.filter(p => aiOrder.has(p.id))
-                .sort((a, b) => aiOrder.get(a.id)! - aiOrder.get(b.id)!);
+                .sort((a, b) => aiOrder.get(id)! - aiOrder.get(b.id)!);
             const others = finalPosts.filter(p => !aiOrder.has(p.id));
             
             finalPosts = [...topTier, ...others];
@@ -376,14 +376,13 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
       const nextThreePosts = upNext.slice(0, 3).map(entry => entry.post);
       
       // 🚀 SMART CANCELLATION: Maintain only the current and next 3 vibrations.
-      // Aborts background downloads for any vibes that were previously buffered but are no longer relevant.
       vibeBufferManager.maintain([activePost.id, ...nextThreePosts.map(p => p.id)]);
 
       // Prefetch the new survivors
       nextThreePosts.forEach(post => {
         vibeBufferManager.preload(post);
       });
-    }, 800); // 800ms debounce prevents prefetch spamming during fast flick-scrolling
+    }, 800); 
 
     return () => {
       clearTimeout(prefetchTimer);
