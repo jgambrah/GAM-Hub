@@ -162,7 +162,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
 
     match /groups/{groupId} {
-      // Allow read/list for metadata discovery to anyone on the same campus
+      // LIAISON FIX: Allow campus-wide listing for discovery and vendor ad targeting
       allow read: if isSignedIn() && (
         isAdmin() || 
         resource.data.campusId == getCampus()
