@@ -16,3 +16,7 @@ import '@/ai/flows/market-intent-parser.ts';
 import '@/ai/flows/explain-recommendation.ts';
 import '@/ai/flows/parse-demand-request.ts';
 import '@/ai/flows/campus-mood-flow.ts';
+import '@/ai/flows/generate-post-embedding.ts';
+import '@/ai/flows/generate-product-embedding.ts';
+import '@/ai/flows/update-user-embedding.ts';
+import '@/ai/flows/vibe-recommendation-flow.ts';

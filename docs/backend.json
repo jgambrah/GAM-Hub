@@ -42,6 +42,19 @@
       },
       "required": ["id", "email", "role"]
     },
+    "UserIntelligence": {
+      "title": "UserIntelligence",
+      "type": "object",
+      "description": "Unified recommendation brain data for a user.",
+      "properties": {
+        "id": { "type": "string" },
+        "interests": { "type": "object" },
+        "tasteVector": { "type": "array", "items": { "type": "number" } },
+        "engagementLevel": { "type": "number" },
+        "currentStrategy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "VideoHash": {
       "title": "VideoHash",
       "type": "object",
@@ -70,12 +83,25 @@
         "mediaUrl": { "type": "string" },
         "hlsUrl": { "type": "string" },
         "imageUrl": { "type": "string" },
-        "storageTier": { "type": "string", "enum": ["hot", "warm", "cold"] },
-        "storagePath": { "type": "string" },
-        "videoHash": { "type": "string" },
+        "embedding": { "type": "array", "items": { "type": "number" } },
         "tags": { "type": "array", "items": { "type": "string" } },
         "campusId": { "type": "string" },
         "trendScore": { "type": "number" }
+      }
+    },
+    "Product": {
+      "title": "Product",
+      "type": "object",
+      "description": "Campus marketplace item.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "category": { "type": "string" },
+        "embedding": { "type": "array", "items": { "type": "number" } },
+        "vendorId": { "type": "string" },
+        "campusId": { "type": "string" }
       }
     }
   },
@@ -84,8 +110,9 @@
   },
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
+    "/user_intelligence/{userId}": { "schema": "#/backend/entities/UserIntelligence", "description": "Recommendation profiles." },
     "/video_hashes/{hash}": { "schema": "#/backend/entities/VideoHash", "description": "Deduplication registry." },
     "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "National stream of campus vibrations." },
-    "/products/{productId}": { "schema": { "title": "Product", "type": "object" }, "description": "Campus marketplace inventory." }
+    "/products/{productId}": { "schema": "#/backend/entities/Product", "description": "Campus marketplace inventory." }
   }
 }

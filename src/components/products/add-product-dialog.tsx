@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -35,6 +36,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { validateVideo, generateFileHash } from '@/lib/video-utils';
+import { generateProductEmbedding } from '@/ai/flows/generate-product-embedding';
 
 const productSchema = z.object({
   name: z.string().min(3, 'Name is too short.'),
@@ -117,17 +119,14 @@ export function AddProductDialog() {
                 const existing = hashSnap.data();
                 nativeVideoUrl = existing.mediaUrl;
                 
-                // Increment uploads count in the registry
                 await setDoc(hashRef, { uploads: increment(1) }, { merge: true });
-                
-                toast({ title: "Smart Reuse!", description: "Video already exists in Yard repository. Bypassing upload." });
+                toast({ title: "Smart Reuse!", description: "Video already exists in Yard repository." });
             } else {
                 const vidPath = `product_videos/${user.campusId}/${Date.now()}_${videoFile.name}`;
                 const vidRef = ref(storage, vidPath);
                 await uploadBytes(vidRef, videoFile, { customMetadata: { hash: videoHash } });
                 nativeVideoUrl = await getDownloadURL(vidRef);
                 
-                // Create pending registry entry
                 await setDoc(hashRef, {
                     mediaUrl: nativeVideoUrl,
                     storagePath: vidPath,
@@ -141,12 +140,20 @@ export function AddProductDialog() {
 
         const tags = data.tagsInput ? data.tagsInput.split(',').map(t => t.trim().toLowerCase()) : [];
 
+        // 🧠 SEMANTIC AI: Generate neural vector for marketplace discovery
+        const embedding = await generateProductEmbedding({
+            name: data.name,
+            description: data.description,
+            category: data.category
+        });
+
         const newProduct = {
           ...data,
           productType: isFinancial ? 'service' : 'physical',
           price: isFinancial ? 0 : (data.price || 0),
           stock: isFinancial ? 0 : (data.stock || 0),
           tags,
+          embedding,
           vendorId: user.id, vendorName: user.name || "Vendor",
           campusId: user.campusId, campusAcronym: campus?.acronym || "GH",
           imageUrl, nativeVideoUrl, videoHash,
@@ -170,7 +177,7 @@ export function AddProductDialog() {
       <DialogContent className="sm:max-w-4xl p-0 rounded-[2.5rem] overflow-hidden border-none shadow-2xl">
         <DialogHeader className="p-8 border-b bg-muted/20">
             <DialogTitle className="text-2xl font-black">Smart Market Listing</DialogTitle>
-            <DialogDescription>Deduplication & AI Indexing Active 🧬</DialogDescription>
+            <DialogDescription>Semantic AI Indexing Active 🧠🧬</DialogDescription>
         </DialogHeader>
         <div className="p-8 overflow-y-auto max-h-[70vh] no-scrollbar">
             <Form {...form}>
@@ -182,7 +189,7 @@ export function AddProductDialog() {
                             <Label className="cursor-pointer flex flex-col items-center gap-2"><Upload size={32}/><span className="text-xs font-black uppercase">Photo Required</span><Input type="file" className="hidden" accept="image/*" onChange={handleImageChange}/></Label>}
                         </div>
                         <div className="p-6 bg-slate-50 dark:bg-muted/30 rounded-[2rem] border-2 border-primary/5">
-                            <label className="text-[10px] font-black uppercase mb-2 block">Deduplicated Video Upload</label>
+                            <label className="text-[10px] font-black uppercase mb-2 block">Product Video Presentation</label>
                             <Input type="file" accept="video/*" onChange={handleVideoChange} onClick={() => setMultimediaTab('upload')} />
                             {videoPreview && <video src={videoPreview} className="mt-2 rounded-xl aspect-video bg-black" muted />}
                         </div>
@@ -207,7 +214,7 @@ export function AddProductDialog() {
         </div>
         <DialogFooter className="p-8 border-t bg-muted/20">
           <Button type="submit" form="add-product-form" disabled={isLoading} className="rounded-xl px-10 h-14 font-black bg-slate-900 text-white shadow-2xl">
-            {isLoading ? <Loader2 className="animate-spin" /> : "Launch Smart Listing"}
+            {isLoading ? <Loader2 className="animate-spin" /> : "Launch Neural Listing"}
           </Button>
         </DialogFooter>
       </DialogContent>

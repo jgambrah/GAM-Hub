@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef } from 'react';
@@ -149,7 +150,7 @@ export default function ArenaPage() {
                 postData.mediaType = videoUrl.includes('youtube') ? 'youtube' : 'tiktok';
             }
 
-            // 2. AI SEMANTIC UPGRADE
+            // 2. AI SEMANTIC UPGRADE 🧠
             const manualTags = extractHashtags(content);
             let aiTags: string[] = [];
             try {
@@ -160,6 +161,7 @@ export default function ArenaPage() {
             const finalHashtags = Array.from(new Set([...manualTags, ...aiTags])).slice(0, 10);
             postData.tags = finalHashtags;
 
+            // 🚀 SEMANTIC INDEXING: Generate neural vector for this vibration
             const embedding = await generatePostEmbedding({ content, tags: finalHashtags });
             postData.embedding = embedding;
 
@@ -219,7 +221,7 @@ export default function ArenaPage() {
                                 {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
                             </Button>
                         </div>
-                        <p className="text-[9px] text-muted-foreground px-6 italic">Liaison AI hybrid storage & deduplication active. 🛡️✨</p>
+                        <p className="text-[9px] text-muted-foreground px-6 italic">Liaison AI semantic indexing & deduplication active. 🛡️✨</p>
                     </form>
                 </div>
             )}

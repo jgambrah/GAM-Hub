@@ -40,6 +40,7 @@ export type UserIntelligence = {
     creators: Record<string, number>;
     vendors: Record<string, number>;
   };
+  tasteVector?: number[];
   pricePreference: { min: number; max: number; };
   engagementLevel: number;
   updatedAt: string;
@@ -97,6 +98,7 @@ export type Product = {
   nativeVideoUrl?: string | null; 
   hlsUrl?: string | null;
   videoHash?: string | null;
+  embedding?: number[];
   stock: number;
   vendorId: string;
   vendorName: string;
@@ -114,6 +116,15 @@ export type Product = {
   productType: 'physical' | 'service';
   interestRate?: string;
   actionLabel?: string;
+  averagePrice?: number;
+  conversions?: number;
+  trendScore?: number;
+  rating?: number;
+  reviewCount?: number;
+  aiReason?: string[];
+  adHeadline?: string;
+  adSlogan?: string;
+  targetGroupId?: string;
 };
 
 export type Order = {
@@ -337,4 +348,28 @@ export type Message = {
     text: string;
     senderName: string;
   } | null;
+};
+
+export type MarketIntent = {
+  category?: string;
+  tags?: string[];
+  priceMin?: number;
+  priceMax?: number;
+  intent?: string;
+};
+
+export type NotificationSettings = {
+  priceDrops: boolean;
+  trendingProducts: boolean;
+  vendorUpdates: boolean;
+  recommendations: boolean;
+  quietHours: { start: number; end: number };
+};
+
+export type KnowledgeGraphNode = {
+  id: string;
+  type: 'tag' | 'category' | 'vendor' | 'creator' | 'location';
+  name: string;
+  connections?: Record<string, { weight: number; lastUpdated: any }>;
+  updatedAt: any;
 };
