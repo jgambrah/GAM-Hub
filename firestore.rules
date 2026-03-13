@@ -106,7 +106,7 @@ service cloud.firestore {
     }
 
     match /demand_signals/{signalId} {
-      allow read, list: if isSignedIn() && (isAdmin() || (getRole() == 'vendor' && getCampus() == resource.data.campusId));
+      allow read, list: if isSignedIn() && (isAdmin() || getRole() == 'vendor');
       allow write: if isAdmin();
     }
 

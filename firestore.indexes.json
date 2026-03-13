@@ -1,4 +1,3 @@
-
 {
   "indexes": [
     {
@@ -48,6 +47,14 @@
       "fields": [
         { "fieldPath": "category", "order": "ASCENDING" },
         { "fieldPath": "price", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "demand_signals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "campusId", "order": "ASCENDING" },
+        { "fieldPath": "demandCount", "order": "DESCENDING" }
       ]
     }
   ],
