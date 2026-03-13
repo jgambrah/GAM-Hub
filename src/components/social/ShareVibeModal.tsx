@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, doc, updateDoc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, getDoc, setDoc, serverTimestamp, increment } from 'firebase/firestore';
 import { useFirebase } from '@/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
@@ -126,7 +125,8 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         mediaUrl = imageUrl;
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
-        // 🧬 DEDUPLICATION
+        
+        // 🧬 DEDUPLICATION HANDSHAKE
         videoHash = await generateFileHash(videoFile);
         const hashRef = doc(firestore, 'video_hashes', videoHash);
         const hashSnap = await getDoc(hashRef);
@@ -135,14 +135,25 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             const existing = hashSnap.data();
             mediaUrl = existing.mediaUrl;
             imageUrl = existing.imageUrl;
+            
+            // Increment uploads count in the registry
+            await setDoc(hashRef, { uploads: increment(1) }, { merge: true });
+            
             toast({ title: "Viral Match!", description: "Reusing existing high-quality video node." });
         } else {
             const filePath = `videos/hot/${auth.currentUser.uid}/${Date.now()}_${videoFile.name}`;
             const fileRef = ref(storage, filePath);
             await uploadBytes(fileRef, videoFile, { customMetadata: { hash: videoHash } });
             mediaUrl = await getDownloadURL(fileRef);
+            
+            // Create pending registry entry
             await setDoc(hashRef, {
-                mediaUrl, storagePath: filePath, storageTier: 'hot', processed: false, updatedAt: serverTimestamp()
+                mediaUrl,
+                storagePath: filePath,
+                storageTier: 'hot',
+                processed: false,
+                uploads: 1,
+                updatedAt: serverTimestamp()
             });
         }
       } else if (postType === 'link' && externalUrl) {

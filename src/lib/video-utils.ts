@@ -20,6 +20,7 @@ export const VIDEO_CONFIG = {
  * generateFileHash
  * ----------------
  * Generates a SHA-256 fingerprint of a file to prevent duplicate storage.
+ * Used for the Video Deduplication Engine.
  */
 export async function generateFileHash(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();

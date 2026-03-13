@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, limit, where, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, limit, where, doc, getDoc, setDoc, serverTimestamp, increment } from 'firebase/firestore';
 import type { ArenaPost, Campus } from '@/lib/types';
 import { Swords, Trophy, Send, Loader2, Star, Flame, Smile, Youtube, ImagePlus, X, PlusCircle } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
@@ -68,6 +67,14 @@ export default function ArenaPage() {
         if(fileInputRef.current) fileInputRef.current.value = '';
     }
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFile = e.target.files?.[0];
+        if (selectedFile) {
+            setFile(selectedFile);
+            setPreviewUrl(URL.createObjectURL(selectedFile));
+        }
+    };
+
     const handlePost = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user || (!content.trim() && !file && !videoUrl.trim())) return;
@@ -89,12 +96,13 @@ export default function ArenaPage() {
                 storageTier: 'hot'
             };
 
-            // 1. Process Multimedia with Deduplication
+            // 1. Process Multimedia with Deduplication Registry 🧬
             if (file) {
                 const isVideo = file.type.startsWith('video');
                 if (isVideo) {
                     await validateVideo(file);
-                    // 🧬 DEDUPLICATION HANDSHAKE
+                    
+                    // 🔍 DEDUPLICATION HANDSHAKE
                     const hash = await generateFileHash(file);
                     const hashRef = doc(firestore, 'video_hashes', hash);
                     const hashSnap = await getDoc(hashRef);
@@ -104,9 +112,13 @@ export default function ArenaPage() {
                         postData.mediaUrl = existing.mediaUrl;
                         postData.mediaType = 'video';
                         postData.imageUrl = existing.imageUrl;
-                        postData.storageTier = existing.storageTier;
+                        postData.storageTier = existing.storageTier || 'hot';
                         postData.videoHash = hash;
-                        toast({ title: "Viral Vibe Detected!", description: "Reusing existing high-quality version." });
+                        
+                        // Increment uploads count in the registry
+                        await setDoc(hashRef, { uploads: increment(1) }, { merge: true });
+                        
+                        toast({ title: "Viral Vibe Detected!", description: "Reusing existing high-quality version from the Yard." });
                     } else {
                         const filePath = `videos/hot/${user.id}/${Date.now()}_${file.name}`;
                         const fileRef = ref(storage, filePath);
@@ -115,12 +127,13 @@ export default function ArenaPage() {
                         postData.mediaType = 'video';
                         postData.videoHash = hash;
                         
-                        // Optimistic registry entry
+                        // Create optimistic registry entry
                         await setDoc(hashRef, {
                             mediaUrl: postData.mediaUrl,
                             storagePath: filePath,
                             storageTier: 'hot',
                             processed: false,
+                            uploads: 1,
                             updatedAt: serverTimestamp()
                         });
                     }
@@ -199,7 +212,7 @@ export default function ArenaPage() {
                     <form onSubmit={handlePost} className="space-y-4">
                         <div className="relative flex items-center gap-2 bg-muted p-1.5 rounded-[2rem] border border-border focus-within:bg-background transition-all">
                             <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="p-2.5 text-muted-foreground hover:text-amber-500 rounded-full"><Smile size={18}/></button>
-                            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+                            <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" />
                             <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-muted-foreground hover:text-blue-500 rounded-full"><ImagePlus size={18}/></button>
                             <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Broadcasting battle vibes... Deduplication Active 🧬" className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
                             <Button type="submit" disabled={isLoading} className={cn("p-4 rounded-full shadow-lg h-auto", vibeType === 'shade' ? 'bg-red-600' : 'bg-green-600')}>

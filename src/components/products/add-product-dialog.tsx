@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -31,7 +30,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { addDocumentNonBlocking, useFirebase } from '@/firebase';
 import { Loader2, PlusCircle, Upload, X, ShieldCheck, Package, Video, Youtube, CheckCircle2, ShoppingBag, Landmark, Tag } from 'lucide-react';
-import { collection, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, serverTimestamp, doc, getDoc, setDoc, increment } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
@@ -109,6 +108,7 @@ export function AddProductDialog() {
         let videoHash = null;
 
         if (multimediaTab === 'upload' && videoFile) {
+            // 🧬 DEDUPLICATION HANDSHAKE
             videoHash = await generateFileHash(videoFile);
             const hashRef = doc(firestore, 'video_hashes', videoHash);
             const hashSnap = await getDoc(hashRef);
@@ -116,14 +116,25 @@ export function AddProductDialog() {
             if (hashSnap.exists()) {
                 const existing = hashSnap.data();
                 nativeVideoUrl = existing.mediaUrl;
-                toast({ title: "Smart Reuse!", description: "Video already exists in Yard repository." });
+                
+                // Increment uploads count in the registry
+                await setDoc(hashRef, { uploads: increment(1) }, { merge: true });
+                
+                toast({ title: "Smart Reuse!", description: "Video already exists in Yard repository. Bypassing upload." });
             } else {
                 const vidPath = `product_videos/${user.campusId}/${Date.now()}_${videoFile.name}`;
                 const vidRef = ref(storage, vidPath);
                 await uploadBytes(vidRef, videoFile, { customMetadata: { hash: videoHash } });
                 nativeVideoUrl = await getDownloadURL(vidRef);
+                
+                // Create pending registry entry
                 await setDoc(hashRef, {
-                    mediaUrl: nativeVideoUrl, storagePath: vidPath, storageTier: 'hot', processed: false, updatedAt: serverTimestamp()
+                    mediaUrl: nativeVideoUrl,
+                    storagePath: vidPath,
+                    storageTier: 'hot',
+                    processed: false,
+                    uploads: 1,
+                    updatedAt: serverTimestamp()
                 });
             }
         }

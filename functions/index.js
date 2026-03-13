@@ -32,7 +32,11 @@ exports.compressVideo = onObjectFinalized({
   const contentType = object.contentType;
 
   if (!contentType || !contentType.startsWith("video/")) return null;
-  if (!filePath.startsWith("videos/hot/")) return null;
+  
+  // Support hot storage path or product videos path
+  const isEligiblePath = filePath.startsWith("videos/hot/") || filePath.startsWith("product_videos/");
+  if (!isEligiblePath) return null;
+  
   if (object.metadata && object.metadata.processed === "true") return null;
 
   const fileName = path.basename(filePath);
@@ -100,7 +104,7 @@ exports.compressVideo = onObjectFinalized({
       batch.update(doc.ref, { imageUrl: thumbUrl, storageTier: 'hot', storagePath: filePath });
     });
 
-    // 2. Update Deduplication Registry
+    // 2. Update Deduplication Registry Registry 🧬
     const fileHash = object.metadata?.hash;
     if (fileHash) {
       const hashRef = db.collection("video_hashes").doc(fileHash);
