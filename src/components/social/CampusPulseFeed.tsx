@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -14,7 +15,8 @@ import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
-import { FEED_STRATEGIES, DEFAULT_STRATEGY } from '@/lib/feed-strategies';
+import { FEED_STRATEGIES, DEFAULT_STRATEGY, type FeedStrategyId } from '@/lib/feed-strategies';
+import { recordBanditTrial } from '@/lib/bandit-learning';
 
 /**
  * CampusPulseFeed Component
@@ -36,7 +38,7 @@ export default function CampusPulseFeed({
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
     const { isContinuous, setIsContinuous, addToQueue } = useVibePlayer();
-    const { getTopInterests, isLoaded: isProfileLoaded, currentStrategy, getPersonalScore } = useVibeProfile();
+    const { isLoaded: isProfileLoaded, currentStrategy, getPersonalScore } = useVibeProfile();
     
     const [posts, setPosts] = useState<SocialPost[]>();
     const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
@@ -117,6 +119,11 @@ export default function CampusPulseFeed({
             const srcSnap = await getDocs(srcQuery);
             setSrcPosts(srcSnap.docs.map(d => ({ id: d.id, ...d.data() } as SrcPost)));
 
+            // 🎰 BANDIT TRIAL: Log that this strategy was played
+            if (currentStrategy) {
+                recordBanditTrial(firestore, currentStrategy as FeedStrategyId);
+            }
+
         } catch (err) {
             console.error("Liaison Blended Retrieval Error:", err);
         } finally {
@@ -128,7 +135,7 @@ export default function CampusPulseFeed({
 
     useEffect(() => {
         fetchBlendedCandidates();
-    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag, searchQuery, tab]);
+    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag, searchQuery, tab, currentStrategy]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
@@ -146,8 +153,10 @@ export default function CampusPulseFeed({
             .filter(p => (p.trendScore || 0) > 15)
             .sort((a, b) => (b.trendScore || 0) - (a.trendScore || 0));
 
+        // EXPLORATION BUCKET: "Dark Matter" Query
+        // We hunt for low-view/low-like content to discover new growth.
         const exploreCandidates = posts
-            .filter(p => p.likes < 10)
+            .filter(p => (p.likes || 0) < 10)
             .sort(() => Math.random() - 0.5);
 
         const personalizedCandidates = posts
@@ -231,7 +240,7 @@ export default function CampusPulseFeed({
             )}>
                 <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
-                        {tab === 'shoppable' ? <ShoppingBag size(20) className="text-amber-400" /> : <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />}
+                        {tab === 'shoppable' ? <ShoppingBag size={20} className="text-amber-400" /> : <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />}
                     </div>
                     <div>
                         <h4 className="font-black text-sm tracking-tight">

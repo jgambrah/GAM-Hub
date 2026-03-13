@@ -11,7 +11,7 @@
 import { doc, setDoc, increment, serverTimestamp, getDoc, Firestore } from 'firebase/firestore';
 import type { UserIntelligence, MarketplaceSignal, VibeSignal, SocialPost, Product } from './types';
 import { recordEdge } from './knowledge-graph';
-import { recordBanditSignal, BANDIT_REWARDS } from './bandit-learning';
+import { recordBanditReward, BANDIT_REWARDS } from './bandit-learning';
 import type { FeedStrategyId } from './feed-strategies';
 
 // LIAISON INTELLIGENCE WEIGHTS
@@ -154,11 +154,9 @@ export async function recordUnifiedSignal(
 
   // 🎰 BANDIT LEARNING RELAY
   if (currentStrategy) {
-      if (type === 'view' || type === 'watch') {
-          recordBanditSignal(firestore, currentStrategy, 'view');
-      }
+      // Rewards are logged based on high-value interaction protocol
       if (BANDIT_REWARDS.has(type)) {
-          recordBanditSignal(firestore, currentStrategy, 'reward');
+          recordBanditReward(firestore, currentStrategy);
       }
   }
 

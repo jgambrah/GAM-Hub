@@ -12,7 +12,7 @@
  * D -> 40% personalized / 30% trending / 30% exploration
  */
 
-import { doc, setDoc, increment, Firestore, getDoc } from 'firebase/firestore';
+import { doc, setDoc, increment, Firestore, updateDoc } from 'firebase/firestore';
 import { FEED_STRATEGIES, FeedStrategyId } from './feed-strategies';
 
 export interface BanditStrategyStats {
@@ -56,28 +56,52 @@ export function selectStrategy(stats: GlobalBanditStats): FeedStrategyId {
 }
 
 /**
- * recordBanditSignal
- * ------------------
- * Non-blocking logger for global strategy performance.
+ * recordBanditTrial
+ * -----------------
+ * Logs that a strategy was used to generate a feed (a "trial").
  */
-export async function recordBanditSignal(
+export async function recordBanditTrial(
   firestore: Firestore,
-  strategyId: FeedStrategyId,
-  type: 'view' | 'reward'
+  strategyId: FeedStrategyId
 ) {
   if (!firestore || !strategyId) return;
 
   const ref = doc(firestore, 'bandit_stats', 'global');
-  const update: any = {};
-  update[`${strategyId}.${type === 'view' ? 'views' : 'reward'}`] = increment(1);
+  return setDoc(ref, {
+    [strategyId]: {
+      views: increment(1)
+    }
+  }, { merge: true }).catch(err => {
+    console.warn("Bandit Engine: Trial log failed", err);
+  });
+}
+
+/**
+ * recordBanditReward
+ * ------------------
+ * Logs that a strategy produced a successful engagement.
+ * Increments both views and reward to strengthen the success probability.
+ */
+export async function recordBanditReward(
+  firestore: Firestore,
+  strategyId: FeedStrategyId
+) {
+  if (!firestore || !strategyId) return;
+
+  const ref = doc(firestore, 'bandit_stats', 'global');
   
-  return setDoc(ref, update, { merge: true }).catch(err => {
-    console.warn("Bandit Engine: Signal log failed", err);
+  // Per Liaison Protocol: Engagement is the ultimate success signal
+  return updateDoc(ref, {
+    [`${strategyId}.views`]: increment(1),
+    [`${strategyId}.reward`]: increment(1)
+  }).catch(err => {
+    console.warn("Bandit Engine: Reward log failed", err);
   });
 }
 
 /**
  * REWARD DEFINITION PROTOCOL
+ * Triggers that count as a "Reward" for the bandit.
  */
 export const BANDIT_REWARDS = new Set([
     'like', 'share', 'comment', 'purchase', 'click', 'intent', 'watch_long'
