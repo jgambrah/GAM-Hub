@@ -367,16 +367,18 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     }
   }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
 
-  // 📡 PREFETCH ENGINE: Lookahead logic for instant playback
+  // 📡 PREFETCH ENGINE: Lookahead buffering for instant playback
+  // This effect reacts to changes in the smart queue (upNext) or active post.
   useEffect(() => {
     if (!activePostId || upNext.length === 0) return;
 
     const prefetchTimer = setTimeout(() => {
-      // Look ahead at the next 3 vibrations in the smart queue
+      // 🚀 TIKTOK-STYLE LOOKAHEAD: Prefetch the next 3 vibrations in the smart queue.
+      // This caches the manifests and initial fragments before the user scrolls.
       upNext.slice(0, 3).forEach(entry => {
         vibeBufferManager.preload(entry.post);
       });
-    }, 1000); // Wait 1s after active post stabilizes to avoid noise on fast scrolls
+    }, 800); // 800ms debounce ensures we don't spam prefetch on fast flick-scrolling
 
     return () => clearTimeout(prefetchTimer);
   }, [activePostId, upNext]);

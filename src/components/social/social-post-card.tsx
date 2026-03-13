@@ -1,4 +1,3 @@
-
 'use client';
 
 import Image from 'next/image';
@@ -514,7 +513,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   config={{ 
                     file: { 
                       attributes: { playsInline: true, preload: 'auto' },
-                      forceHLS: !!post.hlsUrl
+                      forceHLS: !!post.hlsUrl,
+                      hlsConfig: {
+                        // 🚀 TIKTOK-STYLE PREFETCHING: Early fragment loading
+                        maxBufferLength: 30,
+                        startFragPrefetch: true
+                      }
                     } 
                   }}
                 />
