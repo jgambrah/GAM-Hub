@@ -1,7 +1,8 @@
+
 'use client';
 
 import React, { useMemo, useEffect, useRef } from 'react';
-import type { SocialPost } from '@/lib/types';
+import type { SocialPost, Product } from '@/lib/types';
 import SocialPostCard from './social-post-card';
 import VibeAdCard from './VibeAdCard';
 import VibeMoodBar from './VibeMoodBar';
@@ -9,11 +10,12 @@ import VibeHistoryPanel from './VibeHistoryPanel';
 import { useVibePlayer } from './VibePlayerContext';
 import { useVibeAds, AD_INTERVAL } from '@/hooks/use-vibe-ads';
 import { cn } from '@/lib/utils';
-import { Sparkles, Loader2, Zap } from 'lucide-react';
-import { enforceDiversity } from '@/lib/diversity-engine';
+import { Sparkles, Loader2, Zap, ShoppingBag } from 'lucide-react';
+import ProductCard from '../products/product-card';
 
 interface VibeFeedProps {
   posts: SocialPost[];
+  products?: Product[];
   className?: string;
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -23,13 +25,20 @@ interface VibeFeedProps {
 /**
  * VibeFeed Component
  * 
- * Implements the "Infinite Feed Scroller".
- * Uses an Intersection Observer sentinel to trigger automatic batch fetching.
+ * Finalized scroller architecture.
+ * Interleaves Social Posts, Sponsored Ads, and Marketplace Products.
  */
-export default function VibeFeed({ posts, className, hasMore, onLoadMore, isLoadingMore }: VibeFeedProps) {
+export default function VibeFeed({ 
+  posts, 
+  products = [], 
+  className, 
+  hasMore, 
+  onLoadMore, 
+  isLoadingMore 
+}: VibeFeedProps) {
   const {
-    activePostId, addToQueue,
-    sortFeedByProfile, isProfileLoaded,
+    activePostId,
+    isProfileLoaded,
     activeMood,
   } = useVibePlayer();
 
@@ -46,7 +55,7 @@ export default function VibeFeed({ posts, className, hasMore, onLoadMore, isLoad
           onLoadMore();
         }
       },
-      { threshold: 0.1, rootMargin: '400px' } // Fetch 400px before reaching the end
+      { threshold: 0.1, rootMargin: '600px' }
     );
 
     if (sentinelRef.current) {
@@ -56,19 +65,31 @@ export default function VibeFeed({ posts, className, hasMore, onLoadMore, isLoad
     return () => observer.disconnect();
   }, [hasMore, isLoadingMore, onLoadMore]);
 
-  // Build the interleaved feed: post, post, post, post, post, AD, post, post...
+  // 🏗️ CONSTRUCT INTERLEAVED FEED
   const feedItems = useMemo(() => {
     const items: Array<
       | { type: 'post'; post: SocialPost; key: string }
       | { type: 'ad'; slotIndex: number; key: string }
+      | { type: 'product'; product: Product; key: string }
     > = [];
 
     let adSlotCount = 0;
+    let productSlotCount = 0;
 
     posts.forEach((post, i) => {
       items.push({ type: 'post', post, key: `${post.id}-${i}` });
 
-      // After every AD_INTERVAL posts, inject an ad slot
+      // RULE: Every 4 posts, inject a Marketplace Product if available
+      if ((i + 1) % 4 === 0 && products.length > productSlotCount) {
+          items.push({ 
+            type: 'product', 
+            product: products[productSlotCount], 
+            key: `injected-prod-${products[productSlotCount].id}-${i}` 
+          });
+          productSlotCount++;
+      }
+
+      // RULE: Every AD_INTERVAL (5) posts, inject a Sponsored Ad slot
       if ((i + 1) % AD_INTERVAL === 0 && i < posts.length - 1) {
         items.push({ type: 'ad', slotIndex: adSlotCount, key: `ad-slot-${adSlotCount}-${i}` });
         adSlotCount++;
@@ -76,15 +97,13 @@ export default function VibeFeed({ posts, className, hasMore, onLoadMore, isLoad
     });
 
     return items;
-  }, [posts]);
+  }, [posts, products]);
 
-  // ── THEATER PRIORITY: Extract the active post to stay at the top ──
   const activePostItem = useMemo(() => {
     if (!activePostId) return null;
     return posts.find(p => p.id === activePostId);
   }, [activePostId, posts]);
 
-  // Filter out the active post from the discovery grid list to prevent duplicates
   const discoveryItems = useMemo(() => {
     return feedItems.filter(item => {
       if (item.type === 'post' && item.post.id === activePostId) return false;
@@ -97,23 +116,23 @@ export default function VibeFeed({ posts, className, hasMore, onLoadMore, isLoad
   return (
     <div className={cn('flex flex-col gap-5 w-full', className)}>
 
-      {/* Toolbar */}
+      {/* Discovery Hub Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex-1 min-w-0">
           <VibeMoodBar />
         </div>
         <div className="flex items-center gap-2">
           {isProfileLoaded && (
-            <div className="flex items-center gap-1 text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1.5 rounded-xl">
-              <Sparkles size={9} /> For You
+            <div className="flex items-center gap-1.5 text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/40 px-3 py-2 rounded-xl border border-indigo-100 dark:border-indigo-900">
+              <Sparkles size={10} className="fill-indigo-600" /> Vibe Profile: ACTIVE
             </div>
           )}
           <VibeHistoryPanel />
         </div>
       </div>
 
-      <div className="flex flex-col gap-8 w-full">
-        {/* ACTIVE HERO STAGE */}
+      <div className="flex flex-col gap-10 w-full">
+        {/* ACTIVE STAGE: Pinned at top */}
         {activePostItem && (
           <div className="animate-in fade-in slide-in-from-top-4 duration-500">
             <SocialPostCard post={activePostItem} />
@@ -122,12 +141,24 @@ export default function VibeFeed({ posts, className, hasMore, onLoadMore, isLoad
 
         {/* DISCOVERY GRID */}
         <div className={cn(
-          'grid gap-6 transition-all duration-500',
-          hasActive ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'
+          'grid gap-8 transition-all duration-500',
+          hasActive ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'
         )}>
           {discoveryItems.map(item => {
             if (item.type === 'post') {
               return <SocialPostCard key={item.key} post={item.post} />;
+            }
+
+            if (item.type === 'product') {
+                return (
+                    <div key={item.key} className="space-y-3 animate-in fade-in zoom-in-95 duration-500">
+                        <div className="flex items-center gap-2 px-4">
+                            <ShoppingBag size={14} className="text-amber-500" />
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Recommended Gear</span>
+                        </div>
+                        <ProductCard product={item.product} />
+                    </div>
+                );
             }
 
             const ad = getAdForSlot(item.slotIndex);
@@ -145,21 +176,26 @@ export default function VibeFeed({ posts, className, hasMore, onLoadMore, isLoad
         </div>
 
         {/* ♾️ INFINITE SCROLL SENTINEL */}
-        <div ref={sentinelRef} className="py-12 flex flex-col items-center justify-center gap-4">
+        <div ref={sentinelRef} className="py-20 flex flex-col items-center justify-center gap-4">
             {isLoadingMore ? (
                 <>
-                    <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Calibrating Next Vibe Batch...</p>
+                    <div className="relative">
+                        <div className="w-12 h-12 border-4 border-indigo-100 rounded-full animate-spin border-t-indigo-600" />
+                        <Zap className="absolute inset-0 m-auto text-indigo-600" size={18} />
+                    </div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Synching with Hub...</p>
                 </>
             ) : hasMore ? (
-                <div className="flex items-center gap-2 text-slate-300 opacity-50">
-                    <Zap size={14} />
-                    <span className="text-[8px] font-black uppercase tracking-[0.2em]">Continuum Node Active</span>
+                <div className="flex items-center gap-3 text-slate-200 dark:text-slate-800 transition-opacity group-hover:opacity-100 opacity-50">
+                    <div className="h-[1px] w-12 bg-current" />
+                    <Zap size={16} />
+                    <div className="h-[1px] w-12 bg-current" />
                 </div>
             ) : (
-                <div className="text-center space-y-2 opacity-40">
-                    <p className="text-xs font-black uppercase tracking-widest">You've reached the Yard boundary.</p>
-                    <p className="text-[10px] font-medium italic">Refresh to find new vibrations.</p>
+                <div className="text-center space-y-3 py-10 opacity-40">
+                    <ShoppingBag className="mx-auto text-slate-300" size={32} />
+                    <p className="text-xs font-black uppercase tracking-widest">Yard exploration complete</p>
+                    <p className="text-[10px] font-medium italic">Refresh to find new vibrations and deals.</p>
                 </div>
             )}
         </div>

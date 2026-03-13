@@ -1,19 +1,21 @@
+
 'use client';
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit, getDocs, startAfter, type DocumentSnapshot } from 'firebase/firestore';
-import type { SocialPost, SrcPost } from '@/lib/types';
+import type { SocialPost, SrcPost, Product } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
-import { RefreshCcw, Zap, Globe, FastForward, TrendingUp, Shuffle, Hash, Search as SearchIcon, Loader2, ShoppingBag } from 'lucide-react';
+import { RefreshCcw, Zap, TrendingUp, Shuffle, Search as SearchIcon } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useVibePlayer } from './VibePlayerContext';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
+import { useMarketRecommendations } from '@/hooks/use-market-recommendations';
 import { Switch } from '../ui/switch';
 import { cn } from '@/lib/utils';
 import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
-import { FEED_STRATEGIES, DEFAULT_STRATEGY, type FeedStrategyId } from '@/lib/feed-strategies';
+import { DEFAULT_STRATEGY, type FeedStrategyId } from '@/lib/feed-strategies';
 import { recordBanditTrial } from '@/lib/bandit-learning';
 
 const BATCH_SIZE = 20;
@@ -21,8 +23,8 @@ const BATCH_SIZE = 20;
 /**
  * CampusPulseFeed Component
  * 
- * Implements the "Infinite Feed Engagement Loop".
- * Upgraded with Pagination, Instant Start, and MAB Feed Construction.
+ * The main scroller orchestrator.
+ * Implements MAB Strategy Selection, Infinite Loop, and Marketplace Injection.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -38,7 +40,10 @@ export default function CampusPulseFeed({
     const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
     const { isContinuous, setIsContinuous, addToQueue, setActivePost, activePostId } = useVibePlayer();
-    const { isLoaded: isProfileLoaded, currentStrategy, getPersonalScore } = useVibeProfile();
+    const { currentStrategy, getPersonalScore } = useVibeProfile();
+    
+    // 🛍️ COMMERCE ENGINE: Fetch product candidates for injection
+    const { products: marketProducts } = useMarketRecommendations(searchQuery);
     
     const [posts, setPosts] = useState<SocialPost[]>([]);
     const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
@@ -85,21 +90,21 @@ export default function CampusPulseFeed({
 
             setPosts(prev => isLoadMore ? [...prev, ...newPosts] : newPosts);
             
-            // Register new content into the global Vibe Player pool
+            // Register into global pool for prefetching
             addToQueue(newPosts);
 
-            // Auto-Start Loop: Set first post as active if none is active on initial load
+            // Auto-Start: set first active if none
             if (!isLoadMore && newPosts.length > 0 && !activePostId) {
                 setActivePost(newPosts[0]);
             }
 
-            // Fetch SRC bulletins only on initial load
+            // Initial metadata only
             if (!isLoadMore) {
                 const srcQuery = query(
                     collection(firestore, 'src_posts'),
                     where('campusId', '==', activeCampusId),
                     orderBy('createdAt', 'desc'),
-                    limit(3)
+                    limit(2)
                 );
                 const srcSnap = await getDocs(srcQuery);
                 setSrcPosts(srcSnap.docs.map(d => ({ id: d.id, ...d.data() } as SrcPost)));
@@ -138,12 +143,12 @@ export default function CampusPulseFeed({
 
         const strategyId = currentStrategy || DEFAULT_STRATEGY;
         
-        // 🎰 STAGE 1: RANK CANDIDATES BY PERSONAL SCORE
+        // 🎰 STAGE 1: RANK CANDIDATES
         const rankedBatch = posts
             .map(p => ({ ...p, pScore: getPersonalScore(p) }))
             .sort((a, b) => b.pScore - a.pScore);
 
-        // STAGE 2: MAPPED SRC (Pinned at top of initial load only)
+        // STAGE 2: SRC HANDSHAKE
         const mappedSrc: SocialPost[] = (srcPosts || []).map(p => ({
             id: p.id,
             authorId: p.authorId,
@@ -161,37 +166,24 @@ export default function CampusPulseFeed({
             isOfficial: true
         }));
 
-        // If we are loading more, don't re-pin the SRC posts
         return lastDoc && posts.length > BATCH_SIZE ? rankedBatch : [...mappedSrc, ...rankedBatch];
     }, [posts, srcPosts, currentStrategy, getPersonalScore, lastDoc]);
 
     return (
         <div className="space-y-8 pb-20">
-            {activeTag && (
-                <div className="flex items-center gap-3 px-2">
-                    <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg">
-                        <Hash size={24} />
-                    </div>
-                    <div>
-                        <h2 className="text-3xl font-black italic tracking-tighter uppercase text-slate-900 dark:text-white">#{activeTag}</h2>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Global Hashtag Hub</p>
-                    </div>
-                </div>
-            )}
-
             {searchQuery && !activeTag && (
                 <div className="flex items-center justify-between px-4">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                        <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl shadow-sm">
                             <SearchIcon size={18} />
                         </div>
                         <div>
                             <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-tight italic">
-                                {isEmbedding ? 'Understanding meaning...' : `Results for "${searchQuery}"`}
+                                {isEmbedding ? 'Deciphering Intent...' : `Results for "${searchQuery}"`}
                             </h3>
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Zap size={10} className="text-indigo-500 fill-indigo-500" /> 
-                                {queryVector ? 'Hybrid Personalized Engine Active' : 'Keyword Discovery Pool'}
+                                {queryVector ? 'Hybrid Neural Retrieval Active' : 'Keyword Matrix Pool'}
                             </p>
                         </div>
                     </div>
@@ -199,35 +191,26 @@ export default function CampusPulseFeed({
             )}
 
             <div className={cn(
-                "p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 animate-in slide-in-from-top-4",
+                "p-6 rounded-[2.5rem] shadow-xl flex flex-col sm:flex-row justify-between items-center gap-4 border-b-4 animate-in slide-in-from-top-4 duration-500",
                 tab === 'shoppable' ? "bg-indigo-950 text-white border-amber-500" : "bg-slate-900 text-white border-blue-500"
             )}>
                 <div className="flex items-center gap-4">
                     <div className={cn("p-3 rounded-2xl transition-all", isContinuous ? "bg-blue-600 shadow-[0_0_20px_rgba(37,99,235,0.5)]" : "bg-white/10")}>
-                        {tab === 'shoppable' ? <ShoppingBag size={20} className="text-amber-400" /> : <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />}
+                        <Shuffle size={20} className={isContinuous ? "animate-spin-slow" : ""} />
                     </div>
                     <div>
-                        <h4 className="font-black text-sm tracking-tight">
-                            {tab === 'shoppable' ? 'Trending Shoppable Hub' : searchQuery ? 'Personalized Search Stream' : 'Liaison Optimization'}
-                        </h4>
+                        <h4 className="font-black text-sm tracking-tight">Infinite Engagement Loop</h4>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Strategy:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Arm:</span>
                             <span className="flex items-center gap-1 text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                <TrendingUp size={10} /> {currentStrategy || 'Learning...'}
+                                <TrendingUp size={10} /> Strategy {currentStrategy || 'Learning...'}
                             </span>
                         </div>
                     </div>
                 </div>
                 
                 <div className="flex items-center gap-4">
-                    <button 
-                        onClick={handleRefresh}
-                        disabled={isRefreshing || isLoading}
-                        className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 transition-all active:scale-90 disabled:opacity-50"
-                        title="Re-sync Yard"
-                    >
-                        <RefreshCcw size={18} className={cn(isRefreshing && "animate-spin")} />
-                    </button>
+                    <button onClick={handleRefresh} className="p-3 bg-white/10 rounded-2xl hover:bg-white/20 active:scale-90"><RefreshCcw size={18} className={cn(isRefreshing && "animate-spin")} /></button>
                     <div className="flex items-center gap-3 bg-white/5 p-3 rounded-2xl border border-white/10">
                         <span className="text-[10px] font-black uppercase text-slate-400">Autoplay</span>
                         <Switch checked={isContinuous} onCheckedChange={setIsContinuous} className="data-[state=checked]:bg-blue-600" />
@@ -237,7 +220,7 @@ export default function CampusPulseFeed({
 
             <VibeFeed 
                 posts={filteredPosts} 
-                searchQuery={searchQuery} 
+                products={marketProducts}
                 hasMore={hasMore} 
                 onLoadMore={() => fetchBatch(true)} 
                 isLoadingMore={isLoading && posts.length > 0}
@@ -245,9 +228,9 @@ export default function CampusPulseFeed({
 
             {isLoading && posts.length === 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <Skeleton className="h-96 rounded-[2.5rem]" />
-                    <Skeleton className="h-96 rounded-[2.5rem]" />
-                    <Skeleton className="h-96 rounded-[2.5rem]" />
+                    <Skeleton className="h-[500px] rounded-[3rem]" />
+                    <Skeleton className="h-[500px] rounded-[3rem]" />
+                    <Skeleton className="h-[500px] rounded-[3rem]" />
                 </div>
             )}
         </div>

@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -7,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  ImageIcon, FileText, ArrowRight,
+  ImageIcon, FileText, ArrowRight, Zap,
 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
@@ -66,16 +67,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
   const skipTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ⏱️ DWELL TIME TRACKER: Precision monitoring for Skip Detection
   const dwellStartTimeRef = React.useRef<number | null>(null);
-
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
   const [ytMuted, setYtMuted] = React.useState(false);
   const [ytMounted, setYtMounted] = React.useState(false);
-
   const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
-
   const [countdown, setCountdown] = React.useState<number | null>(null);
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -103,11 +100,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
-      setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+      setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     }
   }, [isActiveVibe]);
 
-  // 🏎️ INTELLIGENT DWELL MONITOR: Detect skips and deep interest
+  // 🏎️ ENTERPRISE SKIP DETECTION ENGINE
   React.useEffect(() => {
     if (!cardRef.current) return;
 
@@ -118,7 +115,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         } else {
           if (dwellStartTimeRef.current) {
             const timeVisible = Date.now() - dwellStartTimeRef.current;
-            // RULE: Visibility < 2s counts as an active "Skip" (negative penalty)
+            // 🚫 FAST SKIP PENALTY: User scrolled past in under 2 seconds
             if (timeVisible < 2000 && !isActiveVibe) {
               recordSkip(post);
             }
@@ -168,10 +165,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     if (isActiveVibe && isSkippingRestricted && skipCountdown === 0) {
       setIsSkippingRestricted(false);
       setSkipCountdown(null);
-      if (skipTimerRef.current) {
-        clearInterval(skipTimerRef.current);
-        skipTimerRef.current = null;
-      }
+      if (skipTimerRef.current) clearInterval(skipTimerRef.current);
       playNext();
     }
   }, [skipCountdown, isSkippingRestricted, playNext, isActiveVibe]);
@@ -179,11 +173,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   React.useEffect(() => {
     if (post.mediaType !== 'youtube') return;
     if (!isActiveVibe && ytReadyRef.current && ytPlayerRef.current) {
-      try { 
-        if (typeof ytPlayerRef.current.pauseVideo === 'function') {
-          ytPlayerRef.current.pauseVideo(); 
-        }
-      } catch (_) { }
+      try { if (typeof ytPlayerRef.current.pauseVideo === 'function') ytPlayerRef.current.pauseVideo(); } catch (_) { }
     }
   }, [isActiveVibe, post.mediaType]);
 
@@ -222,33 +212,25 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     recordEngagement(firestore, post.id, 'share', post.authorId, post.createdAt);
     
     const shareData = {
-        title: 'Check out this vibe on GAM Hub',
+        title: 'Check this out on GAM Hub',
         text: post.content,
         url: window.location.origin + `/pulse?postId=${post.id}`,
     };
 
     if (navigator.share) {
-        try {
-            await navigator.share(shareData);
-            return;
-        } catch (err) {
-            console.log("Native share failed, falling back to clipboard.");
-        }
+        try { await navigator.share(shareData); return; } catch { }
     }
 
     try {
         await navigator.clipboard.writeText(shareData.url);
-        toast({ title: "Link Copied!", description: "Vibe link saved to clipboard." });
-    } catch (err) {
-        toast({ variant: 'destructive', title: "Share Failed", description: "Could not copy link." });
-    }
+        toast({ title: "Link Copied!" });
+    } catch { toast({ variant: 'destructive', title: "Share Failed" }); }
   };
 
   const handleDeletePost = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     if (!firestore || !post.id) return;
-    if (window.confirm('Are you sure you want to retract this vibe from the Yard?')) {
+    if (window.confirm('Retract this vibration from the Yard?')) {
       try {
         const col = post.type === 'src_official' ? 'src_posts' : 'campus_pulse';
         await deleteDoc(doc(firestore, col, post.id));
@@ -260,83 +242,26 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const handleEnd = () => {
     recordWatchedToEnd(post);
     if (isContinuous) {
-      toast({ title: 'Matching Next Vibe…', description: 'Liaison AI is keeping the Yard alive.' });
+      toast({ title: 'AI Match Found', description: 'Continuing the narative...' });
       setTimeout(() => playNext(), 500);
     }
   };
 
   const handleYoutubeError = React.useCallback((e: { data: number }) => {
-    const isEmbedRestricted = e.data === 101 || e.data === 150;
-    if (!isEmbedRestricted) return;
-
-    setIsRestricted(true);
-
-    if (!isContinuous) return;
-
-    setIsSkippingRestricted(true);
-    setSkipCountdown(3);
-
-    if (skipTimerRef.current) clearInterval(skipTimerRef.current);
-
-    skipTimerRef.current = setInterval(() => {
-      setSkipCountdown(prev => {
-        if (prev === null) return null;
-        if (prev <= 1) {
-          return 0;
+    if (e.data === 101 || e.data === 150) {
+        setIsRestricted(true);
+        if (isContinuous) {
+            setIsSkippingRestricted(true);
+            setSkipCountdown(3);
+            if (skipTimerRef.current) clearInterval(skipTimerRef.current);
+            skipTimerRef.current = setInterval(() => {
+                setSkipCountdown(prev => (prev === null || prev <= 1) ? 0 : prev - 1);
+            }, 1000);
         }
-        return prev - 1;
-      });
-    }, 1000);
+    }
   }, [isContinuous]);
 
-  React.useEffect(() => {
-    if (!isActiveVibe && skipTimerRef.current) {
-      clearInterval(skipTimerRef.current);
-      skipTimerRef.current = null;
-      setIsSkippingRestricted(false);
-      setSkipCountdown(null);
-    }
-  }, [isActiveVibe]);
-
-  React.useEffect(() => {
-    return () => {
-      if (skipTimerRef.current) clearInterval(skipTimerRef.current);
-      ytPlayerRef.current = null;
-      ytReadyRef.current = false;
-    };
-  }, []);
-
-  const onYoutubeReady = (event: any) => {
-    ytPlayerRef.current = event.target;
-    ytReadyRef.current = true;
-  };
-
-  const onYoutubePlay = () => {
-    setActivePost(post);
-    if (ytMuted && ytPlayerRef.current) {
-      try {
-        if (typeof ytPlayerRef.current.unMute === 'function') {
-          ytPlayerRef.current.unMute();
-          ytPlayerRef.current.setVolume(100);
-        }
-        setYtMuted(false);
-      } catch (_) { }
-    }
-  };
-
-  React.useEffect(() => {
-    if (isActiveVibe && post.mediaType === 'youtube') setYtMuted(true);
-  }, [isActiveVibe, post.mediaType]);
-
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
-  const ytKey = post.id; 
-  const ytPlayerVars = React.useMemo(() => ({
-    rel: 0, modestbranding: 1,
-    autoplay: isActiveVibe ? 1 : 0,
-    mute: isActiveVibe ? 1 : 0,
-    playsinline: 1,
-  }), [isActiveVibe]);
-
   const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
 
   return (
@@ -344,185 +269,105 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       ref={cardRef}
       data-post-id={post.id}
       className={cn(
-        'group relative bg-card rounded-[2.5rem] border overflow-hidden transition-all duration-500',
-        !isActiveVibe && (
-          post.likes >= 20 || post.isProtected
-            ? 'border-orange-200 shadow-xl shadow-orange-50'
-            : 'border-border shadow-sm hover:shadow-2xl'
-        ),
-        isGlobalSeed && !isActiveVibe && 'border-amber-200 shadow-amber-50',
-        isActiveVibe && 'border-blue-500 shadow-[0_0_60px_rgba(59,130,246,0.25)] ring-2 ring-blue-500/50 col-span-full z-10',
+        'group relative bg-card rounded-[3rem] border-2 overflow-hidden transition-all duration-500',
+        !isActiveVibe ? 'border-border shadow-sm hover:shadow-2xl' : 'border-blue-500 shadow-[0_0_80px_rgba(59,130,246,0.3)] ring-2 ring-blue-500/50 col-span-full z-10',
+        isGlobalSeed && !isActiveVibe && 'border-amber-200'
       )}
     >
       {isGlobalSeed && (
-        <div className="absolute top-4 left-4 z-20 animate-in zoom-in duration-500">
-          <div className="bg-amber-500 text-slate-950 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1 border-2 border-white dark:border-slate-950">
-            <Globe size={10} /> Global Vibe
+        <div className="absolute top-6 left-6 z-20 animate-in zoom-in duration-500">
+          <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
+            <Globe size={12} /> Global Vibe
           </div>
         </div>
       )}
 
       {isActiveVibe && (
-        <div className="absolute top-4 right-4 z-20 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="absolute top-6 right-6 z-20 flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
           {isContinuous && (
-            <div className="flex items-center gap-1 bg-blue-500 text-white px-2.5 py-1.5 rounded-xl text-[8px] font-black uppercase tracking-widest animate-pulse shadow-lg">
-              <FastForward size={10} fill="white" /> ACTIVE VIBE
+            <div className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-2xl animate-pulse border-2 border-white/20">
+              <FastForward size={12} fill="white" /> ACTIVE STREAM
             </div>
           )}
           {countdown !== null && (
-            <div className="bg-black/60 backdrop-blur-sm text-white px-2.5 py-1.5 rounded-xl text-[10px] font-black tabular-nums">
+            <div className="bg-black/60 backdrop-blur-md text-white px-4 py-2 rounded-2xl text-[11px] font-black tabular-nums border border-white/10 shadow-xl">
               Next in {countdown}s
             </div>
           )}
           <button
             onClick={() => setActivePost(null)}
-            className="p-2 bg-black/60 backdrop-blur-sm text-white rounded-xl hover:bg-black/80 transition-all active:scale-95"
-            title="Collapse"
+            className="p-3 bg-black/60 backdrop-blur-md text-white rounded-2xl hover:bg-black transition-all active:scale-90 border border-white/10 shadow-xl"
           >
-            <Minimize2 size={14} />
+            <Minimize2 size={16} />
           </button>
         </div>
       )}
 
       {post.mediaType !== 'text' && (
         <div className={cn(
-          'relative bg-slate-900 overflow-hidden flex-shrink-0 transition-all duration-500 ease-in-out',
+          'relative bg-slate-950 overflow-hidden flex-shrink-0 transition-all duration-700 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}>
-
-          {/* 🛍️ COMMERCE OVERLAY: Shop the Vibe */}
           {post.productTags && post.productTags.length > 0 && (
-            <VibeShopOverlay 
-                postId={post.id}
-                productIds={post.productTags} 
-                isActive={isActiveVibe} 
-            />
+            <VibeShopOverlay postId={post.id} productIds={post.productTags} isActive={isActiveVibe} />
           )}
 
-          {/* 🔥 STARTUP-SAFE POSTER: Show thumbnail (imageUrl) while video loads */}
           {(post.mediaType === 'video' || post.mediaType === 'image') && post.imageUrl && !isActiveVibe && (
-            <Image src={post.imageUrl} alt="post" fill
-              className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')}
-            />
+            <Image src={post.imageUrl} alt="vibe" fill className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')} />
           )}
 
           {post.mediaType === 'youtube' && youtubeId && (
             <div className="relative w-full h-full">
-              {!ytMounted && !isActiveVibe && (
+              {(!ytMounted && !isActiveVibe) ? (
                 <div className="absolute inset-0 cursor-pointer group/poster" onClick={() => setActivePost(post)}>
                   {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover opacity-60" />}
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                    <div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
-                      <PlayCircle size={32} fill="white" />
+                    <div className="p-6 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
+                      <PlayCircle size={40} fill="white" />
                     </div>
                   </div>
                 </div>
+              ) : (
+                <YouTube
+                  videoId={youtubeId}
+                  opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: isActiveVibe ? 1 : 0, mute: isActiveVibe ? 1 : 0, playsinline: 1 } }}
+                  className="w-full h-full"
+                  onReady={onYoutubeReady}
+                  onPlay={onYoutubePlay}
+                  onEnd={handleEnd}
+                  onError={handleYoutubeError}
+                />
               )}
-              {(ytMounted || isActiveVibe) && (
-                <div className="relative w-full h-full">
-                  {isRestricted ? (
-                    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500">
-                      {isSkippingRestricted ? (
-                        <>
-                          <div className="relative mb-5">
-                            <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-                              <circle cx="32" cy="32" r="28" fill="none" stroke="#334155" strokeWidth="4" />
-                              <circle
-                                cx="32" cy="32" r="28"
-                                fill="none" stroke="#3b82f6" strokeWidth="4"
-                                strokeDasharray={`${(2 * Math.PI * 28 * (skipCountdown || 0)) / 3} 999`}
-                                className="transition-all duration-1000 ease-linear"
-                              />
-                            </svg>
-                            <span className="absolute inset-0 flex items-center justify-center text-white font-black text-xl">
-                              {skipCountdown}
-                            </span>
-                          </div>
-                          <h4 className="text-white font-black text-sm uppercase tracking-widest">
-                            Skipping Restricted Vibe
-                          </h4>
-                          <p className="text-slate-400 text-[10px] mt-2 max-w-[220px]">
-                            This video can't play outside YouTube. Moving to the next vibe automatically.
-                          </p>
-                          <button
-                            onClick={() => {
-                              if (skipTimerRef.current) clearInterval(skipTimerRef.current);
-                              setIsSkippingRestricted(false);
-                              playNext();
-                            }}
-                            className="mt-4 text-blue-400 text-[10px] font-black uppercase tracking-widest hover:text-blue-300 transition-colors flex items-center gap-1 mx-auto"
-                          >
-                            Skip Now <ArrowRight size={12} />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle className="text-amber-500 mb-4" size={48} />
-                          <h4 className="text-white font-black text-sm uppercase tracking-widest">Restricted Vibe</h4>
-                          <p className="text-slate-400 text-[10px] mt-2 max-w-[200px] mb-6">
-                            Playback restricted inside other apps. Visit YouTube to see the full vibe.
-                          </p>
-                          <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer"
-                            className="bg-red-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-700 transition-all active:scale-95"
-                          >
-                            <Youtube size={14} fill="white" /> Open on YouTube
-                          </a>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <YouTube
-                      key={ytKey}
-                      videoId={youtubeId}
-                      opts={{ width: '100%', height: '100%', playerVars: ytPlayerVars }}
-                      className="w-full h-full"
-                      onReady={onYoutubeReady}
-                      onPlay={onYoutubePlay}
-                      onEnd={handleEnd}
-                      onError={handleYoutubeError}
-                    />
-                  )}
+              {isRestricted && (
+                <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
+                    <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                    <h4 className="text-white font-black text-sm uppercase tracking-[0.2em]">Restricted Vibration</h4>
+                    <p className="text-slate-400 text-[10px] mt-2 max-w-xs mb-6">Owner restricted embedding. Open on YouTube to view the full vibe.</p>
+                    <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer" className="bg-red-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 active:scale-95">
+                        <Youtube size={16} fill="white" /> Open External
+                    </a>
                 </div>
               )}
             </div>
           )}
 
-          {post.mediaType === 'tiktok' && post.mediaUrl && (
-            <div className="bg-black flex items-center justify-center h-full">
-              <TikTokEmbed url={post.mediaUrl} />
-            </div>
-          )}
+          {post.mediaType === 'tiktok' && post.mediaUrl && <div className="bg-black flex items-center justify-center h-full"><TikTokEmbed url={post.mediaUrl} /></div>}
 
           {post.mediaType === 'video' && videoSource && (
             <div className="w-full h-full bg-black flex items-center justify-center">
-              {!reactPlayerMounted && !isActiveVibe && (
+              {(!reactPlayerMounted && !isActiveVibe) ? (
                 <div className="absolute inset-0 cursor-pointer group/poster" onClick={() => setActivePost(post)}>
                   {post.imageUrl && <Image src={post.imageUrl} alt="" fill className="object-cover opacity-60" />}
                   <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                    <div className="p-5 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
-                      <PlayCircle size={32} fill="white" />
+                    <div className="p-6 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/poster:scale-110 transition-transform">
+                      <PlayCircle size={40} fill="white" />
                     </div>
                   </div>
                 </div>
-              )}
-              {(reactPlayerMounted || isActiveVibe) && (
+              ) : (
                 <ReactPlayer
-                  url={videoSource} controls width="100%" height="100%"
-                  playing={isActiveVibe}
-                  playsinline
-                  onStart={() => setActivePost(post)}
-                  onEnded={handleEnd}
-                  config={{ 
-                    file: { 
-                      attributes: { playsInline: true, preload: 'auto' },
-                      forceHLS: !!post.hlsUrl,
-                      hlsConfig: {
-                        // 🚀 TIKTOK-STYLE PREFETCHING: Early fragment loading
-                        maxBufferLength: 30,
-                        startFragPrefetch: true
-                      }
-                    } 
-                  }}
+                  url={videoSource} controls width="100%" height="100%" playing={isActiveVibe} playsinline onStart={() => setActivePost(post)} onEnded={handleEnd}
+                  config={{ file: { attributes: { playsInline: true, preload: 'auto' }, forceHLS: !!post.hlsUrl, hlsConfig: { maxBufferLength: 30, startFragPrefetch: true } } }}
                 />
               )}
             </div>
@@ -530,90 +375,68 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      <div className={cn(
-        'flex flex-col transition-all duration-500',
-        isActiveVibe ? 'p-8 md:flex-row md:items-start md:gap-8' : 'p-6'
-      )}>
-        <div className={cn('flex-1', isActiveVibe && 'mb-6 md:mb-0')}>
-          <div className="flex items-center gap-3 mb-3">
-            <Avatar className={cn('border-2 border-card shadow-sm transition-all duration-500', isActiveVibe ? 'w-12 h-12' : 'w-10 h-10')}>
+      <div className={cn('flex flex-col transition-all duration-500', isActiveVibe ? 'p-10 md:flex-row md:items-start md:gap-10' : 'p-8')}>
+        <div className={cn('flex-1', isActiveVibe && 'mb-8 md:mb-0')}>
+          <div className="flex items-center gap-4 mb-4">
+            <Avatar className={cn('border-2 border-card shadow-sm transition-all duration-500', isActiveVibe ? 'w-14 h-14' : 'w-12 h-12')}>
               <AvatarImage src={post.authorAvatarUrl} />
-              <AvatarFallback className="font-black">{post.authorName?.charAt(0)}</AvatarFallback>
+              <AvatarFallback className="font-black text-indigo-600">{post.authorName?.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <p className={cn('font-bold text-foreground transition-all duration-300', isActiveVibe ? 'text-base' : 'text-sm')}>
+              <p className={cn('font-black text-foreground transition-all duration-300', isActiveVibe ? 'text-lg' : 'text-base')}>
                 {post.authorName}
               </p>
               <div className="flex items-center gap-2">
-                <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
-                <span className="flex items-center gap-1 text-[8px] font-black text-slate-400 uppercase tracking-tighter">
-                  <MediaTypeIcon mediaType={post.mediaType} size={10} />
+                <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
+                <span className="flex items-center gap-1.5 text-[9px] font-black text-slate-400 uppercase tracking-tighter">
+                  <MediaTypeIcon mediaType={post.mediaType} size={12} />
                   {getMediaLabel(post.mediaType)}
                 </span>
               </div>
             </div>
-            {canDelete && !isActiveVibe && (
-              <button type="button" onClick={handleDeletePost}
-                className="ml-auto p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
-                title="Retract Vibe"
-              >
-                <Trash2 size={16} />
-              </button>
-            )}
           </div>
 
-          <div className={cn('font-bold leading-snug text-foreground transition-all duration-300', isActiveVibe ? 'text-xl md:text-2xl' : 'text-lg')}>
+          <div className={cn('font-bold leading-snug text-foreground transition-all duration-300', isActiveVibe ? 'text-2xl md:text-3xl tracking-tight' : 'text-xl tracking-tight')}>
             {renderWithHashtags(post.content)}
           </div>
 
           {isActiveVibe && (
-            <div className="mt-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="mt-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
               <VibeReactionBar postId={post.id} post={post} />
             </div>
           )}
         </div>
 
-        <div className={cn(
-          'flex items-center transition-all duration-300',
-          isActiveVibe
-            ? 'justify-between pt-0 border-t-0 md:flex-col md:items-end md:gap-4 md:pt-1'
-            : 'justify-between pt-4 border-t border-border mt-4'
-        )}>
-          <div className="flex items-center gap-4">
-            <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex items-center gap-1.5">
-              <div className={cn('rounded-xl transition-all', isActiveVibe ? 'p-3' : 'p-2', isLiked ? 'bg-orange-50 text-orange-600' : 'bg-muted text-muted-foreground')}>
-                <ThumbsUp size={isActiveVibe ? 22 : 18} className={cn(isLiked && 'fill-orange-600')} />
+        <div className={cn('flex items-center transition-all duration-300', isActiveVibe ? 'justify-between pt-0 md:flex-col md:items-end md:gap-6 md:pt-2' : 'justify-between pt-6 border-t border-border mt-6')}>
+          <div className="flex items-center gap-6">
+            <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex flex-col items-center gap-1 group">
+              <div className={cn('rounded-[1.5rem] transition-all p-3 border-2', isLiked ? 'bg-orange-50 text-orange-600 border-orange-200' : 'bg-muted border-transparent text-muted-foreground group-hover:border-orange-200')}>
+                <ThumbsUp size={isActiveVibe ? 24 : 20} className={cn(isLiked && 'fill-orange-600')} />
               </div>
-              <span className={cn('font-black text-foreground', isActiveVibe ? 'text-sm' : 'text-xs')}>{likeCount}</span>
+              <span className="text-[10px] font-black text-foreground">{likeCount}</span>
             </button>
-            <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-1.5">
-              <div className={cn('bg-muted text-muted-foreground rounded-xl transition-all', isActiveVibe ? 'p-3' : 'p-2')}>
-                <MessageCircle size={isActiveVibe ? 22 : 18} />
+            <button onClick={() => setShowComments(!showComments)} className="flex flex-col items-center gap-1 group">
+              <div className={cn('bg-muted text-muted-foreground rounded-[1.5rem] transition-all p-3 border-2 border-transparent group-hover:border-blue-200')}>
+                <MessageCircle size={isActiveVibe ? 24 : 20} />
               </div>
-              <span className={cn('font-black text-foreground', isActiveVibe ? 'text-sm' : 'text-xs')}>{post.commentCount}</span>
+              <span className="text-[10px] font-black text-foreground">{post.commentCount}</span>
             </button>
           </div>
-          <div className="flex items-center gap-2">
-            {canDelete && isActiveVibe && (
-              <button type="button" onClick={handleDeletePost}
-                className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
-                title="Retract Vibe"
-              >
-                <Trash2 size={16} />
+          <div className="flex items-center gap-3">
+            {canDelete && (
+              <button type="button" onClick={handleDeletePost} className="p-3 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-2xl hover:scale-110 active:scale-95 border-2 border-transparent hover:border-red-100" title="Retract">
+                <Trash2 size={20} />
               </button>
             )}
-            <button 
-              onClick={handleShare}
-              className={cn('bg-foreground text-background rounded-xl hover:bg-primary transition-all shadow-lg active:scale-90', isActiveVibe ? 'p-3' : 'p-2')}
-            >
-              <Share2 size={22} />
+            <button onClick={handleShare} className="bg-slate-900 text-white rounded-2xl hover:bg-blue-600 p-4 transition-all shadow-xl active:scale-90 border-2 border-white/10">
+              <Share2 size={24} />
             </button>
           </div>
         </div>
       </div>
 
       {showComments && (
-        <div className={cn('border-t border-border', isActiveVibe ? 'px-8 pb-8' : 'px-6 pb-6')}>
+        <div className={cn('border-t border-border', isActiveVibe ? 'px-10 pb-10' : 'px-8 pb-8')}>
           <CommentSection postId={post.id} authorId={post.authorId} />
         </div>
       )}
