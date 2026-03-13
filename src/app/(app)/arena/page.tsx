@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/hashtag-utils';
 import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
+import { validateVideo } from '@/lib/video-utils';
 
 const INITIAL_LIMIT = 100;
 const LOAD_MORE_BATCH = 50;
@@ -30,6 +31,7 @@ const LOAD_MORE_BATCH = 50;
  * 
  * National inter-uni battleground. 
  * Now with AI Semantic Hashtags and Hashtag Graph relationships.
+ * Upgraded with Startup-Safe Video Infrastructure.
  */
 export default function ArenaPage() {
     const { firestore, storage } = useFirebase();
@@ -81,6 +83,16 @@ export default function ArenaPage() {
         if (rawTags.length > 10) {
             toast({ variant: 'destructive', title: 'Too many tags!', description: 'Limit your battle tags to 10 for maximum vibe impact.' });
             return;
+        }
+
+        // 🛡️ INFRASTRUCTURE: Startup-Safe Video Validation
+        if (file && file.type.startsWith('video')) {
+            try {
+                await validateVideo(file);
+            } catch (err: any) {
+                toast({ variant: 'destructive', title: 'Video Denied', description: err.message });
+                return;
+            }
         }
 
         setIsLoading(true);

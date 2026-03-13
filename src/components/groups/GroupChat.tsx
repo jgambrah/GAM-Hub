@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -12,6 +11,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '@/hooks/use-toast';
 import { ForwardMessageModal } from '../social/ForwardMessageModal';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { validateVideo } from '@/lib/video-utils';
 
 export default function GroupChat({ group }: { group: Group }) {
   const { firestore, storage, auth } = useFirebase();
@@ -59,6 +59,17 @@ export default function GroupChat({ group }: { group: Group }) {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !firestore || !storage || !userProfile) return;
+
+    // 🛡️ INFRASTRUCTURE: Multimedia Validation
+    if (file.type.startsWith('video')) {
+        try {
+            await validateVideo(file);
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: 'Upload Denied', description: err.message });
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+    }
 
     setIsPosting(true);
     try {

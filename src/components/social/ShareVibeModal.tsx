@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -21,12 +20,14 @@ import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags'
 import { analyzeVibeContent } from '@/ai/flows/analyze-vibe-content';
 import { searchMarketplaceProducts } from '@/lib/market-intelligence';
 import { updateGraphFromContent } from '@/lib/knowledge-graph';
+import { validateVideo } from '@/lib/video-utils';
 
 /**
  * ShareVibeModal Component
  * 
  * The multimedia broadcast center for the Yard.
  * Upgraded with Creator-Commerce Engine and Knowledge Graph Seeding.
+ * Enforces Startup-Safe Video Protocols.
  */
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
@@ -97,16 +98,19 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     }
   };
 
-  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 20 * 1024 * 1024) {
-        toast({ variant: 'destructive', title: 'File too large', description: 'Campus vlogs must be under 20MB.' });
-        return;
+      // 🛡️ INFRASTRUCTURE: Instant Validation
+      try {
+        await validateVideo(file);
+        setVideoFile(file);
+        setPreview(URL.createObjectURL(file));
+        setPostType('native');
+      } catch (err: any) {
+        toast({ variant: 'destructive', title: 'Video Denied', description: err.message });
+        if (videoInputRef.current) videoInputRef.current.value = '';
       }
-      setVideoFile(file);
-      setPreview(URL.createObjectURL(file));
-      setPostType('native');
     }
   };
 
@@ -147,7 +151,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
         const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
-        await uploadBytes(fileRef, imageFile);
+        await uploadBytes(fileRef, file);
         imageUrl = await getDownloadURL(fileRef);
         mediaUrl = imageUrl;
       } else if (postType === 'native' && videoFile) {

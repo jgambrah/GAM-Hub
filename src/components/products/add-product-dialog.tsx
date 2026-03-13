@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -35,6 +34,7 @@ import { collection, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { validateVideo } from '@/lib/video-utils';
 
 const productSchema = z.object({
   name: z.string().min(3, 'Product/Service name must be at least 3 characters.'),
@@ -98,15 +98,18 @@ export function AddProductDialog() {
     }
   };
 
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 15 * 1024 * 1024) {
-        toast({ variant: 'destructive', title: 'File Too Large', description: 'Video must be under 15MB for the Yard.' });
-        return;
+      // 🛡️ INFRASTRUCTURE: Startup-Safe Validation
+      try {
+        await validateVideo(file);
+        setVideoFile(file);
+        setVideoPreview(URL.createObjectURL(file));
+      } catch (err: any) {
+        toast({ variant: 'destructive', title: 'Video Rejected', description: err.message });
+        e.target.value = '';
       }
-      setVideoFile(file);
-      setVideoPreview(URL.createObjectURL(file));
     }
   };
 
