@@ -33,8 +33,7 @@ exports.compressVideo = onObjectFinalized({
 
   if (!contentType || !contentType.startsWith("video/")) return null;
   
-  // Logic: Support both Pulse vibrations and Marketplace demos
-  // Explicitly ignore already processed HLS segments to prevent loops
+  // Guard: Support both Pulse vibrations and Marketplace demos
   const isEligiblePath = filePath.startsWith("videos/hot/") || filePath.startsWith("product_videos/");
   if (!isEligiblePath || filePath.includes("/hls/")) return null;
   
@@ -72,7 +71,7 @@ exports.compressVideo = onObjectFinalized({
         .save(targetFilePath);
     });
 
-    // 2. HLS TRANSCODING: Generate .m3u8 and .ts segments
+    // 2. HLS TRANSCODING: Generate .m3u8 and .ts segments (6s chunks)
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .size("720x?")
@@ -117,16 +116,23 @@ exports.compressVideo = onObjectFinalized({
       }),
       bucket.upload(thumbTempPath, {
         destination: thumbStoragePath,
-        metadata: { contentType: "image/jpeg" },
+        metadata: { 
+          contentType: "image/jpeg",
+          cacheControl: "public, max-age=31536000"
+        },
       })
     ];
 
-    // Upload HLS Playlist and Segments
+    // Batch Upload HLS Playlist and Segments with proper Content-Types for CDN
     const hlsFiles = fs.readdirSync(hlsOutputDir);
     hlsFiles.forEach(file => {
+      const isPlaylist = file.endsWith('.m3u8');
       uploads.push(bucket.upload(path.join(hlsOutputDir, file), {
         destination: `${hlsStorageDir}/${file}`,
-        metadata: { cacheControl: "public, max-age=31536000" }
+        metadata: { 
+          contentType: isPlaylist ? 'application/vnd.apple.mpegurl' : 'video/MP2T',
+          cacheControl: "public, max-age=31536000" 
+        }
       }));
     });
 
@@ -173,7 +179,7 @@ exports.compressVideo = onObjectFinalized({
     fs.rmSync(tempDir, { recursive: true, force: true });
     
   } catch (err) {
-    console.error(`Media optimization failed for ${filePath}:`, err);
+    console.error(`Liaison Media Optimization failed for ${filePath}:`, err);
   }
 
   return null;
@@ -181,6 +187,8 @@ exports.compressVideo = onObjectFinalized({
 
 /**
  * 🛡️ DEDUPLICATION-SAFE DELETION TRIGGER
+ * Ensures physical files are only removed when NO posts reference them.
+ * Cleans up HLS directory, MP4 fallback, and thumbnails.
  */
 exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event) => {
   const post = event.data.data();
@@ -207,7 +215,7 @@ exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event
         const thumbPath = `videos/thumbs/thumb-${post.videoHash}.jpg`;
         await bucket.file(thumbPath).delete().catch(() => null);
         
-        // Delete HLS directory
+        // Delete HLS directory recursively
         await bucket.deleteFiles({ prefix: `videos/hls/${post.videoHash}/` }).catch(() => null);
       }
       transaction.delete(hashRef);

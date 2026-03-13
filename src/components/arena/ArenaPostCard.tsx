@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -13,6 +14,7 @@ import Image from 'next/image';
 import { TikTokEmbed } from '../social/tiktok-embed';
 import { useToast } from '@/hooks/use-toast';
 import YouTube from 'react-youtube';
+import ReactPlayer from 'react-player';
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;
@@ -35,6 +37,8 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     const isAuthor = user?.id === post.authorId;
     const canDelete = isAuthor || isAdmin;
 
+    // Use HLS playlist if available for adaptive streaming
+    const videoSource = post.hlsUrl || post.mediaUrl;
     const youtubeId = useMemo(() => isBlocked ? null : getYouTubeId(post.mediaUrl || ''), [post.mediaUrl, isBlocked]);
 
     React.useEffect(() => {
@@ -207,7 +211,25 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                     {post.mediaUrl && (
                         <div className="mt-4 rounded-2xl overflow-hidden bg-black border border-border group/media relative">
                             {post.mediaType === 'image' && <Image src={post.mediaUrl} width={500} height={300} className="w-full h-auto object-cover" alt="Post media" />}
-                            {post.mediaType === 'video' && <video src={post.mediaUrl} controls className="w-full h-auto" />}
+                            
+                            {(post.mediaType === 'video' || post.mediaType === 'native') && videoSource && (
+                                <div className="aspect-video bg-black">
+                                    <ReactPlayer 
+                                        url={videoSource}
+                                        controls
+                                        width="100%"
+                                        height="100%"
+                                        playsinline
+                                        config={{
+                                            file: {
+                                                attributes: { playsInline: true, preload: 'auto' },
+                                                forceHLS: !!post.hlsUrl
+                                            }
+                                        }}
+                                    />
+                                </div>
+                            )}
+
                             {post.mediaType === 'youtube' && youtubeId && (
                                 <div className="relative w-full aspect-video">
                                     {isRestricted ? (
