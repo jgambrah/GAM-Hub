@@ -215,18 +215,30 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     finally { setIsProcessingLike(false); }
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
     if (!firestore) return;
     recordEngagement(firestore, post.id, 'share', post.authorId, post.createdAt);
-    if (navigator.share) {
-      navigator.share({
+    
+    const shareData = {
         title: 'Check out this vibe on GAM Hub',
         text: post.content,
         url: window.location.href,
-      }).catch(() => toast({ title: "Link copied!" }));
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast({ title: "Link copied to clipboard!" });
+    };
+
+    if (navigator.share) {
+        try {
+            await navigator.share(shareData);
+            return;
+        } catch (err) {
+            console.log("Native share failed, falling back to clipboard.");
+        }
+    }
+
+    try {
+        await navigator.clipboard.writeText(shareData.url);
+        toast({ title: "Link Copied!", description: "Vibe link saved to clipboard." });
+    } catch (err) {
+        toast({ variant: 'destructive', title: "Share Failed", description: "Could not copy link." });
     }
   };
 

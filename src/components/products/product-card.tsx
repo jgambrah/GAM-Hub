@@ -80,20 +80,31 @@ export default function ProductCard({ product, className }: ProductCardProps) {
     }
   };
 
-  const handleShare = (e: React.MouseEvent) => {
+  const handleShare = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!firestore || !user) return;
     recordMarketSignal(firestore, user.id, product, 'share');
     
+    const shareData = {
+        title: product.name,
+        text: `Check out this vibe on GAM Hub: ${product.name}`,
+        url: window.location.origin + `/products/${product.id}`
+    };
+
     if (navigator.share) {
-        navigator.share({
-            title: product.name,
-            text: `Check out this vibe on GAM Hub: ${product.name}`,
-            url: window.location.href + `/products/${product.id}`
-        });
-    } else {
-        navigator.clipboard.writeText(window.location.origin + `/products/${product.id}`);
+        try {
+            await navigator.share(shareData);
+            return;
+        } catch (err) {
+            console.log("Native share failed or canceled, falling back to clipboard.");
+        }
+    }
+
+    try {
+        await navigator.clipboard.writeText(shareData.url);
         toast({ title: "Link Copied!", description: "Share the vibe with your group." });
+    } catch (err) {
+        toast({ variant: 'destructive', title: "Share Failed", description: "Could not copy link." });
     }
   };
 
@@ -143,7 +154,7 @@ export default function ProductCard({ product, className }: ProductCardProps) {
                     disabled={isSyncingFavorite}
                     className={cn(
                         "p-3 rounded-2xl shadow-xl transition-all active:scale-90 border-2",
-                        isFavorited ? "bg-red-500 border-red-400 text-white" : "bg-white/80 backdrop-blur-md border-white/20 text-slate-900"
+                        isFavorited ? "bg-red-50 border-red-400 text-white" : "bg-white/80 backdrop-blur-md border-white/20 text-slate-900"
                     )}
                 >
                     {isSyncingFavorite ? <Loader2 size={18} className="animate-spin" /> : <Heart size={18} fill={isFavorited ? "currentColor" : "none"} />}
