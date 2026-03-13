@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useCallback, useEffect, useState, useMemo } from 'react';
@@ -10,6 +9,8 @@ import { recordUnifiedSignal, updateVideoInterest } from '@/lib/user-intelligenc
 import { expandInterests } from '@/lib/knowledge-graph';
 import { selectStrategy, type GlobalBanditStats } from '@/lib/bandit-learning';
 import type { FeedStrategyId } from '@/lib/feed-strategies';
+import { generateUserEmbedding } from '@/ai/flows/update-user-embedding';
+import { cosineSimilarity } from '@/lib/utils';
 
 /**
  * useVibeProfile Hook
@@ -107,6 +108,14 @@ export function useVibeProfile() {
       const graphWeight = expandedInterestsMap[tag] || 0;
       score += graphWeight * 0.8;
     });
+
+    // 🧠 NEURAL VECTOR MATCHING
+    if (intelligence.tasteVector && post.embedding) {
+        const similarity = cosineSimilarity(intelligence.tasteVector, post.embedding);
+        if (similarity > 0.8) {
+            score += similarity * 50; // Dynamic neural boost
+        }
+    }
 
     // Creator Affinity
     if (post.authorId && intelligence.affinities?.creators?.[post.authorId]) {

@@ -13,6 +13,7 @@
  * 8. AI Re-Ranking (LLM Refinement)
  * 9. TIKTOK-STYLE PREFETCHING (Lookahead Buffering)
  * 10. INFINITE ENGAGEMENT LOOP (Auto-Fetch & Interaction Signals)
+ * 11. SEMANTIC VECTOR MATCHING (Cosine Similarity)
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -27,6 +28,7 @@ import { enforceDiversity } from '@/lib/diversity-engine';
 import { logTrendEvent } from '@/lib/trend-logger';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { vibeBufferManager } from '@/lib/vibe-buffer-manager';
+import { cosineSimilarity } from '@/lib/utils';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -64,19 +66,6 @@ export interface ReactionBurst {
   id: string; emoji: VibeReaction; x: number; y: number;
 }
 
-export function cosineSimilarity(a: number[], b: number[]) {
-  if (!a || !b || a.length !== b.length) return 0;
-  let dot = 0; let magA = 0; let magB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    magA += a[i] * a[i];
-    magB += b[i] * b[i];
-  }
-  magA = Math.sqrt(magA); magB = Math.sqrt(magB);
-  if (magA === 0 || magB === 0) return 0;
-  return dot / (magA * magB);
-}
-
 export function explorationBoost(post: SocialPost) {
   const views = post.likes || 0; 
   if (views < 50) return 15;
@@ -97,7 +86,7 @@ export function computeVibeScore(
 ) {
   let score = 0;
 
-  // 1. Personalization (Unified Brain + Graph)
+  // 1. Personalization (Unified Brain + Graph + Taste Vector)
   score += getPersonalScore(candidate);
 
   // 2. Global Trend Injection (5x Weight)
@@ -105,24 +94,23 @@ export function computeVibeScore(
   score += globalTrendValue * 5;
 
   // 3. 📈 ENGAGEMENT BOOST (Likes, Comments, Shares)
-  // Weighting: Likes (2x), Comments (3x), Shares (5x)
   const engagementScore = (candidate.likes || 0) * 2 + (candidate.commentCount || 0) * 3 + (candidate.trendScore || 0) * 5;
-  score += Math.min(engagementScore, 100); // Capped at 100 to prevent viral runaway
+  score += Math.min(engagementScore, 100); 
 
   // 4. 👑 CREATOR MOMENTUM
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
-  score += (repData.qualityScore || 50) * 0.8; // Reward high-quality creators
+  score += (repData.qualityScore || 50) * 0.8; 
 
-  // 5. Semantic Match
+  // 5. Semantic Match (Current Context vs Candidate)
   const currentTags = new Set([...(current.tags || []), ...(current.aiTags || [])].map(t => t.toLowerCase()));
   const candidateTags = [...(candidate.tags || []), ...(candidate.aiTags || [])].map(t => t.toLowerCase());
   const tagMatches = candidateTags.filter(t => currentTags.has(t));
   score += tagMatches.length * 15;
 
-  // 6. Embedding Similarity
+  // 6. 🧠 NEURAL SIMILARITY: Compare embeddings of the two vibes
   if (current.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(current.embedding, candidate.embedding);
-    if (similarity > 0.85) score += 20;
+    if (similarity > 0.85) score += similarity * 25;
   }
 
   // 7. Exploration & Proximity
@@ -150,7 +138,6 @@ export function buildSmartQueue(
     }));
   scored.sort((a, b) => b.score - a.score);
   
-  // Apply Diversity logic inside queue construction
   const finalRanked = []; const candidates = [...scored]; const seenClusters = new Map<string, number>(); const creatorSessionCount = new Map<string, number>(); const lastCreatorPositions = new Map<string, number>(); 
   const MIN_CREATOR_GAP = 3; 
 
@@ -159,8 +146,8 @@ export function buildSmartQueue(
       const window = candidates.slice(0, 20).map(c => {
           const cluster = (c.post.tags?.[0] || 'none').toLowerCase(); const creatorId = c.post.authorId; const clusterFreq = seenClusters.get(cluster) || 0; const creatorFreq = creatorSessionCount.get(creatorId) || 0; const lastPos = lastCreatorPositions.get(creatorId);
           let diverseScore = c.score; 
-          diverseScore -= (clusterFreq * 10); // Punish repeating topics
-          diverseScore -= (creatorFreq * 12); // Punish repeating creators
+          diverseScore -= (clusterFreq * 10); 
+          diverseScore -= (creatorFreq * 12); 
           if (lastPos !== undefined && (currentIndex - lastPos < MIN_CREATOR_GAP)) diverseScore -= 50; 
           return { ...c, diverseScore };
       });
@@ -332,9 +319,9 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const pushToHistory = useCallback((post: SocialPost) => { setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX)); }, []);
 
   const startDisplayTimer = useCallback((post: SocialPost) => {
-    clearDisplayTimer();
     const duration = DISPLAY_DURATIONS[getMediaCategory(post.mediaType)];
     if (duration > 0 && isContinuousRef.current) {
+      if (displayTimerRef.current) clearTimeout(displayTimerRef.current);
       displayTimerRef.current = setTimeout(() => {
         const q = queueRef.current; const id = activePostIdRef.current;
         if (q.length <= 1) return;
@@ -343,7 +330,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         if (next) { setActivePostId(next.id); setActivePostState(next); pushToHistory(next); }
       }, duration);
     }
-  }, [clearDisplayTimer, pushToHistory]);
+  }, [pushToHistory]);
 
   const setActivePost = useCallback((post: SocialPost | null) => {
     if (!post) { if (activePostIdRef.current) { clearDisplayTimer(); setActivePostId(null); setActivePostState(null); } return; }

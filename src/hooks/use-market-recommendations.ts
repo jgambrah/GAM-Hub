@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
@@ -9,6 +8,7 @@ import { computeMarketScore } from '@/lib/market-scoring';
 import { enforceMarketDiversity } from '@/lib/market-diversity';
 import { useAuth } from './use-auth';
 import { parseMarketIntent } from '@/ai/flows/market-intent-parser';
+import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
 import { expandInterests } from '@/lib/knowledge-graph';
 
 /**
@@ -16,15 +16,18 @@ import { expandInterests } from '@/lib/knowledge-graph';
  * ----------------------------
  * The primary discovery engine for the marketplace.
  * Synchronizes with the Unified User Intelligence brain + Knowledge Graph + Trend Scores.
+ * Now expanded with Semantic Query Embedding.
  */
 export function useMarketRecommendations(searchQuery: string = '') {
   const { firestore } = useFirebase();
   const { user, isTokenReady } = useAuth();
   
   const [parsedIntent, setParsedIntent] = useState<MarketIntent | null>(null);
+  const [queryVector, setQueryVector] = useState<number[] | null>(null);
   const [expandedInterests, setExpandedInterests] = useState<Record<string, number>>({});
   const [globalTrendScores, setGlobalTrendScores] = useState<Record<string, number>>({});
   const [isParsing, setIsParsing] = useState(false);
+  const [isEmbedding, setIsEmbedding] = useState(false);
   const [isExplaining, setIsExplaining] = useState(false);
 
   // 1. LOAD UNIFIED BRAIN 🧠
@@ -71,7 +74,7 @@ export function useMarketRecommendations(searchQuery: string = '') {
 
   const { data: candidates, isLoading: isLoadingCandidates } = useCollection<Product>(candidatesQuery);
 
-  // 4. 🏎️ HYBRID PERSONALIZED RANKING (Knowledge Graph + Trends Enhanced)
+  // 4. 🏎️ HYBRID PERSONALIZED RANKING (Knowledge Graph + Trends + Neural Enhanced)
   const processed = useMemo(() => {
     if (!candidates) return { ranked: [], trending: [], deals: [], topRated: [] };
     
@@ -85,7 +88,8 @@ export function useMarketRecommendations(searchQuery: string = '') {
             user, 
             searchQuery, 
             parsedIntent,
-            expandedInterests
+            expandedInterests,
+            queryVector
         )
       }))
       .sort((a, b) => b.score - a.score);
@@ -116,24 +120,32 @@ export function useMarketRecommendations(searchQuery: string = '') {
       .slice(0, 10);
 
     return { ranked, trending, deals, topRated };
-  }, [candidates, unifiedIntelligence, globalTrendScores, user, searchQuery, parsedIntent, expandedInterests]);
+  }, [candidates, unifiedIntelligence, globalTrendScores, user, searchQuery, parsedIntent, expandedInterests, queryVector]);
 
-  // 5. AI INTENT PARSING
+  // 5. 🧠 AI INTENT & VECTOR PARSING
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.length < 3) {
         setParsedIntent(null);
+        setQueryVector(null);
         return;
     }
 
     const timer = setTimeout(async () => {
         setIsParsing(true);
+        setIsEmbedding(true);
         try {
+            // A. Convert keywords into structured search intent
             const intent = await parseMarketIntent({ query: searchQuery });
             setParsedIntent(intent);
+
+            // B. Convert query into neural vector for semantic match
+            const vector = await generateQueryEmbedding(searchQuery);
+            setQueryVector(vector);
         } catch (e) {
-            console.warn("Liaison AI Parser busy...");
+            console.warn("Liaison AI Engine busy...");
         } finally {
             setIsParsing(false);
+            setIsEmbedding(false);
         }
     }, 1000);
 
@@ -145,8 +157,9 @@ export function useMarketRecommendations(searchQuery: string = '') {
     trending: processed.trending,
     deals: processed.deals,
     topRated: processed.topRated,
-    isLoading: isLoadingCandidates || isLoadingProfile || isParsing,
+    isLoading: isLoadingCandidates || isLoadingProfile || isParsing || isEmbedding,
     isParsing,
+    isEmbedding,
     isExplaining,
     hasProfile: !!unifiedIntelligence,
     intent: parsedIntent

@@ -1,12 +1,13 @@
-
 'use client';
 
 /**
  * @fileOverview Marketplace Ranking Engine.
  * Upgraded to use the Unified Intelligence Brain + Knowledge Graph expansion + Global Trend Boosting.
+ * Includes Neural Vector Similarity matching.
  */
 
 import type { Product, UserIntelligence, User, MarketIntent } from './types';
+import { cosineSimilarity } from './utils';
 
 export function computeVendorScore(product: Product) {
   const rating = (product.rating || 5) * 0.4;
@@ -26,7 +27,8 @@ export function computeMarketScore(
   user: User | null,
   searchQuery: string = '',
   parsedIntent?: MarketIntent | null,
-  expandedInterests: Record<string, number> = {} 
+  expandedInterests: Record<string, number> = {},
+  queryVector: number[] | null = null
 ) {
   let score = 0;
 
@@ -34,7 +36,6 @@ export function computeMarketScore(
   const trendBoost = globalTrendScores[product.id] || 0;
   score += trendBoost * 4;
 
-  // Boost based on trending category
   const categoryTrend = globalTrendScores[product.category.toLowerCase()] || 0;
   score += categoryTrend * 2;
 
@@ -48,7 +49,15 @@ export function computeMarketScore(
     if (product.category.toLowerCase().includes(term)) score += 15;
   }
 
-  // 3. 🧠 UNIFIED BRAIN + 🕸️ GRAPH SIGNALS
+  // 3. 🧠 NEURAL SEARCH: Match search query vector to product embedding
+  if (queryVector && product.embedding) {
+      const similarity = cosineSimilarity(queryVector, product.embedding);
+      if (similarity > 0.7) {
+          score += similarity * 60; // Powerful neural alignment boost
+      }
+  }
+
+  // 4. 🧠 UNIFIED BRAIN + 🕸️ GRAPH SIGNALS
   if (unifiedIntelligence?.interests) {
     const productCategory = product.category.toLowerCase();
     
@@ -56,40 +65,42 @@ export function computeMarketScore(
     const catWeight = unifiedIntelligence.interests[productCategory] || 0;
     score += catWeight * 3.0; 
 
+    // 🧠 TASTE VECTOR MATCH: Match user's long-term style to product vibe
+    if (unifiedIntelligence.tasteVector && product.embedding) {
+        const styleSimilarity = cosineSimilarity(unifiedIntelligence.tasteVector, product.embedding);
+        if (styleSimilarity > 0.8) {
+            score += styleSimilarity * 40;
+        }
+    }
+
     // 🕸️ Graph Expansion Match (1.5x Weight)
-    // Surface categories 'related' to your interests
     const expandedCatWeight = expandedInterests[productCategory] || 0;
     score += expandedCatWeight * 1.5;
 
-    // Match product tags
     if (product.tags) {
         product.tags.forEach(tag => {
             const normalizedTag = tag.toLowerCase();
-            // Direct Boost
             const weight = unifiedIntelligence.interests![normalizedTag] || 0;
             score += weight * 2.0;
 
-            // 🕸️ Graph Expansion Boost (0.8x Weight)
             const graphWeight = expandedInterests[normalizedTag] || 0;
             score += graphWeight * 0.8;
         });
     }
 
-    // Vendor Affinity (Strength of past interactions)
     if (unifiedIntelligence.affinities?.vendors?.[product.vendorId]) {
         score += (unifiedIntelligence.affinities.vendors[product.vendorId]) * 5;
     }
   }
 
-  // 4. Proximity & Momentum
+  // 5. Proximity & Momentum
   if (user && product.campusId === user.campusId) score += 5;
   if (product.trendScore) score += product.trendScore * 0.5;
 
-  // 5. Freshness Decay
+  // 6. Freshness Decay
   if (product.createdAt) {
     const date = typeof product.createdAt === 'string' ? new Date(product.createdAt) : product.createdAt.toDate();
     const ageHours = (Date.now() - date.getTime()) / 3600000;
-    // Faster decay for older marketplace listings to keep it fresh
     score *= Math.exp(-ageHours / 48);
   }
 
