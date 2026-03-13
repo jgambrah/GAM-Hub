@@ -62,7 +62,7 @@ service cloud.firestore {
       allow update: if isAdmin() || 
                     request.auth.uid == resource.data.authorId ||
                     // Allow engagement updates from any signed-in user
-                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore']));
+                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore', 'burns', 'comebackCount']));
       
       allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
                             
@@ -81,7 +81,7 @@ service cloud.firestore {
       allow create: if isAdmin() || getRole() == 'vendor';
       allow update: if isAdmin() || 
                     resource.data.vendorId == request.auth.uid ||
-                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'salesCount', 'favoriteCount', 'shareCount', 'trendScore']));
+                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'salesCount', 'favoriteCount', 'shareCount', 'trendScore', 'clicks', 'conversions']));
       allow delete: if isAdmin() || resource.data.vendorId == request.auth.uid;
     }
 
@@ -168,9 +168,8 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
 
     match /groups/{groupId} {
-      allow read: if isSignedIn() && (
-        resource.data.isPrivate == false || 
-        request.auth.uid in resource.data.members ||
+      allow read, list: if isSignedIn() && (
+        resource.data.campusId == getCampus() || 
         isAdmin()
       );
       allow create: if isSignedIn();
@@ -204,7 +203,24 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
-    // 7. OFFICIAL CHANNELS & ADS
+    // 7. PRIVATE MESSAGING
+    // -------------------------------------------------------------------------
+
+    match /chats/{chatId} {
+      allow read, list: if isSignedIn() && (request.auth.uid in resource.data.users || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (request.auth.uid in resource.data.users || isAdmin());
+
+      match /messages/{msgId} {
+        allow read, write: if isSignedIn() && (
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.users || 
+          isAdmin()
+        );
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 8. OFFICIAL CHANNELS & ADS
     // -------------------------------------------------------------------------
 
     match /registry_posts/{postId} {

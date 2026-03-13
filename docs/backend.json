@@ -35,7 +35,7 @@
         "contactPhone": { "type": "string" },
         "momoNumber": { "type": "string" },
         "momoName": { "type": "string" },
-        "lead_credits": { "type": "number", "description": "Balance for professional service inquiries." },
+        "lead_credits": { "type": "number" },
         "isVerified": { "type": "boolean" },
         "idVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "approved"] }
       },
@@ -47,19 +47,12 @@
       "description": "Unified behavioral brain merging social and commercial signals.",
       "properties": {
         "id": { "type": "string" },
-        "interests": { "type": "object", "description": "Weighted interest map (tag -> score)." },
+        "interests": { "type": "object" },
         "affinities": {
           "type": "object",
           "properties": {
             "creators": { "type": "object" },
             "vendors": { "type": "object" }
-          }
-        },
-        "pricePreference": {
-          "type": "object",
-          "properties": {
-            "min": { "type": "number" },
-            "max": { "type": "number" }
           }
         },
         "engagementLevel": { "type": "number" },
@@ -99,19 +92,6 @@
         "clicks": { "type": "number" }
       }
     },
-    "MarketRequest": {
-      "title": "MarketRequest",
-      "type": "object",
-      "description": "A student demand signal for an item or service.",
-      "properties": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "query": { "type": "string" },
-        "category": { "type": "string" },
-        "campusId": { "type": "string" },
-        "status": { "type": "string", "enum": ["open", "closed"] }
-      }
-    },
     "Order": {
       "title": "Order",
       "type": "object",
@@ -122,8 +102,7 @@
         "vendorId": { "type": "string" },
         "amount": { "type": "number" },
         "status": { "type": "string" },
-        "affiliateCreatorId": { "type": "string" },
-        "commissionRate": { "type": "number" }
+        "createdAt": { "type": "string", "format": "date-time" }
       }
     },
     "Review": {
@@ -139,6 +118,32 @@
         "comment": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "Chat": {
+      "title": "Chat",
+      "type": "object",
+      "description": "A private conversation thread between two users.",
+      "properties": {
+        "id": { "type": "string" },
+        "users": { "type": "array", "items": { "type": "string" } },
+        "lastMessage": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "userAInfo": { "type": "object" },
+        "userBInfo": { "type": "object" }
+      }
+    },
+    "Message": {
+      "title": "Message",
+      "type": "object",
+      "description": "An individual message within a chat or group.",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "image", "file"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -147,11 +152,13 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/user_intelligence/{userId}": { "schema": "#/backend/entities/UserIntelligence", "description": "Unified behavioral brain." },
-    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "The national stream of campus vibrations." },
+    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "National stream of campus vibrations." },
     "/products/{productId}": { "schema": "#/backend/entities/Product", "description": "Campus marketplace inventory." },
     "/orders/{orderId}": { "schema": "#/backend/entities/Order", "description": "Escrow transaction records." },
-    "/market_requests/{requestId}": { "schema": "#/backend/entities/MarketRequest", "description": "Direct student demand signals." },
     "/reviews/{reviewId}": { "schema": "#/backend/entities/Review", "description": "Vendor feedback records." },
-    "/knowledge_graph/{nodeId}": { "schema": { "title": "KnowledgeGraphNode", "type": "object", "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "connections": { "type": "object" } } }, "description": "Semantic relationship network." }
+    "/chats/{chatId}": { "schema": "#/backend/entities/Chat", "description": "Private conversation threads." },
+    "/chats/{chatId}/messages/{msgId}": { "schema": "#/backend/entities/Message", "description": "Individual chat messages." },
+    "/groups/{groupId}": { "schema": { "title": "Group", "type": "object" }, "description": "Campus communities." },
+    "/groups/{groupId}/messages/{msgId}": { "schema": "#/backend/entities/Message", "description": "Group community messages." }
   }
 }
