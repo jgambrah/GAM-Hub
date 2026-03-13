@@ -1,6 +1,17 @@
 
 'use client';
 
+/**
+ * @fileOverview Liaison Vibe Player Orchestrator.
+ * 🚀 ACTIVE ENGINES:
+ * 1. Two-Stage Ranking (Retrieval + Scoring)
+ * 2. Discovery Mix (Interleaving + Diversity)
+ * 3. Hashtag Intel (Graph co-occurrence)
+ * 4. Unified Profile (Social-Commercial Merge)
+ * 5. Knowledge Graph (Semantic Expansion)
+ * 6. Real-Time Trend (5x Weight Injection)
+ */
+
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import type { SocialPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -11,6 +22,7 @@ import { collection, query, orderBy, limit, getDocs, doc, onSnapshot } from 'fir
 import { getRelatedHashtags } from '@/lib/hashtag-utils';
 import { enforceDiversity } from '@/lib/diversity-engine';
 import { logTrendEvent } from '@/lib/trend-logger';
+import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 
 export type MediaCategory = 'video' | 'image' | 'text';
 
@@ -76,7 +88,8 @@ export function explorationBoost(post: SocialPost) {
 /**
  * computeVibeScore
  * ---------------
- * Upgraded with Real-Time Global Trend Injection.
+ * STAGE 2-4: Local Hybrid Scoring
+ * personalization + trend boost + graph expansion + freshness
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -91,14 +104,14 @@ export function computeVibeScore(
 ) {
   let score = 0;
   
-  // 1. Personalization Match
+  // 🎯 STAGE 2: Personalization Match
   score += getPersonalScore(candidate);
 
-  // 2. 🚀 REAL-TIME TREND BOOST (5x Weight)
+  // 🚀 STAGE 4: REAL-TIME TREND BOOST (5x Weight)
   const globalTrendValue = globalTrendScores[candidate.id] || 0;
   score += globalTrendValue * 5;
 
-  // 3. Tag & Semantic Continuity
+  // 🕸️ STAGE 3: Tag & Semantic Continuity (Graph & Embedding)
   const currentTags = new Set([...(current.tags || []), ...(current.aiTags || [])].map(t => t.toLowerCase()));
   const candidateTags = [...(candidate.tags || []), ...(candidate.aiTags || [])].map(t => t.toLowerCase());
   
@@ -116,18 +129,18 @@ export function computeVibeScore(
     if (similarity > 0.85) score += 20;
   }
 
-  // 4. Mood Alignment
+  // Mood Alignment
   if (candidate.mood && activeMoodId !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === activeMoodId);
     if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
   }
 
-  // 5. Commerce Velocity Boost
+  // Commerce Velocity Boost
   if (candidate.commerceClicks) {
       score += Math.min(candidate.commerceClicks * 5, 50);
   }
 
-  // 6. Discovery & Freshness
+  // Discovery & Freshness
   score += explorationBoost(candidate);
   
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
@@ -295,6 +308,17 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
 
+  /**
+   * rebuildQueue
+   * ------------
+   * THE 6-STAGE PIPELINE:
+   * 1. Candidate Retrieval (allPosts pool)
+   * 2. Personalization (useVibeProfile)
+   * 3. Graph Expansion (getRelatedHashtags)
+   * 4. Trend Boost (globalTrendScores)
+   * 5. AI Re-Ranking (Genkit Flow)
+   * 6. Diversity Enforcement (Diverse Selection)
+   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
@@ -303,6 +327,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const trending = trendingTagsRef.current;
     const reputations = creatorReputationRef.current;
     
+    // STAGE 3: Knowledge Graph Expansion
     let relatedTags = new Set<string>();
     if ((current.tags || []).length > 0 && firestore) {
         try {
@@ -311,20 +336,50 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         } catch (e) { console.warn("Graph lookup failed"); }
     }
 
+    // STAGE 2-4: Fast Local Scoring
     const rankedResults = buildSmartQueue(current, pool, mood, scorer, trends, viral, trending, relatedTags, reputations);
-    const diversePool = enforceDiversity(rankedResults.map(r => r.post)).slice(0, 30);
+    let finalPosts = rankedResults.map(r => r.post);
+
+    // 🤖 STAGE 5: AI RE-RANKING (Genkit Flow)
+    // We send the top 15 "hard math" results to the LLM for refined vibe matching.
+    if (finalPosts.length > 5) {
+        try {
+            const aiReRank = await getRecommendedVibes({
+                currentPostContent: current.content,
+                userInterests: getTopInterests(10),
+                availablePosts: finalPosts.slice(0, 15).map(p => ({
+                    id: p.id,
+                    content: p.content,
+                    tags: p.tags
+                }))
+            });
+
+            // Re-order based on AI recommendations
+            const aiOrder = new Map(aiReRank.recommendedPostIds.map((id, i) => [id, i]));
+            const topTier = finalPosts.filter(p => aiOrder.has(p.id))
+                .sort((a, b) => aiOrder.get(a.id)! - aiOrder.get(b.id)!);
+            const others = finalPosts.filter(p => !aiOrder.has(p.id));
+            
+            finalPosts = [...topTier, ...others];
+        } catch (e) {
+            console.warn("Liaison AI Re-Ranking drifted. Falling back to local score.");
+        }
+    }
+
+    // STAGE 6: Diversity Enforcement
+    const diversePool = enforceDiversity(finalPosts).slice(0, 30);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>
       ranked.slice(0, 15).map(p => ({
         post: p,
         score: computeVibeScore(current, p, scorer, trends, viral, trending, relatedTags, reputations, mood),
-        reason: 'Recommended for you',
+        reason: 'AI Orchestrated Match',
       }));
 
     setQueue([current, ...diversePool]);
     setUpNext(makeUpNext(diversePool));
     setIsLoadingQueue(false);
-  }, [firestore]);
+  }, [firestore, getTopInterests]);
 
   useEffect(() => {
     if (activePost && allPosts.length > 0) {
