@@ -40,6 +40,7 @@ service cloud.firestore {
       allow write: if isAdmin() || request.auth.uid == userId;
       
       match /ai_assistant/{msgId} { allow read, write: if request.auth.uid == userId; }
+      match /bandit_stats/current { allow read, write: if request.auth.uid == userId || isAdmin(); }
     }
 
     match /campuses/{campusId} {
@@ -81,7 +82,7 @@ service cloud.firestore {
       allow create: if isAdmin() || getRole() == 'vendor';
       allow update: if isAdmin() || 
                     resource.data.vendorId == request.auth.uid ||
-                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'salesCount', 'favoriteCount', 'shareCount', 'trendScore']));
+                    (isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'salesCount', 'favoriteCount', 'shareCount', 'trendScore', 'clicks', 'conversions']));
       allow delete: if isAdmin() || resource.data.vendorId == request.auth.uid;
     }
 

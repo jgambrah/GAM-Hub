@@ -58,7 +58,8 @@
         },
         "engagementLevel": { "type": "number" },
         "updatedAt": { "type": "string", "format": "date-time" },
-        "currentStrategy": { "type": "string", "enum": ["A", "B", "C", "D"] }
+        "currentStrategy": { "type": "string", "enum": ["A", "B", "C", "D"] },
+        "strategyStats": { "type": "object" }
       }
     },
     "SocialPost": {
@@ -185,6 +186,7 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/user_intelligence/{userId}": { "schema": "#/backend/entities/UserIntelligence", "description": "Unified behavioral brain." },
+    "/users/{userId}/bandit_stats/current": { "schema": "#/backend/entities/BanditStats", "description": "Personalized Multi-Armed Bandit stats." },
     "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "National stream of campus vibrations." },
     "/products/{productId}": { "schema": "#/backend/entities/Product", "description": "Campus marketplace inventory." },
     "/orders/{orderId}": { "schema": "#/backend/entities/Order", "description": "Escrow transaction records." },

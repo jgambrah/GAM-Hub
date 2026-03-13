@@ -10,6 +10,8 @@
  * 4. Unified Profile (Social-Commercial Merge)
  * 5. Knowledge Graph (Semantic Expansion)
  * 6. Real-Time Trend (5x Weight Injection)
+ * 7. Multi-Armed Bandit (Strategy Learning)
+ * 8. AI Re-Ranking (LLM Refinement)
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -89,7 +91,6 @@ export function explorationBoost(post: SocialPost) {
  * computeVibeScore
  * ---------------
  * STAGE 2-4: Local Hybrid Scoring
- * personalization + trend boost + graph expansion + freshness
  */
 export function computeVibeScore(
   current: SocialPost, 
@@ -118,7 +119,6 @@ export function computeVibeScore(
   const tagMatches = candidateTags.filter(t => currentTags.has(t));
   score += tagMatches.length * 15;
 
-  // Boost based on trending tags
   candidateTags.forEach(tag => {
       const tagTrend = globalTrendScores[tag] || 0;
       score += tagTrend * 2;
@@ -129,18 +129,15 @@ export function computeVibeScore(
     if (similarity > 0.85) score += 20;
   }
 
-  // Mood Alignment
   if (candidate.mood && activeMoodId !== 'all') {
     const moodDef = VIBE_MOODS.find(m => m.id === activeMoodId);
     if (moodDef?.tags.includes(candidate.mood.toLowerCase())) score += 15;
   }
 
-  // Commerce Velocity Boost
   if (candidate.commerceClicks) {
       score += Math.min(candidate.commerceClicks * 5, 50);
   }
 
-  // Discovery & Freshness
   score += explorationBoost(candidate);
   
   const repData = creatorReputation[candidate.authorId] || { qualityScore: 50 };
@@ -243,12 +240,12 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const [reactionCounts, setReactionCounts] = useState<Record<string, Record<VibeReaction, number>>>({});
   const [isMiniPlayerVisible, setIsMiniPlayerVisible] = useState(true);
   
-  // Intelligence Signals
+  const { profile, sessionProfile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
+
   const [globalTrendScores, setGlobalTrendScores] = useState<Record<string, number>>({});
   const [viralTags, setViralTags] = useState<Set<string>>(new Set());
   const [trendingTags, setTrendingTags] = useState<Set<string>>(new Set());
   const [creatorReputation, setCreatorReputation] = useState<Record<string, any>>({});
-  const { profile, sessionProfile, recordSignal, getPersonalScore, getTopInterests, isLoaded: isProfileLoaded } = useVibeProfile();
 
   const displayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const queueRef = useRef<SocialPost[]>([]);
@@ -278,11 +275,8 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   useEffect(() => {
     if (!firestore) return;
 
-    // 🛰️ REAL-TIME TREND SYNC
     const unsubTrends = onSnapshot(doc(firestore, 'trend_scores', 'current'), (snap) => {
-        if (snap.exists()) {
-            setGlobalTrendScores(snap.data() as Record<string, number>);
-        }
+        if (snap.exists()) setGlobalTrendScores(snap.data() as Record<string, number>);
     });
 
     getDocs(query(collection(firestore, 'hashtags'), orderBy('trendScore', 'desc'), limit(20))).then(snap => {
@@ -308,17 +302,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; }
   }, []);
 
-  /**
-   * rebuildQueue
-   * ------------
-   * THE 6-STAGE PIPELINE:
-   * 1. Candidate Retrieval (allPosts pool)
-   * 2. Personalization (useVibeProfile)
-   * 3. Graph Expansion (getRelatedHashtags)
-   * 4. Trend Boost (globalTrendScores)
-   * 5. AI Re-Ranking (Genkit Flow)
-   * 6. Diversity Enforcement (Diverse Selection)
-   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     setIsLoadingQueue(true);
     const scorer = getPersonalScoreRef.current;
@@ -327,7 +310,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const trending = trendingTagsRef.current;
     const reputations = creatorReputationRef.current;
     
-    // STAGE 3: Knowledge Graph Expansion
     let relatedTags = new Set<string>();
     if ((current.tags || []).length > 0 && firestore) {
         try {
@@ -336,12 +318,10 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         } catch (e) { console.warn("Graph lookup failed"); }
     }
 
-    // STAGE 2-4: Fast Local Scoring
     const rankedResults = buildSmartQueue(current, pool, mood, scorer, trends, viral, trending, relatedTags, reputations);
     let finalPosts = rankedResults.map(r => r.post);
 
     // 🤖 STAGE 5: AI RE-RANKING (Genkit Flow)
-    // We send the top 15 "hard math" results to the LLM for refined vibe matching.
     if (finalPosts.length > 5) {
         try {
             const aiReRank = await getRecommendedVibes({
@@ -354,7 +334,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
                 }))
             });
 
-            // Re-order based on AI recommendations
             const aiOrder = new Map(aiReRank.recommendedPostIds.map((id, i) => [id, i]));
             const topTier = finalPosts.filter(p => aiOrder.has(p.id))
                 .sort((a, b) => aiOrder.get(a.id)! - aiOrder.get(b.id)!);
@@ -366,7 +345,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         }
     }
 
-    // STAGE 6: Diversity Enforcement
     const diversePool = enforceDiversity(finalPosts).slice(0, 30);
     
     const makeUpNext = (ranked: SocialPost[]): QueueEntry[] =>

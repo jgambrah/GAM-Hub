@@ -59,21 +59,29 @@ export function selectStrategy(stats: GlobalBanditStats): FeedStrategyId {
  * recordBanditTrial
  * -----------------
  * Logs that a strategy was used to generate a feed (a "trial").
+ * Supports both global and personalized (per-user) tracking.
  */
 export async function recordBanditTrial(
   firestore: Firestore,
-  strategyId: FeedStrategyId
+  strategyId: FeedStrategyId,
+  userId?: string
 ) {
   if (!firestore || !strategyId) return;
 
-  const ref = doc(firestore, 'bandit_stats', 'global');
-  return setDoc(ref, {
-    [strategyId]: {
-      views: increment(1)
-    }
-  }, { merge: true }).catch(err => {
-    console.warn("Bandit Engine: Trial log failed", err);
-  });
+  const globalRef = doc(firestore, 'bandit_stats', 'global');
+  
+  // 1. Log to Global Stats
+  setDoc(globalRef, {
+    [strategyId]: { views: increment(1) }
+  }, { merge: true }).catch(err => console.warn("Bandit Engine: Global Trial log failed", err));
+
+  // 2. Log to Personal Stats if userId provided (Advanced Mode)
+  if (userId) {
+    const personalRef = doc(firestore, 'users', userId, 'bandit_stats', 'current');
+    setDoc(personalRef, {
+      [strategyId]: { views: increment(1) }
+    }, { merge: true }).catch(err => console.warn("Bandit Engine: Personal Trial log failed", err));
+  }
 }
 
 /**
@@ -84,19 +92,29 @@ export async function recordBanditTrial(
  */
 export async function recordBanditReward(
   firestore: Firestore,
-  strategyId: FeedStrategyId
+  strategyId: FeedStrategyId,
+  userId?: string
 ) {
   if (!firestore || !strategyId) return;
 
-  const ref = doc(firestore, 'bandit_stats', 'global');
+  const globalRef = doc(firestore, 'bandit_stats', 'global');
   
-  // Per Liaison Protocol: Engagement is the ultimate success signal
-  return updateDoc(ref, {
+  // 1. Log Reward to Global Stats
+  updateDoc(globalRef, {
     [`${strategyId}.views`]: increment(1),
     [`${strategyId}.reward`]: increment(1)
-  }).catch(err => {
-    console.warn("Bandit Engine: Reward log failed", err);
-  });
+  }).catch(err => console.warn("Bandit Engine: Global Reward log failed", err));
+
+  // 2. Log Reward to Personal Stats (Advanced Mode)
+  if (userId) {
+    const personalRef = doc(firestore, 'users', userId, 'bandit_stats', 'current');
+    setDoc(personalRef, {
+      [strategyId]: { 
+        views: increment(1),
+        reward: increment(1) 
+      }
+    }, { merge: true }).catch(err => console.warn("Bandit Engine: Personal Reward log failed", err));
+  }
 }
 
 /**
