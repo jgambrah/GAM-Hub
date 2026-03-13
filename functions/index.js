@@ -12,7 +12,9 @@ const fs = require("fs");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
-admin.initializeApp();
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 setGlobalOptions({maxInstances: 10});
 
 /**

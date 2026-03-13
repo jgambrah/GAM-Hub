@@ -105,7 +105,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe]);
 
-  // 📉 NEGATIVE FEEDBACK LOOP: Quick Skip Detection
   React.useEffect(() => {
     if (!cardRef.current) return;
 
@@ -116,7 +115,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         } else {
           if (dwellStartTimeRef.current) {
             const timeVisible = Date.now() - dwellStartTimeRef.current;
-            // Liaison Rule: If visible for < 1.5s, it was skipped without engagement
             if (timeVisible < 1500 && !isActiveVibe) {
               recordSkip(post);
             }
@@ -397,7 +395,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             />
           )}
 
-          {post.mediaType === 'image' && post.imageUrl && (
+          {/* 🔥 STARTUP-SAFE POSTER: Show thumbnail (imageUrl) while video loads */}
+          {(post.mediaType === 'video' || post.mediaType === 'image') && post.imageUrl && !isActiveVibe && (
             <Image src={post.imageUrl} alt="post" fill
               className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')}
             />

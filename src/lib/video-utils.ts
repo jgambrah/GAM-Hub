@@ -7,13 +7,13 @@
  * 
  * Rules:
  * 1. Max Size: 50MB (Prevents cost explosion)
- * 2. Max Duration: 30s (Enforces snappy campus vibes)
+ * 2. Max Duration: 30s (Enforces snappy campus vibes - The "Startup Trick")
  * 3. Formats: MP4, WebM, MOV (High-compatibility)
  */
 
 export const VIDEO_CONFIG = {
   MAX_SIZE_MB: 50,
-  MAX_DURATION_SEC: 30,
+  MAX_DURATION_SEC: 30, // Strictly 30 seconds for early growth
   ALLOWED_TYPES: ['video/mp4', 'video/webm', 'video/quicktime'],
 };
 
@@ -39,7 +39,7 @@ export async function validateVideo(file: File) {
   try {
     const duration = await getVideoDuration(file);
     if (duration > VIDEO_CONFIG.MAX_DURATION_SEC) {
-      throw new Error(`Video too long. Max ${VIDEO_CONFIG.MAX_DURATION_SEC} seconds allowed to keep the Yard snappy.`);
+      throw new Error(`Video too long. The Yard limit is ${VIDEO_CONFIG.MAX_DURATION_SEC} seconds to keep vibes snappy.`);
     }
   } catch (err) {
     console.warn("Video metadata check failed, proceeding with size check only.");
