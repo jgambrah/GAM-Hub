@@ -49,6 +49,7 @@
       "properties": {
         "id": { "type": "string" },
         "mediaUrl": { "type": "string" },
+        "hlsUrl": { "type": "string" },
         "imageUrl": { "type": "string" },
         "storagePath": { "type": "string" },
         "storageTier": { "type": "string", "enum": ["hot", "warm", "cold"] },
@@ -67,6 +68,7 @@
         "content": { "type": "string" },
         "mediaType": { "type": "string", "enum": ["youtube", "tiktok", "image", "text", "video"] },
         "mediaUrl": { "type": "string" },
+        "hlsUrl": { "type": "string" },
         "imageUrl": { "type": "string" },
         "storageTier": { "type": "string", "enum": ["hot", "warm", "cold"] },
         "storagePath": { "type": "string" },

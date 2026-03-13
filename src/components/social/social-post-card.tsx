@@ -88,6 +88,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
+  // Use HLS playlist if available, otherwise fallback to MP4
+  const videoSource = post.hlsUrl || post.mediaUrl;
+
   React.useEffect(() => {
     addToQueue([post]);
   }, [post.id, addToQueue]);
@@ -489,7 +492,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </div>
           )}
 
-          {post.mediaType === 'video' && post.mediaUrl && (
+          {post.mediaType === 'video' && videoSource && (
             <div className="w-full h-full bg-black flex items-center justify-center">
               {!reactPlayerMounted && !isActiveVibe && (
                 <div className="absolute inset-0 cursor-pointer group/poster" onClick={() => setActivePost(post)}>
@@ -503,12 +506,17 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               )}
               {(reactPlayerMounted || isActiveVibe) && (
                 <ReactPlayer
-                  url={post.mediaUrl} controls width="100%" height="100%"
+                  url={videoSource} controls width="100%" height="100%"
                   playing={isActiveVibe}
                   playsinline
                   onStart={() => setActivePost(post)}
                   onEnded={handleEnd}
-                  config={{ file: { attributes: { playsInline: true, preload: 'auto' } } }}
+                  config={{ 
+                    file: { 
+                      attributes: { playsInline: true, preload: 'auto' },
+                      forceHLS: !!post.hlsUrl
+                    } 
+                  }}
                 />
               )}
             </div>

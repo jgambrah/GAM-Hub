@@ -18,8 +18,8 @@ if (!admin.apps.length) {
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🎥 STARTUP-SAFE VIDEO COMPRESSION & THUMBNAIL ENGINE
- * Processes raw uploads into optimized 720p vibrations and generates 20KB previews.
+ * 🎥 HLS & COMPRESSION ENGINE
+ * Processes raw uploads into HLS adaptive segments and optimized MP4 fallbacks.
  */
 exports.compressVideo = onObjectFinalized({
   cpu: 2,
@@ -34,22 +34,33 @@ exports.compressVideo = onObjectFinalized({
   if (!contentType || !contentType.startsWith("video/")) return null;
   
   // Logic: Support both Pulse vibrations and Marketplace demos
+  // Explicitly ignore already processed HLS segments to prevent loops
   const isEligiblePath = filePath.startsWith("videos/hot/") || filePath.startsWith("product_videos/");
-  if (!isEligiblePath) return null;
+  if (!isEligiblePath || filePath.includes("/hls/")) return null;
   
   // Guard: Prevent infinite loops
   if (object.metadata && object.metadata.processed === "true") return null;
 
   const fileName = path.basename(filePath);
+  const fileHash = object.metadata?.hash || fileName.split(".")[0];
+  const tempDir = path.join(os.tmpdir(), fileHash);
+  
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
   const tempFilePath = path.join(os.tmpdir(), fileName);
   const targetFilePath = path.join(os.tmpdir(), `compressed-${fileName}`);
-  const thumbFileName = `thumb-${fileName.split(".")[0]}.jpg`;
+  const thumbFileName = `thumb-${fileHash}.jpg`;
   const thumbTempPath = path.join(os.tmpdir(), thumbFileName);
+  
+  // HLS Config
+  const hlsPlaylistName = "playlist.m3u8";
+  const hlsOutputDir = path.join(tempDir, "hls");
+  if (!fs.existsSync(hlsOutputDir)) fs.mkdirSync(hlsOutputDir);
 
   try {
     await bucket.file(filePath).download({destination: tempFilePath});
 
-    // 1. COMPRESSION: Standardize to 720p H.264
+    // 1. COMPRESSION: Standardize to 720p H.264 MP4 (Fallback)
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .size("720x?") 
@@ -61,7 +72,21 @@ exports.compressVideo = onObjectFinalized({
         .save(targetFilePath);
     });
 
-    // 2. THUMBNAIL: Capture frame at 1s for instant feed loading
+    // 2. HLS TRANSCODING: Generate .m3u8 and .ts segments
+    await new Promise((resolve, reject) => {
+      ffmpeg(tempFilePath)
+        .size("720x?")
+        .videoBitrate("800k")
+        .videoCodec("libx264")
+        .addOption("-hls_time", "6")
+        .addOption("-hls_list_size", "0")
+        .addOption("-hls_segment_filename", path.join(hlsOutputDir, "segment%03d.ts"))
+        .on("end", resolve)
+        .on("error", reject)
+        .save(path.join(hlsOutputDir, hlsPlaylistName));
+    });
+
+    // 3. THUMBNAIL: Capture frame at 1s for instant feed loading
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .screenshots({
@@ -75,9 +100,10 @@ exports.compressVideo = onObjectFinalized({
     });
 
     const thumbStoragePath = `videos/thumbs/${thumbFileName}`;
+    const hlsStorageDir = `videos/hls/${fileHash}`;
     
-    // 3. PERSISTENCE: Upload back to storage
-    await Promise.all([
+    // 4. PERSISTENCE: Upload fallback, thumb, and HLS segments
+    const uploads = [
       bucket.upload(targetFilePath, {
         destination: filePath,
         metadata: {
@@ -85,7 +111,7 @@ exports.compressVideo = onObjectFinalized({
           metadata: { 
             processed: "true", 
             compressedAt: new Date().toISOString(),
-            hash: object.metadata?.hash || "" 
+            hash: fileHash 
           },
         },
       }),
@@ -93,39 +119,50 @@ exports.compressVideo = onObjectFinalized({
         destination: thumbStoragePath,
         metadata: { contentType: "image/jpeg" },
       })
-    ]);
+    ];
+
+    // Upload HLS Playlist and Segments
+    const hlsFiles = fs.readdirSync(hlsOutputDir);
+    hlsFiles.forEach(file => {
+      uploads.push(bucket.upload(path.join(hlsOutputDir, file), {
+        destination: `${hlsStorageDir}/${file}`,
+        metadata: { cacheControl: "public, max-age=31536000" }
+      }));
+    });
+
+    await Promise.all(uploads);
 
     const db = admin.firestore();
     const publicBase = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/`;
     const finalMediaUrl = `${publicBase}${encodeURIComponent(filePath)}?alt=media`;
     const thumbUrl = `${publicBase}${encodeURIComponent(thumbStoragePath)}?alt=media`;
+    const hlsUrl = `${publicBase}${encodeURIComponent(`${hlsStorageDir}/${hlsPlaylistName}`)}?alt=media`;
 
     const batch = db.batch();
     
-    // 4. HANDSHAKE: Update all Pulse posts referencing this file
-    const pulseSnap = await db.collection("campus_pulse").where("videoHash", "==", object.metadata?.hash || "").get();
+    // 5. HANDSHAKE: Update all Pulse posts referencing this file
+    const pulseSnap = await db.collection("campus_pulse").where("videoHash", "==", fileHash).get();
     pulseSnap.forEach(doc => {
       batch.update(doc.ref, { 
         mediaUrl: finalMediaUrl,
+        hlsUrl: hlsUrl,
         imageUrl: thumbUrl, 
         storageTier: 'hot', 
         storagePath: filePath 
       });
     });
 
-    // 5. DEDUPLICATION: Update central registry
-    const fileHash = object.metadata?.hash;
-    if (fileHash) {
-      const hashRef = db.collection("video_hashes").doc(fileHash);
-      batch.set(hashRef, {
-        mediaUrl: finalMediaUrl,
-        imageUrl: thumbUrl,
-        storagePath: filePath,
-        storageTier: 'hot',
-        processed: true,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-    }
+    // 6. DEDUPLICATION: Update central registry
+    const hashRef = db.collection("video_hashes").doc(fileHash);
+    batch.set(hashRef, {
+      mediaUrl: finalMediaUrl,
+      hlsUrl: hlsUrl,
+      imageUrl: thumbUrl,
+      storagePath: filePath,
+      storageTier: 'hot',
+      processed: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
 
     await batch.commit();
 
@@ -133,6 +170,7 @@ exports.compressVideo = onObjectFinalized({
     [tempFilePath, targetFilePath, thumbTempPath].forEach(p => {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     });
+    fs.rmSync(tempDir, { recursive: true, force: true });
     
   } catch (err) {
     console.error(`Media optimization failed for ${filePath}:`, err);
@@ -143,11 +181,10 @@ exports.compressVideo = onObjectFinalized({
 
 /**
  * 🛡️ DEDUPLICATION-SAFE DELETION TRIGGER
- * Ensures physical files are only purged when NO more posts reference them.
  */
 exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event) => {
   const post = event.data.data();
-  if (!post || post.mediaType !== 'video' || !post.videoHash) return null;
+  if (!post || (post.mediaType !== 'video' && post.mediaType !== 'native') || !post.videoHash) return null;
 
   const db = admin.firestore();
   const bucket = admin.storage().bucket();
@@ -164,21 +201,23 @@ exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event
       transaction.update(hashRef, { uploads: newUploads });
       console.log(`Deduplication Safety: Reference preserved. ${newUploads} remaining.`);
     } else {
-      // LAST POST: Purge physical file 🧹
+      // LAST POST: Purge physical files 🧹
       if (data.storagePath) {
         await bucket.file(data.storagePath).delete().catch(() => null);
-        const thumbPath = data.storagePath.replace('videos/hot/', 'videos/thumbs/').replace('.mp4', '.jpg');
+        const thumbPath = `videos/thumbs/thumb-${post.videoHash}.jpg`;
         await bucket.file(thumbPath).delete().catch(() => null);
+        
+        // Delete HLS directory
+        await bucket.deleteFiles({ prefix: `videos/hls/${post.videoHash}/` }).catch(() => null);
       }
       transaction.delete(hashRef);
-      console.log(`Deduplication Purge: Physical file for hash ${post.videoHash} removed.`);
+      console.log(`Deduplication Purge: Physical files for hash ${post.videoHash} removed.`);
     }
   });
 });
 
 /**
  * ⛅ HYBRID STORAGE LIFECYCLE (Tier 2 & 3)
- * Automatically migrates old/inactive vibrations to cheaper storage classes.
  */
 exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   const db = admin.firestore();

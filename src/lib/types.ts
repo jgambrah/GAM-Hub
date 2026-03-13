@@ -49,6 +49,7 @@ export type UserIntelligence = {
 export type VideoHash = {
   id: string; // The SHA-256 hash
   mediaUrl: string;
+  hlsUrl?: string;
   imageUrl: string;
   storagePath: string;
   storageTier: 'hot' | 'warm' | 'cold';
@@ -67,6 +68,7 @@ export type SocialPost = {
   content: string;
   mediaType?: 'youtube' | 'tiktok' | 'image' | 'text' | 'video';
   mediaUrl?: string | null;
+  hlsUrl?: string | null;
   imageUrl?: string | null;
   videoHash?: string | null;
   storageTier?: 'hot' | 'warm' | 'cold';
@@ -93,6 +95,7 @@ export type Product = {
   imageHint: string;
   videoUrl?: string | null; 
   nativeVideoUrl?: string | null; 
+  hlsUrl?: string | null;
   videoHash?: string | null;
   stock: number;
   vendorId: string;
