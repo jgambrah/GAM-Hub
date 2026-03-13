@@ -96,7 +96,7 @@ exports.compressVideo = onObjectFinalized({
     const pulseSnap = await db.collection("campus_pulse").where("mediaUrl", "==", originalUrlMatch).get();
     const batch = db.batch();
     pulseSnap.forEach(doc => {
-      batch.update(doc.ref, { imageUrl: thumbUrl, storageTier: 'hot' });
+      batch.update(doc.ref, { imageUrl: thumbUrl, storageTier: 'hot', storagePath: filePath });
     });
     await batch.commit();
 
@@ -163,7 +163,7 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
         if (oldPath !== newPath) {
             // Physical Move
             await bucket.file(oldPath).move(newPath);
-            // Storage Class Stamp
+            // Storage Class Stamp (Rule 3)
             await bucket.file(newPath).setStorageClass("COLDLINE");
 
             // Atomic URL Update in Firestore
@@ -195,7 +195,7 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
         if (oldPath !== newPath) {
             // Physical Move
             await bucket.file(oldPath).move(newPath);
-            // Storage Class Stamp
+            // Storage Class Stamp (Rule 2)
             await bucket.file(newPath).setStorageClass("NEARLINE");
 
             // Atomic URL Update in Firestore
