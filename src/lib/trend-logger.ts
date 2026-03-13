@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -37,8 +36,23 @@ export function logTrendEvent(
   if (!firestore) return;
   
   const colRef = collection(firestore, 'trend_events');
-  addDocumentNonBlocking(colRef, {
-    ...event,
+  
+  // 🛡️ LIAISON SECURITY: Sanitize data to prevent Firebase "undefined" errors
+  const data: any = {
+    type: event.type,
+    entityId: event.entityId,
+    campusId: event.campusId || 'all',
     timestamp: serverTimestamp(),
-  });
+  };
+
+  // Only add fields if they are actually defined
+  if (event.tag !== undefined && event.tag !== null) {
+    data.tag = event.tag;
+  }
+
+  if (event.metadata !== undefined && event.metadata !== null) {
+    data.metadata = event.metadata;
+  }
+
+  addDocumentNonBlocking(colRef, data);
 }

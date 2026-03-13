@@ -237,6 +237,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
+  // --- VIDEO HANDLERS ---
   const handleEnd = () => {
     recordWatchedToEnd(post);
     if (isContinuous) {
@@ -245,14 +246,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   };
 
-  const onYoutubeReady = (event: any) => {
+  const onYoutubeReady = React.useCallback((event: any) => {
     ytPlayerRef.current = event.target;
     ytReadyRef.current = true;
-  };
+  }, []);
 
-  const onYoutubePlay = () => {
+  const onYoutubePlay = React.useCallback(() => {
     setActivePost(post);
-  };
+  }, [setActivePost, post]);
 
   const handleYoutubeError = React.useCallback((e: { data: number }) => {
     if (e.data === 101 || e.data === 150) {
