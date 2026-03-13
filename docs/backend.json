@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Campus": {
@@ -71,6 +72,8 @@
         "content": { "type": "string" },
         "mediaType": { "type": "string", "enum": ["youtube", "tiktok", "image", "text", "video"] },
         "mediaUrl": { "type": "string" },
+        "storageTier": { "type": "string", "enum": ["hot", "warm", "cold"] },
+        "storagePath": { "type": "string" },
         "tags": { "type": "array", "items": { "type": "string" } },
         "campusId": { "type": "string" },
         "productTags": { "type": "array", "items": { "type": "string" } },

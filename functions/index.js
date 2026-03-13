@@ -96,7 +96,7 @@ exports.compressVideo = onObjectFinalized({
     const pulseSnap = await db.collection("campus_pulse").where("mediaUrl", "==", originalUrlMatch).get();
     const batch = db.batch();
     pulseSnap.forEach(doc => {
-      batch.update(doc.ref, { imageUrl: thumbUrl });
+      batch.update(doc.ref, { imageUrl: thumbUrl, storageTier: 'hot' });
     });
     await batch.commit();
 
@@ -161,11 +161,18 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
         const newPath = oldPath.replace("videos/hot/", "videos/cold/").replace("videos/warm/", "videos/cold/");
         
         if (oldPath !== newPath) {
+            // Physical Move
             await bucket.file(oldPath).move(newPath);
+            // Storage Class Stamp
             await bucket.file(newPath).setStorageClass("COLDLINE");
 
+            // Atomic URL Update in Firestore
             const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
-            await doc.ref.update({ mediaUrl: newUrl, storageTier: 'cold' });
+            await doc.ref.update({ 
+              mediaUrl: newUrl, 
+              storageTier: 'cold',
+              storagePath: newPath 
+            });
         }
       }
     }
@@ -185,11 +192,20 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
         const oldPath = decodeURIComponent(data.mediaUrl.split("/o/")[1].split("?")[0]);
         const newPath = oldPath.replace("videos/hot/", "videos/warm/");
         
-        await bucket.file(oldPath).move(newPath);
-        await bucket.file(newPath).setStorageClass("NEARLINE");
+        if (oldPath !== newPath) {
+            // Physical Move
+            await bucket.file(oldPath).move(newPath);
+            // Storage Class Stamp
+            await bucket.file(newPath).setStorageClass("NEARLINE");
 
-        const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
-        await doc.ref.update({ mediaUrl: newUrl, storageTier: 'warm' });
+            // Atomic URL Update in Firestore
+            const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
+            await doc.ref.update({ 
+              mediaUrl: newUrl, 
+              storageTier: 'warm',
+              storagePath: newPath
+            });
+        }
       }
     }
 
