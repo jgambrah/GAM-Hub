@@ -165,8 +165,7 @@
       "type": "object",
       "description": "Aggregated trending data for the national hub.",
       "properties": {
-        "entities": { "type": "object" },
-        "tags": { "type": "object" },
+        "scores": { "type": "object", "description": "Flat map of ID to current hourly weight (e.g. {video123: 120, afrobeats: 210})" },
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     }

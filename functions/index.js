@@ -143,6 +143,7 @@ exports.onProductUpdatedNotify = onDocumentUpdated("products/{productId}", async
 /**
  * 🚀 REAL-TIME TREND AGGREGATOR
  * Runs every 5 minutes to detect viral entities and topics from the last hour.
+ * Produces a flat trend score structure for high-speed client lookup.
  */
 exports.aggregateGlobalTrends = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
@@ -154,25 +155,28 @@ exports.aggregateGlobalTrends = onSchedule("every 5 minutes", async (event) => {
       .where("timestamp", ">", since)
       .get();
 
+    // 🏎️ FLAT STRUCTURE: Optimized for O(1) lookup on the client
     const scores = {
-      entities: {},
-      tags: {},
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      _updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
     snapshot.forEach(doc => {
       const e = doc.data();
+      
+      // Increment score for the specific entity (video, product, vendor)
       if (e.entityId) {
-        scores.entities[e.entityId] = (scores.entities[e.entityId] || 0) + 1;
+        scores[e.entityId] = (scores[e.entityId] || 0) + 1;
       }
+      
+      // Increment score for the associated tag (e.g. afrobeats, fashion)
       if (e.tag) {
         const normalizedTag = e.tag.toLowerCase();
-        scores.tags[normalizedTag] = (scores.tags[normalizedTag] || 0) + 1;
+        scores[normalizedTag] = (scores[normalizedTag] || 0) + 1;
       }
     });
 
     await db.collection("trend_scores").doc("current").set(scores);
-    console.log(`✅ Trend Aggregation Complete: Processed ${snapshot.size} events.`);
+    console.log(`✅ Trend Aggregation Complete: Processed ${snapshot.size} events into flat score map.`);
   } catch (err) {
     console.error("❌ Trend Aggregation Error:", err);
   }
