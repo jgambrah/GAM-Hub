@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { 
   ImageIcon, Type, X, Send, 
-  Video, Sparkles, Youtube, Loader2, Link as LinkIcon, Globe, Tag, ShoppingBag, Search, Plus, CheckCircle2 
+  Video, Sparkles, Youtube, Loader2, Link as LinkIcon, Globe, Tag, ShoppingBag, Search, Plus, CheckCircle2, Mic, Music
 } from 'lucide-react';
 import Image from 'next/image';
 import type { SocialPost, Product, KnowledgeGraphNode } from '@/lib/types';
@@ -19,19 +19,23 @@ import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/h
 import { analyzeVibeContent } from '@/ai/flows/analyze-vibe-content';
 import { updateGraphFromContent } from '@/lib/knowledge-graph';
 import { validateVideo, generateFileHash } from '@/lib/video-utils';
+import VoiceRecorder from './VoiceRecorder';
+import { uploadAudio } from '@/lib/audio-service';
 
 export default function ShareVibeModal({ userProfile, onClose }: any) {
   const { firestore, storage, auth } = useFirebase();
   const { isTokenReady, isAdmin } = useAuth();
   const { toast } = useToast();
   
-  const [postType, setPostType] = useState<'text' | 'image' | 'native' | 'link'>('text');
+  const [postType, setPostType] = useState<'text' | 'image' | 'native' | 'link' | 'shoutout'>('text');
   const [content, setContent] = useState('');
   const [externalUrl, setExternalUrl] = useState('');
   const [isGlobal, setIsGlobal] = useState(false);
   
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioDuration, setAudioDuration] = useState(0);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -61,11 +65,17 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
     }
   };
 
+  const handleAudioPrepared = (blob: Blob, duration: number) => {
+    setAudioBlob(blob);
+    setAudioDuration(duration);
+    setPostType('shoutout');
+  };
+
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading || !isTokenReady || !userProfile || !auth?.currentUser || !firestore) return;
     
-    const hasMedia = (postType === 'image' && imageFile) || (postType === 'native' && videoFile) || (postType === 'link' && externalUrl.trim());
+    const hasMedia = (postType === 'image' && imageFile) || (postType === 'native' && videoFile) || (postType === 'link' && externalUrl.trim()) || (postType === 'shoutout' && audioBlob);
     if (!content.trim() && !hasMedia) {
         toast({ variant: 'destructive', title: 'Empty Vibe', description: 'Please add some content to share!' });
         return;
@@ -77,6 +87,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       let mediaUrl: string | null = null;
       let mediaType: SocialPost['mediaType'] = 'text';
       let videoHash: string | null = null;
+      let finalDuration = 0;
 
       const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
       const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
@@ -90,21 +101,17 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       } else if (postType === 'native' && videoFile) {
         mediaType = 'video';
         
-        // 🧬 DEDUPLICATION HANDSHAKE: Fingerprint the file
         videoHash = await generateFileHash(videoFile);
         const hashRef = doc(firestore, 'video_hashes', videoHash);
         const hashSnap = await getDoc(hashRef);
 
         if (hashSnap.exists()) {
-            // REUSE: Video already processed in the Yard
             const existing = hashSnap.data();
             mediaUrl = existing.mediaUrl;
             imageUrl = existing.imageUrl;
-            
             await updateDoc(hashRef, { uploads: increment(1) });
             toast({ title: "Viral Match!", description: "Reusing existing high-quality video node." });
         } else {
-            // NEW: Upload and trigger compression pipeline
             const filePath = `videos/hot/${auth.currentUser.uid}/${Date.now()}_${videoFile.name}`;
             const fileRef = ref(storage, filePath);
             await uploadBytes(fileRef, videoFile, { customMetadata: { hash: videoHash } });
@@ -119,6 +126,12 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 updatedAt: serverTimestamp()
             });
         }
+      } else if (postType === 'shoutout' && audioBlob) {
+        // 🎙️ VOICE SHOUTOUT HANDSHAKE
+        mediaType = 'audio';
+        const path = `social_shoutouts/${userProfile.campusId}/${Date.now()}_voice_shout.webm`;
+        mediaUrl = await uploadAudio(storage, audioBlob, path);
+        finalDuration = audioDuration;
       } else if (postType === 'link' && externalUrl) {
         mediaType = externalUrl.includes('youtube.com') || externalUrl.includes('youtu.be') ? 'youtube' : 'tiktok';
         mediaUrl = externalUrl;
@@ -131,24 +144,25 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         authorAvatarUrl: userProfile.avatarUrl ?? "",
         campusId: targetCampusId,
         campusAcronym: targetCampusAcronym,
-        content: content || "",
+        content: content || (postType === 'shoutout' ? "🎤 Voice Shoutout" : ""),
         mediaType, imageUrl, mediaUrl, videoHash,
+        duration: finalDuration,
         tags: manualTags,
         likes: 0, commentCount: 0,
-        type: 'regular',
-        storageTier: mediaType === 'video' ? 'hot' : 'standard',
+        type: postType === 'shoutout' ? 'shoutout' : 'regular',
+        storageTier: (mediaType === 'video' || mediaType === 'audio') ? 'hot' : 'standard',
         createdAt: new Date().toISOString(),
       };
 
       const docRef = await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // 🤖 BACKGROUND AI: Tags & Knowledge Graph
+      // 🤖 BACKGROUND AI
       const runAi = async () => {
           try {
               const aiResult = await analyzeVibeContent({
                   mediaUrl: mediaUrl || '',
                   caption: content,
-                  mediaType: (mediaType as any) === 'text' ? 'text' : (mediaType as any)
+                  mediaType: (mediaType as any) === 'text' ? 'text' : (mediaType as any) === 'audio' ? 'text' : (mediaType as any)
               });
               const finalTags = Array.from(new Set([...manualTags, ...aiResult.aiTags])).slice(0, 15);
               const embedding = await generatePostEmbedding({ content: content || "", tags: finalTags });
@@ -180,7 +194,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
   };
 
   const resetMedia = () => {
-    setImageFile(null); setVideoFile(null); setPreview(null); setExternalUrl(''); setPostType('text');
+    setImageFile(null); setVideoFile(null); setAudioBlob(null); setPreview(null); setExternalUrl(''); setPostType('text');
   };
 
   return (
@@ -193,7 +207,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             <div className="p-3 bg-indigo-500 text-white rounded-2xl shadow-lg"><Sparkles size={24}/></div>
             <div>
               <h2 className="text-3xl font-black text-foreground tracking-tight">Share Your Vibe</h2>
-              <p className="text-sm font-medium text-muted-foreground italic">Deduplication & Transcoding Active 🧬</p>
+              <p className="text-sm font-medium text-muted-foreground italic">Neural Indexing Active 🧠🧬</p>
             </div>
           </div>
 
@@ -212,6 +226,24 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 </div>
             )}
 
+            {postType === 'shoutout' && audioBlob && (
+                <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] border-2 border-blue-100 dark:border-blue-800 animate-in slide-in-from-top-2">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <Mic size={16} className="text-blue-600" />
+                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Voice Shoutout Prepared</span>
+                        </div>
+                        <button type="button" onClick={resetMedia} className="p-1 hover:bg-blue-100 rounded-lg text-blue-600"><X size={14}/></button>
+                    </div>
+                    <div className="flex flex-col items-center gap-3">
+                        <div className="p-4 bg-white dark:bg-slate-900 rounded-full shadow-lg border-2 border-blue-500 animate-pulse">
+                            <Music size={32} className="text-blue-500" />
+                        </div>
+                        <span className="text-xs font-black text-blue-600">{Math.floor(audioDuration)} Seconds</span>
+                    </div>
+                </div>
+            )}
+
             {postType === 'link' && (
                 <div className="relative animate-in slide-in-from-top-2">
                     <input value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} placeholder="Paste YouTube or TikTok link..." className="w-full p-4 pl-12 rounded-2xl bg-muted border-none outline-none font-mono text-xs" />
@@ -223,7 +255,8 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 {[
                     { id: 'text', icon: Type, label: 'Text' }, 
                     { id: 'image', icon: ImageIcon, label: 'Photo' },
-                    { id: 'native', icon: Video, label: 'Upload' }, 
+                    { id: 'native', icon: Video, label: 'Video' }, 
+                    { id: 'shoutout', icon: Mic, label: 'Shoutout' },
                     { id: 'link', icon: Youtube, label: 'Embed' }
                 ].map(t => (
                     <button 
@@ -232,15 +265,24 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                         onClick={() => { 
                             if (t.id === 'image') fileInputRef.current?.click();
                             else if (t.id === 'native') videoInputRef.current?.click();
+                            else if (t.id === 'shoutout') { /* Recorder handled inline or by logic below */ }
                             else { resetMedia(); setPostType(t.id as any); }
                         }} 
                         className={cn(
-                            "flex-1 p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-1",
+                            "flex-1 p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 overflow-hidden",
                             postType === t.id ? "bg-white dark:bg-slate-800 text-primary border-primary shadow-md" : "bg-transparent border-transparent text-muted-foreground"
                         )}
                     >
-                        <t.icon size={20} />
-                        <span className="text-[8px] font-black uppercase tracking-widest">{t.label}</span>
+                        {t.id === 'shoutout' && !audioBlob ? (
+                            <div className="scale-75 origin-center">
+                                <VoiceRecorder onSend={handleAudioPrepared} disabled={loading} />
+                            </div>
+                        ) : (
+                            <>
+                                <t.icon size={20} />
+                                <span className="text-[8px] font-black uppercase tracking-widest">{t.label}</span>
+                            </>
+                        )}
                     </button>
                 ))}
             </div>

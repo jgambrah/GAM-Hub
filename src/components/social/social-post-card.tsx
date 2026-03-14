@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -7,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX,
+  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music
 } from 'lucide-react';
 import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
@@ -31,11 +32,13 @@ import { VibeReactionBar } from './VibeReactions';
 import { recordEngagement } from '@/lib/trending-service';
 import { renderWithHashtags } from '@/lib/hashtag-utils';
 import VibeShopOverlay from './VibeShopOverlay';
+import VoicePlayer from './VoicePlayer';
 
 function MediaTypeIcon({ mediaType, size = 10 }: { mediaType: SocialPost['mediaType']; size?: number }) {
   if (mediaType === 'youtube') return <Youtube size={size} className="text-red-500" />;
   if (mediaType === 'tiktok' || mediaType === 'video') return <Video size={size} />;
   if (mediaType === 'image') return <ImageIcon size={size} />;
+  if (mediaType === 'audio') return <Mic size={size} className="text-blue-500" />;
   return <FileText size={size} />;
 }
 
@@ -97,7 +100,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe]);
 
-  // 🏎️ ENTERPRISE SKIP DETECTION ENGINE
+  // ENTERPRISE SKIP DETECTION ENGINE
   React.useEffect(() => {
     if (!cardRef.current) return;
 
@@ -108,7 +111,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         } else {
           if (dwellStartTimeRef.current) {
             const timeVisible = Date.now() - dwellStartTimeRef.current;
-            // 🚫 FAST SKIP PENALTY: User scrolled past in under 2 seconds
             if (timeVisible < 2000 && !isActiveVibe) {
               recordSkip(post);
             }
@@ -312,7 +314,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* Tap-to-Unmute UX Logic */}
       {isActiveVibe && mediaCategory === 'video' && (
         <div className="absolute bottom-24 right-6 z-30 animate-in fade-in zoom-in duration-500">
           <button 
@@ -324,7 +325,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {post.mediaType !== 'text' && (
+      {post.mediaType !== 'text' && post.mediaType !== 'audio' && (
         <div 
           onClick={() => { if(isActiveVibe && mediaCategory === 'video') toggleSound(); }}
           className={cn(
@@ -423,6 +424,13 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           <div className={cn('font-bold leading-snug text-foreground transition-all duration-300', isActiveVibe ? 'text-2xl md:text-3xl tracking-tight' : 'text-xl tracking-tight')}>
             {renderWithHashtags(post.content)}
           </div>
+
+          {/* 🎙️ SHOUTOUT AUDIO PLAYER */}
+          {post.mediaType === 'audio' && post.mediaUrl && (
+            <div className="mt-6 max-w-lg">
+                <VoicePlayer url={post.mediaUrl} duration={post.duration} theme="primary" />
+            </div>
+          )}
 
           {isActiveVibe && (
             <div className="mt-8 animate-in fade-in slide-in-from-bottom-2 duration-500">

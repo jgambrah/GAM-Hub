@@ -67,11 +67,12 @@ export type SocialPost = {
   campusId: string;
   campusAcronym?: string;
   content: string;
-  mediaType?: 'youtube' | 'tiktok' | 'image' | 'text' | 'video';
+  mediaType?: 'youtube' | 'tiktok' | 'image' | 'text' | 'video' | 'audio';
   mediaUrl?: string | null;
   hlsUrl?: string | null;
   imageUrl?: string | null;
   videoHash?: string | null;
+  duration?: number; // For audio/video
   storageTier?: 'hot' | 'warm' | 'cold';
   storagePath?: string | null;
   createdAt: string;
@@ -84,7 +85,7 @@ export type SocialPost = {
   productTags?: string[];
   isArenaEntry?: boolean;
   isOfficial?: boolean;
-  type?: 'regular' | 'src_official' | 'vetted_announcement' | 'election_winner';
+  type?: 'regular' | 'src_official' | 'vetted_announcement' | 'election_winner' | 'shoutout';
 };
 
 export type Product = {
@@ -149,6 +150,18 @@ export type Order = {
     latitude?: number;
     longitude?: number;
   };
+  createdAt: string;
+};
+
+export type Review = {
+  id: string;
+  orderId: string;
+  vendorId: string;
+  buyerId: string;
+  rating: number;
+  comment?: string;
+  audioUrl?: string;
+  duration?: number;
   createdAt: string;
 };
 
