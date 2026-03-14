@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
-import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ImagePlus } from 'lucide-react';
+import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ImagePlus, ShoppingBag } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
 import type { Message, User, Group } from '@/lib/types';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -17,6 +17,9 @@ import { uploadAudio } from '@/lib/audio-service';
 import VoiceRecorder from '../social/VoiceRecorder';
 import VoicePlayer from '../social/VoicePlayer';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
+import Link from 'next/link';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function GroupChat({ group }: { group: Group }) {
   const { firestore, storage, auth } = useFirebase();
@@ -31,6 +34,7 @@ export default function GroupChat({ group }: { group: Group }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 1. REAL-TIME GROUP FEED: Sub-collection listener
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(collection(firestore, 'groups', group.id, 'messages'), orderBy('createdAt', 'asc')) : null
   , [firestore, group.id]);
@@ -46,7 +50,7 @@ export default function GroupChat({ group }: { group: Group }) {
     if (!text.trim() || !firestore || !auth.currentUser || !userProfile) return;
 
     const messageData: Partial<Message> = {
-      text,
+      text: text.trim(),
       senderId: auth.currentUser.uid,
       senderName: userProfile.name || "Unknown User",
       createdAt: new Date().toISOString(),
@@ -133,7 +137,10 @@ export default function GroupChat({ group }: { group: Group }) {
       {/* MESSAGES AREA */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
         {isLoading ? (
-            <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-primary" /></div>
+            <div className="flex flex-col gap-4">
+                <Skeleton className="h-16 w-3/4 rounded-3xl" />
+                <Skeleton className="h-16 w-1/2 ml-auto rounded-3xl" />
+            </div>
         ) : messages && messages.length > 0 ? (
             messages.map((msg: Message) => {
                 const isMe = msg.senderId === auth.currentUser?.uid;
@@ -174,7 +181,20 @@ export default function GroupChat({ group }: { group: Group }) {
                                     />
                                 </div>
                             ) : msg.type === 'image' && msg.mediaUrl ? (
-                                <img src={msg.mediaUrl} className="rounded-xl mb-2 max-h-60 object-cover w-full shadow-inner" alt="Shared" />
+                                <Image src={msg.mediaUrl} width={500} height={300} className="rounded-xl mb-2 max-h-60 object-cover w-full shadow-inner" alt="Shared" />
+                            ) : msg.type === 'product' && msg.productInfo ? (
+                                <Link href={`/products/${msg.productInfo.id}`} className="block p-3 bg-black/5 rounded-2xl border border-black/10 hover:scale-[1.02] transition-transform">
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-muted flex-shrink-0">
+                                            <Image src={msg.productInfo.imageUrl} fill className="object-cover" alt="" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="font-black text-[10px] truncate">{msg.productInfo.name}</p>
+                                            <p className="text-[9px] font-black text-amber-600">GHS {msg.productInfo.price.toFixed(2)}</p>
+                                        </div>
+                                        <ShoppingBag size={12} className="ml-auto text-muted-foreground" />
+                                    </div>
+                                </Link>
                             ) : msg.type === 'file' ? (
                                 <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 bg-black/5 rounded-xl mb-2 hover:bg-black/10 transition-colors">
                                     <div className="p-2 bg-white/20 rounded-lg"><Paperclip size={14} /></div>
@@ -254,7 +274,7 @@ export default function GroupChat({ group }: { group: Group }) {
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Post to the Yard..."
-              className="flex-1 bg-muted/50 p-4 rounded-[2rem] border-none outline-none text-sm font-medium focus:bg-background focus:ring-2 focus:ring-primary transition-all"
+              className="flex-1 bg-muted/50 p-4 rounded-[2rem] border-none outline-none text-sm font-medium focus:bg-background focus:ring-2 focus:ring-primary transition-all shadow-inner"
             />
             <button type="submit" disabled={!text.trim()} className="p-4 bg-slate-900 text-white dark:bg-primary dark:text-white rounded-full shadow-lg active:scale-90 transition-transform disabled:opacity-30">
               <Send size={20} />

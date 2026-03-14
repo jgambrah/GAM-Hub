@@ -354,8 +354,14 @@ export type Message = {
   mediaUrl?: string;
   senderId: string;
   senderName: string;
-  type: 'text' | 'image' | 'file' | 'audio';
+  type: 'text' | 'image' | 'file' | 'audio' | 'product';
   duration?: number;
+  productInfo?: {
+      id: string;
+      name: string;
+      price: number;
+      imageUrl: string;
+  };
   createdAt: string;
   isForwarded?: boolean;
   replyTo?: {
