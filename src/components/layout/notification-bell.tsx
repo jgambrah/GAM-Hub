@@ -6,7 +6,10 @@ import { useFirebase, useCollection, useMemoFirebase, updateDocumentNonBlocking 
 import { collection, query, orderBy, limit, doc, where } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
 import type { Notification } from '@/lib/types';
-import { Bell, MessageSquare, ThumbsUp, ShoppingBag, Flame, Zap, Circle, CheckCircle2 } from 'lucide-react';
+import { 
+  Bell, MessageSquare, ThumbsUp, ShoppingBag, Flame, 
+  Zap, Circle, CheckCircle2, UserPlus, Mic, Calendar, Loader2 
+} from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,11 +24,18 @@ import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
+/**
+ * NotificationBell Component
+ * ------------------------
+ * Real-time notification orchestrator for the Yard.
+ * Synchronizes with the user's private notification sub-collection.
+ */
 export function NotificationBell() {
   const { firestore } = useFirebase();
   const { user } = useAuth();
   const router = useRouter();
 
+  // 📶 REAL-TIME LISTENER HANDSHAKE
   const notifQuery = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
     return query(
@@ -42,7 +52,7 @@ export function NotificationBell() {
   const handleNotifClick = async (notif: Notification) => {
     if (!firestore || !user?.id) return;
     
-    // Mark as read
+    // Mark as read (Non-blocking)
     const notifRef = doc(firestore, 'users', user.id, 'notifications', notif.id);
     updateDocumentNonBlocking(notifRef, { read: true });
 
@@ -63,8 +73,12 @@ export function NotificationBell() {
     switch (type) {
       case 'comment': return <MessageSquare className="text-blue-500" size={16} />;
       case 'like': return <Flame className="text-orange-500" size={16} />;
-      case 'order': return <ShoppingBag className="text-emerald-500" size={16} />;
+      case 'order': 
+      case 'marketplace_order': return <ShoppingBag className="text-emerald-500" size={16} />;
       case 'message': return <Zap className="text-indigo-500" size={16} />;
+      case 'follow': return <UserPlus className="text-purple-500" size={16} />;
+      case 'voice_reply': return <Mic className="text-pink-500" size={16} />;
+      case 'event': return <Calendar className="text-amber-500" size={16} />;
       default: return <Bell className="text-slate-400" size={16} />;
     }
   };
@@ -84,12 +98,14 @@ export function NotificationBell() {
       <DropdownMenuContent align="end" className="w-80 rounded-[2.5rem] border-none shadow-2xl p-0 overflow-hidden animate-in slide-in-from-top-2 duration-300">
         <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
           <div>
-            <DropdownMenuLabel className="p-0 text-lg font-black tracking-tight italic">Notifications</DropdownMenuLabel>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Campus Pulse & Marketplace</p>
+            <DropdownMenuLabel className="p-0 text-lg font-black tracking-tight italic">
+                Notifications {unreadCount > 0 && `(${unreadCount})`}
+            </DropdownMenuLabel>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Real-time Yard Activity</p>
           </div>
           {unreadCount > 0 && (
             <button onClick={markAllRead} className="text-[10px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-widest flex items-center gap-1">
-              <CheckCircle2 size={12} /> Clear
+              <CheckCircle2 size={12} /> Clear All
             </button>
           )}
         </div>
@@ -99,7 +115,7 @@ export function NotificationBell() {
         <ScrollArea className="h-96">
           <div className="py-2">
             {isLoading ? (
-              <div className="p-10 flex justify-center"><Zap className="animate-spin text-indigo-500" /></div>
+              <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-indigo-500" /></div>
             ) : notifications && notifications.length > 0 ? (
               notifications.map((notif) => (
                 <DropdownMenuItem 
@@ -107,7 +123,7 @@ export function NotificationBell() {
                   onClick={() => handleNotifClick(notif)}
                   className={cn(
                     "flex items-start gap-4 p-4 cursor-pointer transition-colors focus:bg-muted/50",
-                    !notif.read ? "bg-blue-50/50 dark:bg-blue-900/10" : ""
+                    !notif.read ? "bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-blue-500" : "border-l-4 border-transparent"
                   )}
                 >
                   <div className={cn(
@@ -118,14 +134,16 @@ export function NotificationBell() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start gap-2">
-                        <p className={cn("text-sm leading-tight", !notif.read ? "font-black" : "font-semibold text-slate-600 dark:text-slate-400")}>
-                            {notif.title}
+                        <p className={cn("text-sm leading-tight", !notif.read ? "font-black text-slate-900 dark:text-white" : "font-semibold text-slate-500 dark:text-slate-400")}>
+                            {notif.title || notif.message}
                         </p>
-                        {!notif.read && <Circle className="fill-blue-500 text-blue-500 shrink-0" size={8} />}
+                        {!notif.read && <Circle className="fill-blue-500 text-blue-500 shrink-0 mt-1" size={8} />}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                      {notif.message}
-                    </p>
+                    {notif.title && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                            {notif.message}
+                        </p>
+                    )}
                     <p className="text-[9px] font-black text-slate-400 uppercase mt-2">
                       {formatDistanceToNow(new Date(notif.createdAt?.toDate?.() || notif.createdAt), { addSuffix: true })}
                     </p>
@@ -136,8 +154,8 @@ export function NotificationBell() {
               <div className="p-16 text-center text-muted-foreground flex flex-col items-center gap-4 opacity-40">
                 <Bell size={48} className="stroke-[1.5]" />
                 <div className="space-y-1">
-                    <p className="font-black uppercase tracking-widest text-[10px]">Yard is Quiet</p>
-                    <p className="text-[10px] font-medium leading-relaxed">No new alerts found.</p>
+                    <p className="font-black uppercase tracking-widest text-[10px]">Your Yard is Quiet</p>
+                    <p className="text-[10px] font-medium leading-relaxed">No new vibrations yet.</p>
                 </div>
               </div>
             )}
