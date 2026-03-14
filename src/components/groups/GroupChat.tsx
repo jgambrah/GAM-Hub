@@ -1,7 +1,8 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
+import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
 import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ImagePlus } from 'lucide-react';
@@ -12,6 +13,8 @@ import { useToast } from '@/hooks/use-toast';
 import { ForwardMessageModal } from '../social/ForwardMessageModal';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { validateVideo } from '@/lib/video-utils';
+import VoiceRecorder from '../social/VoiceRecorder';
+import { cn } from '@/lib/utils';
 
 export default function GroupChat({ group }: { group: Group }) {
   const { firestore, storage, auth } = useFirebase();
@@ -20,7 +23,7 @@ export default function GroupChat({ group }: { group: Group }) {
   
   const [text, setText] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
-  const [isUploading, setIsPosting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -56,11 +59,38 @@ export default function GroupChat({ group }: { group: Group }) {
     setShowEmoji(false);
   };
 
+  const handleSendAudio = async (blob: Blob) => {
+    if (!firestore || !storage || !auth.currentUser || !userProfile) return;
+    
+    setIsUploading(true);
+    try {
+      const filePath = `voice_messages/groups/${group.id}/${Date.now()}_voice.webm`;
+      const fileRef = ref(storage, filePath);
+      await uploadBytes(fileRef, blob);
+      const audioUrl = await getDownloadURL(fileRef);
+
+      const messageData: Partial<Message> = {
+        type: 'audio',
+        mediaUrl: audioUrl,
+        senderId: auth.currentUser.uid,
+        senderName: userProfile.name || "User",
+        createdAt: new Date().toISOString(),
+        isForwarded: false,
+      };
+
+      addDocumentNonBlocking(collection(firestore, 'groups', group.id, 'messages'), messageData);
+    } catch (err) {
+      console.error("Liaison Voice Upload Error:", err);
+      toast({ variant: 'destructive', title: "Voice Note Failed" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !firestore || !storage || !userProfile) return;
 
-    // 🛡️ INFRASTRUCTURE: Multimedia Validation
     if (file.type.startsWith('video')) {
         try {
             await validateVideo(file);
@@ -71,7 +101,7 @@ export default function GroupChat({ group }: { group: Group }) {
         }
     }
 
-    setIsPosting(true);
+    setIsUploading(true);
     try {
         const filePath = `group_media/${group.id}/${Date.now()}_${file.name}`;
         const fileRef = ref(storage, filePath);
@@ -93,7 +123,7 @@ export default function GroupChat({ group }: { group: Group }) {
         console.error(err);
         toast({ variant: 'destructive', title: 'Upload Failed' });
     } finally {
-        setIsPosting(false);
+        setIsUploading(false);
     }
   };
 
@@ -131,7 +161,9 @@ export default function GroupChat({ group }: { group: Group }) {
                                 </div>
                             )}
 
-                            {msg.type === 'image' && msg.mediaUrl ? (
+                            {msg.type === 'audio' ? (
+                                <audio src={msg.mediaUrl} controls className={cn("h-8 w-full max-w-[200px]", isMe ? "invert brightness-200" : "")} />
+                            ) : msg.type === 'image' && msg.mediaUrl ? (
                                 <img src={msg.mediaUrl} className="rounded-xl mb-2 max-h-60 object-cover w-full" alt="Shared" />
                             ) : msg.type === 'file' ? (
                                 <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-black/5 rounded-lg mb-2">
@@ -162,6 +194,13 @@ export default function GroupChat({ group }: { group: Group }) {
 
       {/* INPUT AREA */}
       <div className="p-4 bg-background border-t border-border relative flex-shrink-0">
+        {isUploading && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center gap-2">
+            <Loader2 className="animate-spin text-primary" />
+            <span className="text-xs font-black uppercase text-primary">Uploading...</span>
+          </div>
+        )}
+
         {showEmoji && (
           <div className="absolute bottom-full mb-4 left-4 z-50 shadow-2xl animate-in slide-in-from-bottom-2">
               <div className="flex justify-end p-2 bg-background rounded-t-2xl border-b border-border">
@@ -183,33 +222,35 @@ export default function GroupChat({ group }: { group: Group }) {
           </div>
         )}
 
-        <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-          <div className="relative flex-1 group">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="p-2.5 text-muted-foreground hover:text-primary transition-colors">
+              <Smile size={22} />
+            </button>
+            <VoiceRecorder onSend={handleSendAudio} />
+            <button 
+              type="button" 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="p-2.5 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+            >
+              <ImagePlus size={22} />
+            </button>
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+          </div>
+
+          <form onSubmit={handleSendMessage} className="flex-1 flex gap-2">
             <input 
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="Post to the Yard..."
-              className="w-full bg-muted/50 p-4 pl-24 rounded-[2rem] border-none outline-none text-sm font-medium focus:bg-background focus:ring-2 focus:ring-primary transition-all"
+              className="flex-1 bg-muted/50 p-4 rounded-[2rem] border-none outline-none text-sm font-medium focus:bg-background focus:ring-2 focus:ring-primary transition-all"
             />
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="p-2 text-muted-foreground hover:text-primary transition-colors">
-                <Smile size={22} />
-              </button>
-               <button 
-                type="button" 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="p-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
-               >
-                {isUploading ? <Loader2 className="animate-spin" size={20}/> : <ImagePlus size={22} />}
-              </button>
-              <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-            </div>
-          </div>
-          <button type="submit" disabled={!text.trim()} className="p-4 bg-slate-900 text-white dark:bg-primary dark:text-white rounded-full shadow-lg active:scale-90 transition-transform disabled:opacity-30 disabled:scale-100">
-            <Send size={20} />
-          </button>
-        </form>
+            <button type="submit" disabled={!text.trim()} className="p-4 bg-slate-900 text-white dark:bg-primary dark:text-white rounded-full shadow-lg active:scale-90 transition-transform disabled:opacity-30">
+              <Send size={20} />
+            </button>
+          </form>
+        </div>
       </div>
       
       {forwardingMessage && (

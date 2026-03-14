@@ -4,22 +4,25 @@
 import React, { useState } from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, addDoc, query, orderBy, serverTimestamp, updateDoc, doc, increment } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '@/hooks/use-auth';
-import { Send, Loader2, Smile, X, Bold, Italic } from 'lucide-react';
+import { Send, Loader2, Smile, X, Bold, Italic, Mic } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { cn } from '@/lib/utils';
 import { recordEngagement } from '@/lib/trending-service';
+import VoiceRecorder from './VoiceRecorder';
 
 export default function CommentSection({ postId, authorId }: { postId: string, authorId?: string }) {
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isExtraBold, setIsExtraBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   
-  const { firestore } = useFirebase();
+  const { firestore, storage } = useFirebase();
   const { user: userProfile } = useAuth();
   const { toast } = useToast();
   const [isPosting, setIsPosting] = useState(false);
@@ -36,16 +39,15 @@ export default function CommentSection({ postId, authorId }: { postId: string, a
     setShowEmojiPicker(false);
   };
 
-  const postComment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!text.trim() || !firestore || !userProfile) return;
+  const handlePostComment = async (payload: any) => {
+    if (!firestore || !userProfile) return;
     setIsPosting(true);
 
     try {
         const styleString = `${isExtraBold ? 'extrabold ' : ''}${isItalic ? 'italic' : ''}`.trim() || 'bold';
 
         await addDoc(collection(firestore, 'campus_pulse', postId, 'comments'), {
-            text: text.trim(),
+            ...payload,
             style: styleString,
             userId: userProfile.id,
             userName: userProfile.name || "Member",
@@ -57,7 +59,6 @@ export default function CommentSection({ postId, authorId }: { postId: string, a
             commentCount: increment(1)
         });
 
-        // 🏎️ Record Viral Signal & Author Performance
         recordEngagement(firestore, postId, 'comment', authorId);
 
         setText('');
@@ -68,6 +69,36 @@ export default function CommentSection({ postId, authorId }: { postId: string, a
         toast({ variant: "destructive", title: "Error", description: "Could not post comment." });
     } finally {
         setIsPosting(false);
+    }
+  };
+
+  const handlePostText = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    handlePostComment({ text: text.trim(), type: 'text' });
+  };
+
+  const handleSendAudioComment = async (blob: Blob) => {
+    if (!storage || !firestore || !userProfile) return;
+    
+    setIsUploading(true);
+    try {
+      const filePath = `voice_comments/${postId}/${Date.now()}_voice.webm`;
+      const fileRef = ref(storage, filePath);
+      await uploadBytes(fileRef, blob);
+      const audioUrl = await getDownloadURL(fileRef);
+
+      await handlePostComment({ 
+        type: 'audio', 
+        mediaUrl: audioUrl,
+        text: "🎤 Voice Comment" 
+      });
+
+    } catch (err) {
+      console.error("Liaison Voice Comment Error:", err);
+      toast({ variant: 'destructive', title: "Voice Comment Failed" });
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -87,18 +118,31 @@ export default function CommentSection({ postId, authorId }: { postId: string, a
                     </Avatar>
                     <div className="bg-muted p-3 rounded-2xl flex-1 min-w-0">
                        <p className="text-[10px] font-black text-foreground">{c.userName}</p>
-                       <p className={cn(
-                           "text-xs mt-1 leading-snug break-words",
-                           c.style?.includes('extrabold') ? "font-black" : "font-bold",
-                           c.style?.includes('italic') && "italic"
-                       )}>
-                           {c.text}
-                       </p>
+                       {c.type === 'audio' ? (
+                         <div className="mt-1">
+                           <audio src={c.mediaUrl} controls className="h-8 w-full max-w-[180px]" />
+                         </div>
+                       ) : (
+                         <p className={cn(
+                             "text-xs mt-1 leading-snug break-words",
+                             c.style?.includes('extrabold') ? "font-black" : "font-bold",
+                             c.style?.includes('italic') && "italic"
+                         )}>
+                             {c.text}
+                         </p>
+                       )}
                     </div>
                 </div>
             ))
         )}
       </div>
+
+      {isUploading && (
+        <div className="absolute inset-x-0 bottom-0 top-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center gap-2 rounded-xl">
+          <Loader2 className="animate-spin text-primary" size={16} />
+          <span className="text-[10px] font-black uppercase text-primary">Sending Voice Vibe...</span>
+        </div>
+      )}
 
       {showEmojiPicker && (
         <div className="absolute bottom-32 left-0 z-[100] shadow-2xl bg-card rounded-3xl p-2 border animate-in slide-in-from-bottom-4 duration-300">
@@ -135,12 +179,10 @@ export default function CommentSection({ postId, authorId }: { postId: string, a
             <Italic size={16} />
           </button>
           <div className="h-4 w-[1px] bg-border mx-1" />
-          <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-              {isExtraBold || isItalic ? 'Custom Vibe Active' : 'Default Bold Vibe'}
-          </span>
+          <VoiceRecorder onSend={handleSendAudioComment} disabled={isPosting} />
       </div>
 
-      <form onSubmit={postComment} className="flex items-center gap-2 bg-muted p-1.5 rounded-[2rem] border border-transparent focus-within:bg-background focus-within:border-border transition-all shadow-inner">
+      <form onSubmit={handlePostText} className="flex items-center gap-2 bg-muted p-1.5 rounded-[2rem] border border-transparent focus-within:bg-background focus-within:border-border transition-all shadow-inner">
         <button 
           type="button" 
           onClick={() => setShowEmojiPicker(!showEmojiPicker)}
