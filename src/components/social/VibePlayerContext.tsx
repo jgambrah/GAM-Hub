@@ -261,7 +261,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (q.length <= 1) return;
     const idx = q.findIndex(p => p.id === id);
     const next = q[idx === -1 ? 0 : (idx + 1) % q.length];
-    if (next) { clearDisplayTimer(); setActivePostId(next.id); setActivePostState(next); pushToHistory(next); startDisplayTimer(next); }
+    if (next) { 
+      clearDisplayTimer(); 
+      // Safe-Handshake: Resetting the state triggers the SocialPostCard to re-mount/re-play
+      setActivePostId(next.id); 
+      setActivePostState(next); 
+      pushToHistory(next); 
+      startDisplayTimer(next); 
+    }
   }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
 
   const playPrev = useCallback(() => {
