@@ -31,6 +31,8 @@ export type User = {
   idVerificationStatus?: 'unverified' | 'pending' | 'approved';
   ghanaCardUrl?: string;
   businessName?: string;
+  candidatePosition?: string;
+  candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
 };
 
 export type Notification = {
@@ -63,18 +65,6 @@ export type UserIntelligence = {
   currentStrategy?: 'A' | 'B' | 'C' | 'D';
 };
 
-export type VideoHash = {
-  id: string; 
-  mediaUrl: string;
-  hlsUrl?: string;
-  imageUrl: string;
-  storagePath: string;
-  storageTier: 'hot' | 'warm' | 'cold';
-  processed: boolean;
-  uploads: number;
-  updatedAt: string;
-};
-
 export type SocialPost = {
   id: string;
   authorId: string;
@@ -91,7 +81,7 @@ export type SocialPost = {
   duration?: number; 
   storageTier?: 'hot' | 'warm' | 'cold';
   storagePath?: string | null;
-  createdAt: string;
+  createdAt: string | any;
   likes: number;
   commentCount: number;
   tags?: string[];
@@ -152,8 +142,8 @@ export type Order = {
   buyerName: string;
   buyerType: 'student' | 'staff';
   vendorId: string;
+  vendorName?: string;
   campusId: string;
-  amount: number;
   category: string; 
   status: 'inquiry_sent' | 'awaiting_confirmation' | 'confirmed' | 'paid' | 'picked-up' | 'completed' | 'disputed' | 'refunded' | 'archived';
   deliveryMode: 'pickup_point' | 'office_delivery' | 'service_inquiry';
@@ -169,16 +159,70 @@ export type Order = {
   createdAt: string;
 };
 
-export type Review = {
+export type Chat = {
   id: string;
-  orderId: string;
-  vendorId: string;
-  buyerId: string;
-  rating: number;
-  comment?: string;
-  audioUrl?: string;
+  users: string[];
+  lastMessage: string;
+  updatedAt: string;
+  userAInfo?: { id: string; name: string; avatarUrl: string; role?: string };
+  userBInfo?: { id: string; name: string; avatarUrl: string; role?: string };
+  type?: 'private' | 'support' | 'vendor' | 'creator';
+};
+
+export type Message = {
+  id: string;
+  text?: string;
+  mediaUrl?: string;
+  senderId: string;
+  senderName: string;
+  type: 'text' | 'image' | 'file' | 'audio' | 'product';
   duration?: number;
+  productInfo?: {
+      id: string;
+      name: string;
+      price: number;
+      imageUrl: string;
+  };
   createdAt: string;
+  isForwarded?: boolean;
+  readBy?: string[];
+  replyTo?: {
+    messageId: string;
+    text: string;
+    senderName: string;
+  } | null;
+};
+
+export type Group = {
+  id: string;
+  name: string;
+  description?: string;
+  campusId: string;
+  createdBy: string;
+  members: string[];
+  admins: string[];
+  type: 'class' | 'department' | 'social' | 'staff-only';
+  isPrivate: boolean;
+  isMainRoom?: boolean;
+  createdAt: string;
+  lastMessage?: string;
+  updatedAt: string;
+};
+
+export type StudyRoom = {
+  id: string;
+  title: string;
+  major: string;
+  campusId: string;
+  content?: string;
+  participants: string[];
+  authorId: string;
+  authorName: string;
+  isPrivate: boolean;
+  isOfficial?: boolean;
+  creatorRole?: string;
+  createdAt: any;
+  updatedAt: string;
 };
 
 export type Campus = {
@@ -214,17 +258,6 @@ export type Connection = {
     status: 'pending' | 'accepted' | 'rejected';
     createdAt: string;
     isInterCampus?: boolean;
-};
-
-export type ArenaPost = SocialPost & {
-    vibeType: 'shade' | 'celebration';
-    authorCampus: string;
-    authorColor: string;
-    stats: { likes: number; burns: number; };
-    targetCampus?: string;
-    comebackCount?: number;
-    moderationNote?: string;
-    status?: 'active' | 'blocked';
 };
 
 export type ArenaComeback = {
@@ -292,6 +325,7 @@ export type SpotlightItem = {
   content?: string;
   category?: string;
   updatedAt: string;
+  sourceType?: 'management' | 'src' | 'department';
 };
 
 export type RegistryPost = {
@@ -325,8 +359,21 @@ export type HallOfFameEntry = {
   weekEnding: any;
 };
 
-export type MarketplaceSignal = 'view' | 'click' | 'purchase' | 'favorite' | 'intent';
-export type VibeSignal = 'watch' | 'like' | 'share' | 'comment' | 'skip' | 'reaction';
+export type MarketIntent = {
+  category?: string;
+  tags?: string[];
+  priceMin?: number;
+  priceMax?: number;
+  intent?: string;
+};
+
+export type KnowledgeGraphNode = {
+  id: string;
+  type: 'tag' | 'category' | 'vendor' | 'creator' | 'location';
+  name: string;
+  connections?: Record<string, { weight: number; lastUpdated: any }>;
+  updatedAt: any;
+};
 
 export type PickupPoint = {
   id: string;
@@ -340,11 +387,6 @@ export type PickupPoint = {
   createdAt: string;
 };
 
-export type MarketProfile = {
-    favoriteProducts: string[];
-    followedVendors: string[];
-};
-
 export type LeadPrice = {
   id: string;
   category: string;
@@ -352,78 +394,60 @@ export type LeadPrice = {
   updatedAt: string;
 };
 
-export type VibeReaction = '🔥' | '🌊' | '💎' | '👑' | '⚡';
-
-export type Chat = {
-  id: string;
-  users: string[];
-  lastMessage: string;
-  updatedAt: string;
-  userAInfo?: { id: string; name: string; avatarUrl: string; role?: string };
-  userBInfo?: { id: string; name: string; avatarUrl: string; role?: string };
-  type?: 'private' | 'support' | 'vendor' | 'creator';
+export type MarketProfile = {
+    favoriteProducts: string[];
+    followedVendors: string[];
 };
 
-export type Message = {
-  id: string;
-  text?: string;
-  mediaUrl?: string;
-  senderId: string;
-  senderName: string;
-  type: 'text' | 'image' | 'file' | 'audio' | 'product';
-  duration?: number;
-  productInfo?: {
-      id: string;
-      name: string;
-      price: number;
-      imageUrl: string;
-  };
-  createdAt: string;
-  isForwarded?: boolean;
-  readBy?: string[];
-  replyTo?: {
-    messageId: string;
-    text: string;
-    senderName: string;
-  } | null;
+export type CandidateApplication = {
+    id: string;
+    userId: string;
+    name: string;
+    position: string;
+    campusId: string;
+    hall: string;
+    studentIdCardUrl: string;
+    status: 'pending' | 'approved' | 'rejected';
+    createdAt: string;
 };
 
-export type Group = {
-  id: string;
-  name: string;
-  description?: string;
-  campusId: string;
-  createdBy: string;
-  members: string[];
-  admins: string[];
-  type: 'class' | 'department' | 'social' | 'staff-only';
-  isPrivate: boolean;
-  isMainRoom?: boolean;
-  createdAt: string;
-  lastMessage?: string;
-  updatedAt: string;
+export type Dispute = {
+    id: string;
+    orderId: string;
+    buyerId: string;
+    vendorId: string;
+    reason: string;
+    evidenceUrls: string[];
+    status: 'pending' | 'investigating' | 'resolved_refund' | 'resolved_payout';
+    createdAt: string;
+    refundNumber?: string;
 };
 
-export type MarketIntent = {
-  category?: string;
-  tags?: string[];
-  priceMin?: number;
-  priceMax?: number;
-  intent?: string;
+export type Manifesto = {
+    id: string;
+    candidateName: string;
+    candidateImage: string;
+    position: string;
+    campusId: string;
+    campusAcronym: string;
+    hall: string;
+    motto: string;
+    fullManifesto: string;
+    campaignVideoUrl?: string;
+    endorsements: number;
+    status: 'active' | 'archived';
+    updatedAt: any;
 };
 
-export type NotificationSettings = {
-  priceDrops: boolean;
-  trendingProducts: boolean;
-  vendorUpdates: boolean;
-  recommendations: boolean;
-  quietHours: { start: number; end: number };
+export type SrcPost = {
+    id: string;
+    title: string;
+    content: string;
+    mediaUrls?: string[];
+    campusId: string;
+    authorId: string;
+    createdAt: any;
 };
 
-export type KnowledgeGraphNode = {
-  id: string;
-  type: 'tag' | 'category' | 'vendor' | 'creator' | 'location';
-  name: string;
-  connections?: Record<string, { weight: number; lastUpdated: any }>;
-  updatedAt: any;
-};
+export type VibeSignal = 'watch' | 'like' | 'share' | 'comment' | 'skip' | 'reaction';
+export type MarketplaceSignal = 'view' | 'click' | 'purchase' | 'favorite' | 'intent';

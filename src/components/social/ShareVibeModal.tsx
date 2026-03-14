@@ -129,7 +129,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         }
       } else if (postType === 'shoutout' && audioBlob) {
         mediaType = 'audio';
-        // USE SIMPLIFIED USER-SPECIFIC PATH FOR MAXIMUM PERMISSION CLEARANCE
+        // SECURE HANDSHAKE: User-specific storage path
         const path = `users/${uid}/${Date.now()}_voice_shout.webm`;
         mediaUrl = await uploadAudio(storage, audioBlob, path);
         finalDuration = audioDuration;
@@ -288,22 +288,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                     const isActive = postType === t.id;
                     const isShoutout = t.id === 'shoutout';
                     
-                    if (isShoutout) {
-                        return (
-                            <div 
-                                key={t.id} 
-                                className={cn(
-                                    "flex-1 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 p-4 cursor-pointer",
-                                    isActive ? "bg-white dark:bg-slate-800 text-primary border-primary shadow-md" : "bg-transparent border-transparent text-muted-foreground"
-                                )}
-                                onClick={() => { resetMedia(); setPostType('shoutout'); }}
-                            >
-                                <t.icon size={20} />
-                                <span className="text-[8px] font-black uppercase tracking-widest">{t.label}</span>
-                            </div>
-                        )
-                    }
-
                     return (
                         <button 
                             key={t.id} 
