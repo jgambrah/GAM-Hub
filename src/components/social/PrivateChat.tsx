@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -9,6 +10,7 @@ import EmojiPicker from 'emoji-picker-react';
 import { ForwardMessageModal } from './ForwardMessageModal';
 import type { Message, User } from '@/lib/types';
 import VoiceRecorder from './VoiceRecorder';
+import VoicePlayer from './VoicePlayer';
 import { uploadAudio } from '@/lib/audio-service';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -61,19 +63,18 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
     setShowEmoji(false);
   };
 
-  const handleSendAudio = async (blob: Blob) => {
+  const handleSendAudio = async (blob: Blob, duration: number) => {
     if (!firestore || !storage || !auth.currentUser || !userProfile) return;
     
     setIsUploading(true);
     try {
-      // 1. Centralized Audio Upload Handshake
       const filePath = `voice_messages/${chatId}/${Date.now()}_voice.webm`;
       const audioUrl = await uploadAudio(storage, blob, filePath);
 
-      // 2. Log Message to Firestore
       const messageData: Partial<Message> = {
         type: 'audio',
         mediaUrl: audioUrl,
+        duration: duration,
         senderId: auth.currentUser.uid,
         senderName: userProfile.name || "User",
         createdAt: new Date().toISOString(),
@@ -89,7 +90,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
 
     } catch (err) {
       console.error("Liaison Voice Upload Error:", err);
-      toast({ variant: 'destructive', title: "Voice Note Failed", description: "Could not send audio vibration." });
+      toast({ variant: 'destructive', title: "Voice Note Failed" });
     } finally {
       setIsUploading(false);
     }
@@ -120,35 +121,40 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
             const isMe = msg.senderId === auth.currentUser?.uid;
             return (
               <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[75%] group relative p-4 text-sm font-medium leading-relaxed ${isMe ? 'bg-blue-600 text-white rounded-3xl rounded-tr-none' : 'bg-white text-slate-800 rounded-3xl rounded-tl-none shadow-sm'}`}>
+                <div className={cn(
+                    "max-w-[85%] group relative p-4 transition-all",
+                    isMe ? 'bg-blue-600 text-white rounded-3xl rounded-tr-none' : 'bg-white text-slate-800 rounded-3xl rounded-tl-none shadow-sm'
+                )}>
                   
                   {msg.isForwarded && (
-                    <div className="flex items-center gap-1 text-xs opacity-70 mb-2">
-                      <Forward size={14} />
-                      <span className="font-bold">Forwarded</span>
+                    <div className="flex items-center gap-1 text-[9px] font-black uppercase opacity-70 mb-2">
+                      <Forward size={12} />
+                      <span>Forwarded</span>
                     </div>
                   )}
                   
                   {msg.replyTo && (
-                    <div className="mb-2 p-2 bg-black/10 rounded-xl border-l-4 border-white/50 text-[10px]">
-                      <p className="font-black opacity-70">{msg.replyTo.senderName}</p>
-                      <p className="truncate">{msg.replyTo.text}</p>
+                    <div className="mb-3 p-2.5 bg-black/5 rounded-xl border-l-4 border-current/30 text-[10px]">
+                      <p className="font-black opacity-70 mb-0.5">{msg.replyTo.senderName}</p>
+                      <p className="truncate opacity-90">{msg.replyTo.text}</p>
                     </div>
                   )}
 
                   {msg.type === 'audio' ? (
-                    <div className="flex flex-col gap-2 min-w-[200px]">
-                      <div className="flex items-center gap-2">
-                        <audio src={msg.mediaUrl} controls className={cn("h-8 w-full", isMe ? "invert brightness-200" : "")} />
-                      </div>
+                    <div className="min-w-[220px] max-w-full">
+                      <VoicePlayer 
+                        url={msg.mediaUrl || ''} 
+                        duration={msg.duration} 
+                        theme={isMe ? 'primary' : 'dark'} 
+                      />
                     </div>
                   ) : (
-                    <p>{msg.text}</p>
+                    <p className="font-medium text-sm leading-relaxed">{msg.text}</p>
                   )}
 
                   <div className={`absolute top-0 ${isMe ? '-left-12' : '-right-12'} opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1`}>
-                     <button onClick={() => setReplyingTo(msg)} className="p-2 bg-white shadow-sm rounded-full text-slate-400 hover:text-blue-600"><Reply size={14}/></button>
-                     <button onClick={() => setForwardingMessage(msg)} className="p-2 bg-white shadow-sm rounded-full text-slate-400 hover:text-green-600"><Forward size={14}/></button>
+                     <button onClick={() => setReplyingTo(msg)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-blue-600 active:scale-90 transition-all"><Reply size={14}/></button>
+                     <button onClick={() => setForwardingMessage(msg)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-green-600 active:scale-90 transition-all"><Forward size={14}/></button>
                   </div>
                 </div>
               </div>
@@ -162,12 +168,12 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
           {isUploading && (
             <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center gap-2">
               <Loader2 className="animate-spin text-blue-600" />
-              <span className="text-xs font-black uppercase text-blue-600">Sending Voice Vibe...</span>
+              <span className="text-[10px] font-black uppercase text-blue-600">Syncing Voice Vibration...</span>
             </div>
           )}
 
           {showEmoji && (
-            <div className="absolute bottom-full mb-4 left-4 z-50 shadow-2xl">
+            <div className="absolute bottom-full mb-4 left-4 z-50 shadow-2xl animate-in slide-in-from-bottom-2">
                 <div className="flex justify-end p-2 bg-background rounded-t-2xl border-b border-border">
                     <button onClick={() => setShowEmoji(false)} className="p-1 hover:bg-muted rounded-full">
                         <X size={16} className="text-muted-foreground" />
@@ -178,12 +184,12 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
           )}
 
           {replyingTo && (
-            <div className="mb-3 p-3 bg-blue-50 rounded-2xl flex justify-between items-center animate-in slide-in-from-bottom-2">
-              <div className="border-l-4 border-blue-600 pl-3">
+            <div className="mb-3 p-3 bg-blue-50 rounded-2xl flex justify-between items-center animate-in slide-in-from-bottom-2 border border-blue-100">
+              <div className="border-l-4 border-blue-600 pl-3 min-w-0">
                  <p className="text-[10px] font-black text-blue-600 uppercase">Replying to {replyingTo.senderName}</p>
                  <p className="text-xs text-slate-500 truncate">{replyingTo.text}</p>
               </div>
-              <button onClick={() => setReplyingTo(null)} className="p-1 bg-blue-100 text-blue-600 rounded-full"><X size={14}/></button>
+              <button onClick={() => setReplyingTo(null)} className="p-1.5 bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors"><X size={14}/></button>
             </div>
           )}
 
@@ -200,7 +206,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Message the Yard..."
-                className="flex-1 bg-slate-50 p-4 rounded-[2rem] border-none outline-none text-sm font-medium"
+                className="flex-1 bg-slate-50 p-4 rounded-[2rem] border-none outline-none text-sm font-medium focus:bg-slate-100 transition-all"
               />
               <button type="submit" disabled={!text.trim()} className="p-4 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-100 active:scale-90 transition-transform disabled:opacity-30">
                 <Send size={20} />

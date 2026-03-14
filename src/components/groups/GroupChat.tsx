@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -14,6 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { validateVideo } from '@/lib/video-utils';
 import { uploadAudio } from '@/lib/audio-service';
 import VoiceRecorder from '../social/VoiceRecorder';
+import VoicePlayer from '../social/VoicePlayer';
 import { cn } from '@/lib/utils';
 
 export default function GroupChat({ group }: { group: Group }) {
@@ -59,7 +61,7 @@ export default function GroupChat({ group }: { group: Group }) {
     setShowEmoji(false);
   };
 
-  const handleSendAudio = async (blob: Blob) => {
+  const handleSendAudio = async (blob: Blob, duration: number) => {
     if (!firestore || !storage || !auth.currentUser || !userProfile) return;
     
     setIsUploading(true);
@@ -70,6 +72,7 @@ export default function GroupChat({ group }: { group: Group }) {
       const messageData: Partial<Message> = {
         type: 'audio',
         mediaUrl: audioUrl,
+        duration: duration,
         senderId: auth.currentUser.uid,
         senderName: userProfile.name || "User",
         createdAt: new Date().toISOString(),
@@ -137,44 +140,53 @@ export default function GroupChat({ group }: { group: Group }) {
                 return (
                     <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} gap-2`}>
                         {!isMe && (
-                            <Avatar className="h-8 w-8 mt-auto">
+                            <Avatar className="h-8 w-8 mt-auto border shadow-sm">
                                 <AvatarFallback className="text-[10px] font-black">{msg.senderName.charAt(0)}</AvatarFallback>
                             </Avatar>
                         )}
-                        <div className={`max-w-[75%] group relative p-4 text-sm font-medium leading-relaxed ${isMe ? 'bg-primary text-primary-foreground rounded-3xl rounded-tr-none' : 'bg-muted/50 dark:bg-slate-800 text-foreground rounded-3xl rounded-tl-none border shadow-sm'}`}>
+                        <div className={cn(
+                            "max-w-[80%] group relative p-4 transition-all",
+                            isMe ? 'bg-primary text-primary-foreground rounded-3xl rounded-tr-none' : 'bg-muted/50 dark:bg-slate-800 text-foreground rounded-3xl rounded-tl-none border shadow-sm'
+                        )}>
                             
-                            {!isMe && <p className="text-[10px] font-black text-primary uppercase mb-1">{msg.senderName}</p>}
+                            {!isMe && <p className="text-[10px] font-black text-primary uppercase mb-1.5">{msg.senderName}</p>}
 
                             {msg.isForwarded && (
-                                <div className="flex items-center gap-1 text-[10px] opacity-70 mb-2">
+                                <div className="flex items-center gap-1 text-[9px] font-black uppercase opacity-70 mb-2">
                                     <Forward size={12} />
-                                    <span className="font-bold">Forwarded</span>
+                                    <span>Forwarded</span>
                                 </div>
                             )}
                             
                             {msg.replyTo && (
-                                <div className="mb-2 p-2 bg-black/10 rounded-xl border-l-4 border-white/50 text-[10px]">
-                                    <p className="font-black opacity-70">{msg.replyTo.senderName}</p>
-                                    <p className="truncate">{msg.replyTo.text}</p>
+                                <div className="mb-3 p-2.5 bg-black/5 rounded-xl border-l-4 border-current/30 text-[10px]">
+                                    <p className="font-black opacity-70 mb-0.5">{msg.replyTo.senderName}</p>
+                                    <p className="truncate opacity-90">{msg.replyTo.text}</p>
                                 </div>
                             )}
 
                             {msg.type === 'audio' ? (
-                                <audio src={msg.mediaUrl} controls className={cn("h-8 w-full max-w-[200px]", isMe ? "invert brightness-200" : "")} />
+                                <div className="min-w-[200px] max-w-full">
+                                    <VoicePlayer 
+                                        url={msg.mediaUrl || ''} 
+                                        duration={msg.duration} 
+                                        theme={isMe ? 'primary' : 'dark'} 
+                                    />
+                                </div>
                             ) : msg.type === 'image' && msg.mediaUrl ? (
-                                <img src={msg.mediaUrl} className="rounded-xl mb-2 max-h-60 object-cover w-full" alt="Shared" />
+                                <img src={msg.mediaUrl} className="rounded-xl mb-2 max-h-60 object-cover w-full shadow-inner" alt="Shared" />
                             ) : msg.type === 'file' ? (
-                                <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-black/5 rounded-lg mb-2">
-                                    <Paperclip size={14} />
-                                    <span className="text-xs truncate">{msg.text}</span>
+                                <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 bg-black/5 rounded-xl mb-2 hover:bg-black/10 transition-colors">
+                                    <div className="p-2 bg-white/20 rounded-lg"><Paperclip size={14} /></div>
+                                    <span className="text-xs font-bold truncate">{msg.text}</span>
                                 </a>
                             ) : (
-                                <p>{msg.text}</p>
+                                <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
                             )}
 
                             <div className={`absolute top-0 ${isMe ? '-left-12' : '-right-12'} opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1`}>
-                                <button onClick={() => setReplyingTo(msg)} className="p-2 bg-background border shadow-sm rounded-full text-muted-foreground hover:text-primary"><Reply size={14}/></button>
-                                <button onClick={() => setForwardingMessage(msg)} className="p-2 bg-background border shadow-sm rounded-full text-muted-foreground hover:text-green-600"><Forward size={14}/></button>
+                                <button onClick={() => setReplyingTo(msg)} className="p-2 bg-background border shadow-md rounded-full text-muted-foreground hover:text-primary active:scale-90 transition-all"><Reply size={14}/></button>
+                                <button onClick={() => setForwardingMessage(msg)} className="p-2 bg-background border shadow-md rounded-full text-muted-foreground hover:text-green-600 active:scale-90 transition-all"><Forward size={14}/></button>
                             </div>
                         </div>
                     </div>
@@ -195,7 +207,7 @@ export default function GroupChat({ group }: { group: Group }) {
         {isUploading && (
           <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center gap-2">
             <Loader2 className="animate-spin text-primary" />
-            <span className="text-xs font-black uppercase text-primary">Uploading...</span>
+            <span className="text-[10px] font-black uppercase text-primary">Broadcasting Vocal...</span>
           </div>
         )}
 
@@ -212,11 +224,11 @@ export default function GroupChat({ group }: { group: Group }) {
 
         {replyingTo && (
           <div className="mb-3 p-3 bg-primary/5 rounded-2xl flex justify-between items-center animate-in slide-in-from-bottom-2 border border-primary/10">
-            <div className="border-l-4 border-primary pl-3">
+            <div className="border-l-4 border-primary pl-3 min-w-0">
                <p className="text-[10px] font-black text-primary uppercase">Replying to {replyingTo.senderName}</p>
                <p className="text-xs text-muted-foreground truncate">{replyingTo.text}</p>
             </div>
-            <button onClick={() => setReplyingTo(null)} className="p-1 bg-primary/10 text-primary rounded-full"><X size={14}/></button>
+            <button onClick={() => setReplyingTo(null)} className="p-1.5 bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors"><X size={14}/></button>
           </div>
         )}
 

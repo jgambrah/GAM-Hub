@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 interface VoiceRecorderProps {
-  onSend: (audioBlob: Blob) => void;
+  onSend: (audioBlob: Blob, duration: number) => void;
   disabled?: boolean;
 }
 
@@ -33,7 +33,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -59,7 +59,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
 
     } catch (err) {
       console.error("Liaison Mic Error:", err);
-      alert("Microphone access denied. Please enable permissions.");
+      alert("Microphone access denied. Please enable permissions in your browser to record voice vibes.");
     }
   };
 
@@ -91,7 +91,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
 
   const handleSend = () => {
     if (audioBlob) {
-      onSend(audioBlob);
+      onSend(audioBlob, duration);
       handleReset();
     }
   };
@@ -119,22 +119,22 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
       ) : previewUrl ? (
         <div className="flex items-center gap-2 bg-muted p-1.5 rounded-2xl animate-in zoom-in-95">
           <button 
-            type="button"
+            type="button" 
             onClick={togglePlayback}
-            className="p-2 bg-slate-900 text-white dark:bg-primary rounded-xl"
+            className="p-2 bg-slate-900 text-white dark:bg-primary rounded-xl shadow-md"
           >
             {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
           </button>
-          <span className="text-[10px] font-bold px-2">Preview</span>
+          <span className="text-[10px] font-black uppercase tracking-widest px-2">{formatTime(duration)}</span>
           <button 
-            type="button"
+            type="button" 
             onClick={handleReset}
             className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
           >
             <Trash2 size={14} />
           </button>
           <button 
-            type="button"
+            type="button" 
             onClick={handleSend}
             className="p-2 bg-emerald-600 text-white rounded-xl shadow-lg hover:bg-emerald-700 transition-all active:scale-95"
           >

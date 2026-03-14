@@ -209,6 +209,7 @@ export type ArenaComeback = {
     isBot?: boolean;
     mediaUrl?: string;
     mediaType?: 'image' | 'video' | 'youtube' | 'tiktok' | 'audio';
+    duration?: number;
     createdAt: any;
 };
 
@@ -341,6 +342,7 @@ export type Message = {
   senderId: string;
   senderName: string;
   type: 'text' | 'image' | 'file' | 'audio';
+  duration?: number;
   createdAt: string;
   isForwarded?: boolean;
   replyTo?: {
