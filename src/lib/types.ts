@@ -33,6 +33,18 @@ export type User = {
   businessName?: string;
 };
 
+export type Notification = {
+  id: string;
+  type: 'like' | 'comment' | 'message' | 'order' | 'system';
+  title: string;
+  message: string;
+  link?: string;
+  actorId?: string;
+  actorName?: string;
+  read: boolean;
+  createdAt: any;
+};
+
 export type UserIntelligence = {
   id: string;
   interests: Record<string, number>;
@@ -48,7 +60,7 @@ export type UserIntelligence = {
 };
 
 export type VideoHash = {
-  id: string; // The SHA-256 hash
+  id: string; 
   mediaUrl: string;
   hlsUrl?: string;
   imageUrl: string;
@@ -72,7 +84,7 @@ export type SocialPost = {
   hlsUrl?: string | null;
   imageUrl?: string | null;
   videoHash?: string | null;
-  duration?: number; // For audio/video
+  duration?: number; 
   storageTier?: 'hot' | 'warm' | 'cold';
   storagePath?: string | null;
   createdAt: string;

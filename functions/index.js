@@ -19,7 +19,6 @@ setGlobalOptions({maxInstances: 10});
 
 /**
  * 🎥 HLS & COMPRESSION ENGINE
- * Processes raw uploads into HLS adaptive segments and optimized MP4 fallbacks.
  */
 exports.compressVideo = onObjectFinalized({
   cpu: 2,
@@ -33,11 +32,9 @@ exports.compressVideo = onObjectFinalized({
 
   if (!contentType || !contentType.startsWith("video/")) return null;
   
-  // Guard: Support both Pulse vibrations and Marketplace demos
   const isEligiblePath = filePath.startsWith("videos/hot/") || filePath.startsWith("product_videos/");
   if (!isEligiblePath || filePath.includes("/hls/")) return null;
   
-  // Guard: Prevent infinite loops
   if (object.metadata && object.metadata.processed === "true") return null;
 
   const fileName = path.basename(filePath);
@@ -51,7 +48,6 @@ exports.compressVideo = onObjectFinalized({
   const thumbFileName = `thumb-${fileHash}.jpg`;
   const thumbTempPath = path.join(os.tmpdir(), thumbFileName);
   
-  // HLS Config
   const hlsPlaylistName = "playlist.m3u8";
   const hlsOutputDir = path.join(tempDir, "hls");
   if (!fs.existsSync(hlsOutputDir)) fs.mkdirSync(hlsOutputDir);
@@ -59,7 +55,6 @@ exports.compressVideo = onObjectFinalized({
   try {
     await bucket.file(filePath).download({destination: tempFilePath});
 
-    // 1. COMPRESSION: Standardize to 720p H.264 MP4 (Fallback)
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .size("720x?") 
@@ -71,7 +66,6 @@ exports.compressVideo = onObjectFinalized({
         .save(targetFilePath);
     });
 
-    // 2. HLS TRANSCODING: Generate .m3u8 and .ts segments (6s chunks)
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .size("720x?")
@@ -85,7 +79,6 @@ exports.compressVideo = onObjectFinalized({
         .save(path.join(hlsOutputDir, hlsPlaylistName));
     });
 
-    // 3. THUMBNAIL: Capture frame at 1s for instant feed loading
     await new Promise((resolve, reject) => {
       ffmpeg(tempFilePath)
         .screenshots({
@@ -101,7 +94,6 @@ exports.compressVideo = onObjectFinalized({
     const thumbStoragePath = `videos/thumbs/${thumbFileName}`;
     const hlsStorageDir = `videos/hls/${fileHash}`;
     
-    // 4. PERSISTENCE: Upload fallback, thumb, and HLS segments
     const uploads = [
       bucket.upload(targetFilePath, {
         destination: filePath,
@@ -123,7 +115,6 @@ exports.compressVideo = onObjectFinalized({
       })
     ];
 
-    // Batch Upload HLS Playlist and Segments with proper Content-Types for CDN
     const hlsFiles = fs.readdirSync(hlsOutputDir);
     hlsFiles.forEach(file => {
       const isPlaylist = file.endsWith('.m3u8');
@@ -146,7 +137,6 @@ exports.compressVideo = onObjectFinalized({
 
     const batch = db.batch();
     
-    // 5. HANDSHAKE: Update all Pulse posts referencing this file
     const pulseSnap = await db.collection("campus_pulse").where("videoHash", "==", fileHash).get();
     pulseSnap.forEach(doc => {
       batch.update(doc.ref, { 
@@ -158,7 +148,6 @@ exports.compressVideo = onObjectFinalized({
       });
     });
 
-    // 6. DEDUPLICATION: Update central registry
     const hashRef = db.collection("video_hashes").doc(fileHash);
     batch.set(hashRef, {
       mediaUrl: finalMediaUrl,
@@ -172,7 +161,6 @@ exports.compressVideo = onObjectFinalized({
 
     await batch.commit();
 
-    // Cleanup local temp
     [tempFilePath, targetFilePath, thumbTempPath].forEach(p => {
       if (fs.existsSync(p)) fs.unlinkSync(p);
     });
@@ -186,9 +174,128 @@ exports.compressVideo = onObjectFinalized({
 });
 
 /**
+ * 🔔 NOTIFICATION ENGINE
+ * Automatically triggers alerts for social and commercial events.
+ */
+
+// 1. Social: Comment Notifications
+exports.onCommentCreated = onDocumentCreated("campus_pulse/{postId}/comments/{commentId}", async (event) => {
+  const comment = event.data.data();
+  const db = admin.firestore();
+  
+  // Get post to find the author
+  const postSnap = await db.collection("campus_pulse").doc(event.params.postId).get();
+  if (!postSnap.exists) return null;
+  const post = postSnap.data();
+  
+  // Don't notify self
+  if (post.authorId === comment.userId) return null;
+
+  return db.collection("users").doc(post.authorId).collection("notifications").add({
+    type: "comment",
+    title: "New Comment",
+    message: `${comment.userName} commented on your vibration.`,
+    actorId: comment.userId,
+    actorName: comment.userName,
+    link: `/pulse?postId=${event.params.postId}`,
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+});
+
+// 2. Social: Like Notifications (Sub-collection)
+exports.onLikeCreated = onDocumentCreated("campus_pulse/{postId}/likedBy/{userId}", async (event) => {
+  const db = admin.firestore();
+  
+  const postSnap = await db.collection("campus_pulse").doc(event.params.postId).get();
+  if (!postSnap.exists) return null;
+  const post = postSnap.data();
+  
+  if (post.authorId === event.params.userId) return null;
+
+  const actorSnap = await db.collection("users").doc(event.params.userId).get();
+  const actor = actorSnap.data();
+
+  return db.collection("users").doc(post.authorId).collection("notifications").add({
+    type: "like",
+    title: "Vibration Boosted",
+    message: `${actor?.name || "A student"} liked your vibration.`,
+    actorId: event.params.userId,
+    actorName: actor?.name || "Member",
+    link: `/pulse?postId=${event.params.postId}`,
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+});
+
+// 3. Commercial: New Order Notifications (To Vendor)
+exports.onOrderCreated = onDocumentCreated("orders/{orderId}", async (event) => {
+  const order = event.data.data();
+  const db = admin.firestore();
+
+  return db.collection("users").doc(order.vendorId).collection("notifications").add({
+    type: "order",
+    title: "New Order",
+    message: `${order.buyerName} requested stock for ${order.productName}.`,
+    actorId: order.buyerId,
+    actorName: order.buyerName,
+    link: "/vendor/orders",
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+});
+
+// 4. Commercial: Order Status Updates (To Buyer)
+exports.onOrderStatusUpdated = onDocumentUpdated("orders/{orderId}", async (event) => {
+  const before = event.data.before.data();
+  const after = event.data.after.data();
+  const db = admin.firestore();
+
+  if (before.status === after.status) return null;
+
+  let message = "";
+  if (after.status === 'confirmed') message = `Stock confirmed for ${after.productName}. You can now pay.`;
+  if (after.status === 'paid') message = `Payment for ${after.productName} secured in Escrow.`;
+  if (after.status === 'completed') message = `Transaction for ${after.productName} finalized.`;
+
+  if (!message) return null;
+
+  return db.collection("users").doc(after.buyerId).collection("notifications").add({
+    type: "order",
+    title: "Order Update",
+    message: message,
+    link: `/orders/${event.params.orderId}`,
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+});
+
+// 5. Chat: Private Message Notifications
+exports.onChatMessageCreated = onDocumentCreated("chats/{chatId}/messages/{messageId}", async (event) => {
+  const message = event.data.data();
+  const db = admin.firestore();
+  
+  const chatSnap = await db.collection("chats").doc(event.params.chatId).get();
+  const chat = chatSnap.data();
+  
+  // Find the other user in the chat
+  const recipientId = chat.users.find(uid => uid !== message.senderId);
+  if (!recipientId) return null;
+
+  return db.collection("users").doc(recipientId).collection("notifications").add({
+    type: "message",
+    title: "New Message",
+    message: `${message.senderName}: ${message.text || "📷 Shared media"}`,
+    actorId: message.senderId,
+    actorName: message.senderName,
+    link: "/chat",
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+});
+
+/**
  * 🛡️ DEDUPLICATION-SAFE DELETION TRIGGER
- * Ensures physical files are only removed when NO posts reference them.
- * Cleans up HLS directory, MP4 fallback, and thumbnails.
  */
 exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event) => {
   const post = event.data.data();
@@ -207,25 +314,20 @@ exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event
 
     if (newUploads > 0) {
       transaction.update(hashRef, { uploads: newUploads });
-      console.log(`Deduplication Safety: Reference preserved. ${newUploads} remaining.`);
     } else {
-      // LAST POST: Purge physical files 🧹
       if (data.storagePath) {
         await bucket.file(data.storagePath).delete().catch(() => null);
         const thumbPath = `videos/thumbs/thumb-${post.videoHash}.jpg`;
         await bucket.file(thumbPath).delete().catch(() => null);
-        
-        // Delete HLS directory recursively
         await bucket.deleteFiles({ prefix: `videos/hls/${post.videoHash}/` }).catch(() => null);
       }
       transaction.delete(hashRef);
-      console.log(`Deduplication Purge: Physical files for hash ${post.videoHash} removed.`);
     }
   });
 });
 
 /**
- * ⛅ HYBRID STORAGE LIFECYCLE (Tier 2 & 3)
+ * ⛅ HYBRID STORAGE LIFECYCLE
  */
 exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   const db = admin.firestore();
@@ -236,7 +338,6 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
   try {
-    // 1. COLD STORAGE MIGRATION (Tier 3: 90% cheaper)
     const coldSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
       .where("likes", "<", 50)
@@ -258,7 +359,6 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
       }
     }
 
-    // 2. WARM STORAGE MIGRATION (Tier 2: 50% cheaper)
     const warmSnap = await db.collection("campus_pulse")
       .where("mediaType", "==", "video")
       .where("likes", "<", 10)

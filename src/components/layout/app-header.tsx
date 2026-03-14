@@ -1,3 +1,4 @@
+
 'use client';
 
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -8,6 +9,7 @@ import { useSidebar } from '../ui/sidebar';
 import { useAuth } from '@/hooks/use-auth';
 import { useCampusView } from '@/hooks/use-campus-view';
 import { CampusSwitcher } from './campus-switcher';
+import { NotificationBell } from './notification-bell';
 
 export default function AppHeader() {
   const { isMobile } = useSidebar();
@@ -31,6 +33,7 @@ export default function AppHeader() {
 
       <div className="flex items-center justify-end gap-4">
         {isAdmin && <CampusSwitcher />}
+        <NotificationBell />
         <UserNav />
       </div>
     </header>

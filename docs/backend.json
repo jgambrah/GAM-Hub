@@ -42,33 +42,20 @@
       },
       "required": ["id", "email", "role"]
     },
-    "UserIntelligence": {
-      "title": "UserIntelligence",
+    "Notification": {
+      "title": "Notification",
       "type": "object",
-      "description": "Unified recommendation brain data for a user.",
+      "description": "A real-time alert for a user.",
       "properties": {
         "id": { "type": "string" },
-        "interests": { "type": "object" },
-        "tasteVector": { "type": "array", "items": { "type": "number" } },
-        "engagementLevel": { "type": "number" },
-        "currentStrategy": { "type": "string" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "VideoHash": {
-      "title": "VideoHash",
-      "type": "object",
-      "description": "Registry for video deduplication fingerprints.",
-      "properties": {
-        "id": { "type": "string" },
-        "mediaUrl": { "type": "string" },
-        "hlsUrl": { "type": "string" },
-        "imageUrl": { "type": "string" },
-        "storagePath": { "type": "string" },
-        "storageTier": { "type": "string", "enum": ["hot", "warm", "cold"] },
-        "processed": { "type": "boolean" },
-        "uploads": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "type": { "type": "string", "enum": ["like", "comment", "message", "order", "system"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "link": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actorName": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
       }
     },
     "SocialPost": {
@@ -110,6 +97,7 @@
   },
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
+    "/users/{userId}/notifications/{notifId}": { "schema": "#/backend/entities/Notification", "description": "User notification sub-collection." },
     "/user_intelligence/{userId}": { "schema": "#/backend/entities/UserIntelligence", "description": "Recommendation profiles." },
     "/video_hashes/{hash}": { "schema": "#/backend/entities/VideoHash", "description": "Deduplication registry." },
     "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "National stream of campus vibrations." },
