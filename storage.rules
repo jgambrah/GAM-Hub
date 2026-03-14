@@ -1,0 +1,97 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // -------------------------------------------------------------------------
+    // 1. CORE HELPERS
+    // -------------------------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Liaison Master Key: Full oversight for platform infrastructure
+    function isLiaisonAdmin() {
+      return isSignedIn() && (
+        request.auth.uid == 'xYAuFJclD2UiUwPAUb4vqEaaKct2' || 
+        request.auth.token.email == 'admin@gamhub.com' ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. THE VAULT: ACCESS POLICIES
+    // -------------------------------------------------------------------------
+
+    // Global Admin Bypass
+    match /{allPaths=**} {
+      allow read, write: if isLiaisonAdmin();
+    }
+
+    // User Personal Media (Shoutouts, Profile Photos)
+    match /users/{userId}/{allPaths=**} {
+      allow read: if true; // Public vibes must be readable by the Yard
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // 🎙️ VOICE SHARING HUB (Universal Access)
+    // Permitting vocal vibrations in all social/commercial contexts
+    match /voice_messages/{allPaths=**} {
+      allow read, write: if isSignedIn();
+    }
+    
+    match /voice_comments/{allPaths=**} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /product_reviews/{allPaths=**} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /social_shoutouts/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // ⚔️ THE ARENA & PULSE (Social Media)
+    match /arena_media/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /group_media/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // 🎥 VIDEO ENGINE (Deduplication & HLS)
+    match /videos/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 🛍️ MARKETPLACE (Inventory Photos)
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 🏢 OFFICIAL CHANNELS (SRC & Registry)
+    match /registry_attachments/{allPaths=**} {
+      allow read: if true;
+      allow write: if isLiaisonAdmin();
+    }
+
+    match /src_media/{allPaths=**} {
+      allow read: if true;
+      allow write: if isLiaisonAdmin();
+    }
+
+    // 🛡️ VETTING DOCUMENTS (PRIVATE)
+    // ID Cards remain encrypted and restricted to owner/admin
+    match /verification_docs/{userId}/{allPaths=**} {
+      allow read: if isLiaisonAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+  }
+}
