@@ -1,4 +1,3 @@
-
 'use client';
 
 import Image from 'next/image';
@@ -100,7 +99,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isActiveVibe]);
 
-  // ENTERPRISE SKIP DETECTION ENGINE
   React.useEffect(() => {
     if (!cardRef.current) return;
 
@@ -137,7 +135,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   React.useEffect(() => {
     if (countdownRef.current) clearInterval(countdownRef.current);
-    if (isActiveVibe && isContinuous && mediaCategory !== 'video') {
+    if (isActiveVibe && isContinuous && mediaCategory !== 'video' && mediaCategory !== 'audio') {
       const totalSecs = DISPLAY_DURATIONS[mediaCategory] / 1000;
       setCountdown(totalSecs);
       countdownRef.current = setInterval(() => {
@@ -325,6 +323,34 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
+      {/* 🎙️ SHOUTOUT HERO STAGE */}
+      {post.mediaType === 'audio' && (
+        <div 
+          onClick={() => setActivePost(post)}
+          className={cn(
+            'relative bg-slate-900 overflow-hidden flex-shrink-0 flex flex-col items-center justify-center gap-6 p-12 transition-all duration-700 ease-in-out cursor-pointer',
+            isActiveVibe ? 'aspect-video md:aspect-[21/9]' : 'aspect-video group/media'
+          )}
+        >
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.1),transparent)] animate-pulse" />
+            <div className="relative z-10 p-10 bg-white/5 backdrop-blur-xl rounded-full border-4 border-white/10 shadow-2xl group-hover/media:scale-110 transition-transform duration-500">
+                <Mic size={64} className={cn("transition-colors", isActiveVibe ? "text-amber-400" : "text-blue-400")} />
+            </div>
+            <div className="relative z-10 text-center">
+                <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] mb-4">Vocal Vibration</p>
+                <div className="flex gap-1.5 justify-center">
+                    {[0.4, 0.8, 0.6, 0.9, 0.5, 0.7].map((h, i) => (
+                        <div 
+                            key={i} 
+                            className={cn("w-2 rounded-full transition-all", isActiveVibe ? "bg-amber-500 animate-bounce" : "bg-blue-500/40 h-4")} 
+                            style={{ height: isActiveVibe ? `${h * 40}px` : '16px', animationDelay: `${i * 0.1}s` }} 
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+      )}
+
       {post.mediaType !== 'text' && post.mediaType !== 'audio' && (
         <div 
           onClick={() => { if(isActiveVibe && mediaCategory === 'video') toggleSound(); }}
@@ -391,7 +417,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 </div>
               ) : (
                 <ReactPlayer
-                  url={videoSource} controls={false} width="100%" height="100%" playing={isActiveVibe} playsinline muted={!soundOn} onStart={() => setActivePost(post)} onEnded={handleEnd}
+                  url={videoSource} controls={false} width="100%" height="100%" playing={isActiveVibe} playsinline muted={!soundOn} onStart={() => setActivePost(post)} onEnd={handleEnd}
                   config={{ file: { attributes: { playsInline: true, preload: 'auto' }, forceHLS: !!post.hlsUrl, hlsConfig: { maxBufferLength: 30, startFragPrefetch: true } } }}
                 />
               )}
@@ -427,8 +453,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
           {/* 🎙️ SHOUTOUT AUDIO PLAYER */}
           {post.mediaType === 'audio' && post.mediaUrl && (
-            <div className="mt-6 max-w-lg">
+            <div className="mt-8 max-w-xl animate-in slide-in-from-bottom-2 duration-500">
                 <VoicePlayer url={post.mediaUrl} duration={post.duration} theme="primary" />
+                <p className="mt-3 text-[9px] font-black text-blue-500/60 uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Music size={10} /> Syncing Vocal Frequency to the Yard
+                </p>
             </div>
           )}
 

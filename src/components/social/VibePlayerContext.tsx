@@ -22,23 +22,24 @@ import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { vibeBufferManager } from '@/lib/vibe-buffer-manager';
 import { computeVibeScore } from '@/lib/vibe-scoring';
 
-export type MediaCategory = 'video' | 'image' | 'text';
+export type MediaCategory = 'video' | 'image' | 'text' | 'audio';
 
 export function getMediaCategory(mediaType: SocialPost['mediaType']): MediaCategory {
   if (mediaType === 'youtube' || mediaType === 'video' || mediaType === 'tiktok') return 'video';
   if (mediaType === 'image') return 'image';
+  if (mediaType === 'audio') return 'audio';
   return 'text';
 }
 
 export function getMediaLabel(mediaType: SocialPost['mediaType']): string {
   const map: Record<string, string> = {
-    youtube: 'YouTube', video: 'Video', tiktok: 'TikTok', image: 'Photo', text: 'Post',
+    youtube: 'YouTube', video: 'Video', tiktok: 'TikTok', image: 'Photo', text: 'Post', audio: 'Shoutout',
   };
   return map[mediaType] ?? mediaType;
 }
 
 export const DISPLAY_DURATIONS: Record<MediaCategory, number> = {
-  video: 0, image: 8000, text: 6000,
+  video: 0, image: 8000, text: 6000, audio: 0, // Audio uses its own duration
 };
 
 export type VibeMood = 'all' | 'hype' | 'chill' | 'study' | 'flex';
@@ -117,17 +118,11 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
   const clearDisplayTimer = useCallback(() => { if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; } }, []);
 
-  /**
-   * rebuildQueue
-   * ------------
-   * Asynchronous ranking engine. Deployed safely via useEffect.
-   */
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     if (!current || pool.length === 0) return;
     
     setIsLoadingQueue(true);
     
-    // 🧠 STAGE 1: NEURAL RANKING
     const scoredCandidates = pool
       .filter(p => p.id !== current.id)
       .map(candidate => ({
@@ -144,7 +139,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
     let finalPosts = scoredCandidates.map(r => r.post);
 
-    // 🤖 STAGE 2: AI RE-RANKING (Semantic Loop)
     if (finalPosts.length > 5) {
         try {
             const aiReRank = await getRecommendedVibes({ 
@@ -170,17 +164,15 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     setIsLoadingQueue(false);
   }, [getPersonalScore, globalTrendScores, sessionProfile, getTopInterests]);
 
-  // 🔄 LOOP SYNC: Rebuild queue whenever active post or pool changes
   useEffect(() => {
     if (activePost && allPosts.length > 0) {
         const timer = setTimeout(() => { 
           rebuildQueue(activePost, allPosts, activeMood); 
-        }, 500); // 500ms Debounce to prevent Router/Render collisions
+        }, 500);
         return () => clearTimeout(timer);
     }
   }, [sessionProfile, activeMood, rebuildQueue, activePost, allPosts]);
 
-  // 📶 PREFETCH SYNC
   useEffect(() => {
     if (!activePostId || upNext.length === 0 || !activePost) return;
     const prefetchTimer = setTimeout(() => {
@@ -222,7 +214,14 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const pushToHistory = useCallback((post: SocialPost) => { setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX)); }, []);
 
   const startDisplayTimer = useCallback((post: SocialPost) => {
-    const duration = DISPLAY_DURATIONS[getMediaCategory(post.mediaType)];
+    const cat = getMediaCategory(post.mediaType);
+    let duration = DISPLAY_DURATIONS[cat];
+    
+    // For audio, use the actual duration + 1s buffer
+    if (cat === 'audio') {
+        duration = (post.duration || 10) * 1000 + 1000;
+    }
+
     if (duration > 0 && isContinuousRef.current) {
       if (displayTimerRef.current) clearTimeout(displayTimerRef.current);
       displayTimerRef.current = setTimeout(() => {
@@ -263,7 +262,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     const next = q[idx === -1 ? 0 : (idx + 1) % q.length];
     if (next) { 
       clearDisplayTimer(); 
-      // Safe-Handshake: Resetting the state triggers the SocialPostCard to re-mount/re-play
       setActivePostId(next.id); 
       setActivePostState(next); 
       pushToHistory(next); 

@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -6,7 +5,7 @@ import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
@@ -15,6 +14,7 @@ import { TikTokEmbed } from '../social/tiktok-embed';
 import { useToast } from '@/hooks/use-toast';
 import YouTube from 'react-youtube';
 import ReactPlayer from 'react-player';
+import VoicePlayer from '../social/VoicePlayer';
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;
@@ -208,7 +208,14 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                 <>
                     {post.content && <p className="text-lg font-bold text-foreground leading-tight">"{post.content}"</p>}
                     
-                    {post.mediaUrl && (
+                    {post.mediaType === 'audio' && post.mediaUrl && (
+                        <div className="mt-4 p-6 bg-slate-900 rounded-3xl border-2 border-white/5 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-4 opacity-5"><Mic size={80} className="text-blue-400" /></div>
+                            <VoicePlayer url={post.mediaUrl} duration={post.duration} theme="dark" />
+                        </div>
+                    )}
+
+                    {post.mediaUrl && post.mediaType !== 'audio' && (
                         <div className="mt-4 rounded-2xl overflow-hidden bg-black border border-border group/media relative">
                             {post.mediaType === 'image' && <Image src={post.mediaUrl} width={500} height={300} className="w-full h-auto object-cover" alt="Post media" />}
                             
