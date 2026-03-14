@@ -4,7 +4,7 @@
 /**
  * @fileOverview Liaison Audio Messaging Service.
  * Orchestrates the secure upload of vocal vibrations to Firebase Storage.
- * Implements high-efficiency .webm compression handshake and safety limits.
+ * Implements high-efficiency compression handshake and safety limits.
  */
 
 import { FirebaseStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -16,7 +16,7 @@ const MAX_AUDIO_SIZE_BYTES = 1 * 1024 * 1024; // 1MB Safety Limit
  * -----------
  * Converts a raw MediaRecorder blob into a public download URL.
  * Standardizes the storage handshake for chats, groups, comments, and reviews.
- * Strictly uses audio/webm for storage optimization.
+ * Supports multiple formats based on browser recording capabilities.
  */
 export async function uploadAudio(
   storage: FirebaseStorage, 
@@ -36,9 +36,9 @@ export async function uploadAudio(
     const fileRef = ref(storage, path);
     
     // Perform the Multimedia Handshake
-    // Rule: Explicitly set contentType to audio/webm for 10x compression over wav
+    // Rule: Respect the blob's actual type (could be webm, mp4, or ogg depending on browser)
     await uploadBytes(fileRef, blob, {
-      contentType: 'audio/webm',
+      contentType: blob.type || 'audio/webm',
       customMetadata: {
         vibeType: 'voice_note',
         uploadedAt: new Date().toISOString()

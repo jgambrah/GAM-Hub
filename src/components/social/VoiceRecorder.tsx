@@ -2,9 +2,8 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Mic, Square, Trash2, Send, Play, Pause, Loader2, AlertCircle } from 'lucide-react';
+import { Mic, Square, Trash2, Send, Play, Pause, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 
 interface VoiceRecorderProps {
   onSend: (audioBlob: Blob, duration: number) => void;
@@ -39,10 +38,21 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
     }
   }, [duration, isRecording]);
 
+  const getSupportedMimeType = () => {
+    if (typeof MediaRecorder === 'undefined') return '';
+    const types = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/aac'];
+    for (const type of types) {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+    return '';
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const mimeType = getSupportedMimeType();
+      
+      const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
@@ -51,7 +61,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
       };
 
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
         setAudioBlob(blob);
         setPreviewUrl(URL.createObjectURL(blob));
         // Stop all tracks to release the microphone
@@ -98,7 +108,9 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
     setDuration(0);
   };
 
-  const handleSend = () => {
+  const handleSend = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (audioBlob) {
       onSend(audioBlob, duration);
       handleReset();
@@ -124,7 +136,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
           </span>
           <button 
             type="button"
-            onClick={stopRecording}
+            onClick={(e) => { e.preventDefault(); stopRecording(); }}
             className="p-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition-all active:scale-90"
           >
             <Square size={14} fill="currentColor" />
@@ -134,7 +146,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
         <div className="flex items-center gap-2 bg-muted p-1.5 rounded-2xl animate-in zoom-in-95 border shadow-inner">
           <button 
             type="button" 
-            onClick={togglePlayback}
+            onClick={(e) => { e.preventDefault(); togglePlayback(); }}
             className="p-2 bg-slate-900 text-white dark:bg-primary rounded-xl shadow-md"
           >
             {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
@@ -142,7 +154,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
           <span className="text-[10px] font-black uppercase tracking-widest px-2">{formatTime(duration)}</span>
           <button 
             type="button" 
-            onClick={handleReset}
+            onClick={(e) => { e.preventDefault(); handleReset(); }}
             className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
           >
             <Trash2 size={14} />
@@ -165,7 +177,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
         <button
           type="button"
           disabled={disabled}
-          onClick={startRecording}
+          onClick={(e) => { e.preventDefault(); startRecording(); }}
           className="p-2.5 text-muted-foreground hover:text-primary transition-all hover:scale-110 active:scale-90 disabled:opacity-30 flex items-center gap-2 group"
           title="Send Voice Vibe"
         >
