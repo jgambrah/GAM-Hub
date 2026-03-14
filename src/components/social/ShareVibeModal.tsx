@@ -216,6 +216,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 onChange={(e) => setContent(e.target.value)} 
             />
             
+            {/* DYNAMIC MEDIA POD (IMAGE/VIDEO) */}
             {preview && (
                 <div className="relative aspect-video rounded-[2rem] overflow-hidden border-4 border-muted shadow-inner bg-black">
                     {postType === 'image' ? <Image src={preview} layout="fill" className="object-cover" alt="" /> : <video src={preview} className="w-full h-full object-cover" />}
@@ -223,20 +224,44 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 </div>
             )}
 
-            {postType === 'shoutout' && audioBlob && (
-                <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] border-2 border-blue-100 dark:border-blue-800 animate-in slide-in-from-top-2">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                            <Mic size={16} className="text-blue-600" />
-                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Voice Shoutout Prepared</span>
-                        </div>
-                        <button type="button" onClick={resetMedia} className="p-1 hover:bg-blue-100 rounded-lg text-blue-600"><X size={14}/></button>
+            {/* THE BIG MIC POD: Dedicated recording stage when "Shoutout" is selected */}
+            {postType === 'shoutout' && (
+                <div className="p-8 bg-blue-50 dark:bg-blue-900/20 rounded-[2.5rem] border-2 border-blue-100 dark:border-blue-800 animate-in slide-in-from-top-2 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                        <Mic size={120} className="text-blue-600" />
                     </div>
-                    <div className="flex flex-col items-center gap-3">
-                        <div className="p-4 bg-white dark:bg-slate-900 rounded-full shadow-lg border-2 border-blue-500 animate-pulse">
-                            <Music size={32} className="text-blue-500" />
+                    
+                    <div className="flex items-center justify-between mb-6 relative z-10">
+                        <div className="flex items-center gap-2">
+                            <Music size={18} className="text-blue-600" />
+                            <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-[0.2em]">Voice Shoutout Hub</span>
                         </div>
-                        <span className="text-xs font-black text-blue-600">{Math.floor(audioDuration)} Seconds</span>
+                        {audioBlob && (
+                            <button type="button" onClick={resetMedia} className="p-1.5 bg-blue-100 dark:bg-blue-800 rounded-lg text-blue-600 dark:text-blue-200">
+                                <X size={14}/>
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="flex flex-col items-center gap-6 relative z-10">
+                        {audioBlob ? (
+                            <>
+                                <div className="p-6 bg-white dark:bg-slate-900 rounded-full shadow-2xl border-4 border-emerald-500 animate-in zoom-in duration-500">
+                                    <CheckCircle2 size={48} className="text-emerald-500" />
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">Vibration Prepared</p>
+                                    <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-widest">{Math.floor(audioDuration)} Seconds Logged</p>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <VoiceRecorder onSend={handleAudioPrepared} disabled={loading} />
+                                <p className="text-[10px] text-blue-500/60 text-center font-bold uppercase tracking-widest leading-relaxed">
+                                    "Your voice will vibrate across the entire Yard."
+                                </p>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -248,6 +273,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 </div>
             )}
 
+            {/* THE ACTION GRID */}
             <div className="flex gap-2 bg-muted/30 p-1 rounded-3xl border shadow-inner">
                 {[
                     { id: 'text', icon: Type, label: 'Text' }, 
@@ -257,23 +283,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                     { id: 'link', icon: Youtube, label: 'Embed' }
                 ].map(t => {
                     const isActive = postType === t.id;
-                    const isShoutoutPlaceholder = t.id === 'shoutout' && !audioBlob;
-                    const commonClasses = cn(
-                        "flex-1 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 overflow-hidden",
-                        isActive ? "bg-white dark:bg-slate-800 text-primary border-primary shadow-md" : "bg-transparent border-transparent text-muted-foreground"
-                    );
-
-                    // 🛡️ LIAISON FIX: Avoid nested buttons by rendering a div for the shoutout slot
-                    if (isShoutoutPlaceholder) {
-                        return (
-                            <div key={t.id} className={cn(commonClasses, "p-0")}>
-                                <div className="scale-75 origin-center">
-                                    <VoiceRecorder onSend={handleAudioPrepared} disabled={loading} />
-                                </div>
-                            </div>
-                        );
-                    }
-
                     return (
                         <button 
                             key={t.id} 
@@ -283,7 +292,10 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                                 else if (t.id === 'native') videoInputRef.current?.click();
                                 else { resetMedia(); setPostType(t.id as any); }
                             }} 
-                            className={cn(commonClasses, "p-4")}
+                            className={cn(
+                                "flex-1 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 p-4",
+                                isActive ? "bg-white dark:bg-slate-800 text-primary border-primary shadow-md" : "bg-transparent border-transparent text-muted-foreground"
+                            )}
                         >
                             <t.icon size={20} />
                             <span className="text-[8px] font-black uppercase tracking-widest">{t.label}</span>
