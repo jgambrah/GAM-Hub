@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -127,7 +126,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             });
         }
       } else if (postType === 'shoutout' && audioBlob) {
-        // 🎙️ VOICE SHOUTOUT HANDSHAKE
         mediaType = 'audio';
         const path = `social_shoutouts/${userProfile.campusId}/${Date.now()}_voice_shout.webm`;
         mediaUrl = await uploadAudio(storage, audioBlob, path);
@@ -156,7 +154,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       const docRef = await addDoc(collection(firestore, 'campus_pulse'), postData);
       
-      // 🤖 BACKGROUND AI
       const runAi = async () => {
           try {
               const aiResult = await analyzeVibeContent({
@@ -258,33 +255,41 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                     { id: 'native', icon: Video, label: 'Video' }, 
                     { id: 'shoutout', icon: Mic, label: 'Shoutout' },
                     { id: 'link', icon: Youtube, label: 'Embed' }
-                ].map(t => (
-                    <button 
-                        key={t.id} 
-                        type="button" 
-                        onClick={() => { 
-                            if (t.id === 'image') fileInputRef.current?.click();
-                            else if (t.id === 'native') videoInputRef.current?.click();
-                            else if (t.id === 'shoutout') { /* Recorder handled inline or by logic below */ }
-                            else { resetMedia(); setPostType(t.id as any); }
-                        }} 
-                        className={cn(
-                            "flex-1 p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-1 overflow-hidden",
-                            postType === t.id ? "bg-white dark:bg-slate-800 text-primary border-primary shadow-md" : "bg-transparent border-transparent text-muted-foreground"
-                        )}
-                    >
-                        {t.id === 'shoutout' && !audioBlob ? (
-                            <div className="scale-75 origin-center">
-                                <VoiceRecorder onSend={handleAudioPrepared} disabled={loading} />
+                ].map(t => {
+                    const isActive = postType === t.id;
+                    const isShoutoutPlaceholder = t.id === 'shoutout' && !audioBlob;
+                    const commonClasses = cn(
+                        "flex-1 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 overflow-hidden",
+                        isActive ? "bg-white dark:bg-slate-800 text-primary border-primary shadow-md" : "bg-transparent border-transparent text-muted-foreground"
+                    );
+
+                    // 🛡️ LIAISON FIX: Avoid nested buttons by rendering a div for the shoutout slot
+                    if (isShoutoutPlaceholder) {
+                        return (
+                            <div key={t.id} className={cn(commonClasses, "p-0")}>
+                                <div className="scale-75 origin-center">
+                                    <VoiceRecorder onSend={handleAudioPrepared} disabled={loading} />
+                                </div>
                             </div>
-                        ) : (
-                            <>
-                                <t.icon size={20} />
-                                <span className="text-[8px] font-black uppercase tracking-widest">{t.label}</span>
-                            </>
-                        )}
-                    </button>
-                ))}
+                        );
+                    }
+
+                    return (
+                        <button 
+                            key={t.id} 
+                            type="button" 
+                            onClick={() => { 
+                                if (t.id === 'image') fileInputRef.current?.click();
+                                else if (t.id === 'native') videoInputRef.current?.click();
+                                else { resetMedia(); setPostType(t.id as any); }
+                            }} 
+                            className={cn(commonClasses, "p-4")}
+                        >
+                            <t.icon size={20} />
+                            <span className="text-[8px] font-black uppercase tracking-widest">{t.label}</span>
+                        </button>
+                    );
+                })}
             </div>
 
             <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
