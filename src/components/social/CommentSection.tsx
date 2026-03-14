@@ -1,10 +1,8 @@
-
 'use client';
 
 import React, { useState } from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, addDoc, query, orderBy, serverTimestamp, updateDoc, doc, increment } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '@/hooks/use-auth';
 import { Send, Loader2, Smile, X, Bold, Italic, Mic } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { cn } from '@/lib/utils';
 import { recordEngagement } from '@/lib/trending-service';
+import { uploadAudio } from '@/lib/audio-service';
 import VoiceRecorder from './VoiceRecorder';
 
 export default function CommentSection({ postId, authorId }: { postId: string, authorId?: string }) {
@@ -84,9 +83,7 @@ export default function CommentSection({ postId, authorId }: { postId: string, a
     setIsUploading(true);
     try {
       const filePath = `voice_comments/${postId}/${Date.now()}_voice.webm`;
-      const fileRef = ref(storage, filePath);
-      await uploadBytes(fileRef, blob);
-      const audioUrl = await getDownloadURL(fileRef);
+      const audioUrl = await uploadAudio(storage, blob, filePath);
 
       await handlePostComment({ 
         type: 'audio', 
@@ -151,7 +148,7 @@ export default function CommentSection({ postId, authorId }: { postId: string, a
                <X size={16}/>
              </button>
            </div>
-           <EmojiPicker onEmojiClick={onEmojiClick} />
+           <EmojiPicker onEmojiClick={(d) => setText(prev => prev + d.emoji)} />
         </div>
       )}
 

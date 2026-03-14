@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -10,8 +9,9 @@ import EmojiPicker from 'emoji-picker-react';
 import { ForwardMessageModal } from './ForwardMessageModal';
 import type { Message, User } from '@/lib/types';
 import VoiceRecorder from './VoiceRecorder';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadAudio } from '@/lib/audio-service';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 export default function PrivateChat({ chatId, otherUser }: { chatId: string, otherUser: User }) {
   const { firestore, auth, storage } = useFirebase();
@@ -66,11 +66,11 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
     
     setIsUploading(true);
     try {
+      // 1. Centralized Audio Upload Handshake
       const filePath = `voice_messages/${chatId}/${Date.now()}_voice.webm`;
-      const fileRef = ref(storage, filePath);
-      await uploadBytes(fileRef, blob);
-      const audioUrl = await getDownloadURL(fileRef);
+      const audioUrl = await uploadAudio(storage, blob, filePath);
 
+      // 2. Log Message to Firestore
       const messageData: Partial<Message> = {
         type: 'audio',
         mediaUrl: audioUrl,
@@ -139,7 +139,6 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
                   {msg.type === 'audio' ? (
                     <div className="flex flex-col gap-2 min-w-[200px]">
                       <div className="flex items-center gap-2">
-                        <VoiceRecorder onSend={() => {}} disabled /> {/* Hidden recorder placeholder for layout */}
                         <audio src={msg.mediaUrl} controls className={cn("h-8 w-full", isMe ? "invert brightness-200" : "")} />
                       </div>
                     </div>

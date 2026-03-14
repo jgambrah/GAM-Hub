@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -13,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ForwardMessageModal } from '../social/ForwardMessageModal';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { validateVideo } from '@/lib/video-utils';
+import { uploadAudio } from '@/lib/audio-service';
 import VoiceRecorder from '../social/VoiceRecorder';
 import { cn } from '@/lib/utils';
 
@@ -65,9 +65,7 @@ export default function GroupChat({ group }: { group: Group }) {
     setIsUploading(true);
     try {
       const filePath = `voice_messages/groups/${group.id}/${Date.now()}_voice.webm`;
-      const fileRef = ref(storage, filePath);
-      await uploadBytes(fileRef, blob);
-      const audioUrl = await getDownloadURL(fileRef);
+      const audioUrl = await uploadAudio(storage, blob, filePath);
 
       const messageData: Partial<Message> = {
         type: 'audio',
