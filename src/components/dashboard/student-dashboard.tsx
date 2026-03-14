@@ -13,7 +13,7 @@ import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Loader2, Sparkles, ShoppingBag, ChevronRight, Image as ImageIcon, Video, Youtube } from 'lucide-react';
+import { Loader2, Sparkles, ShoppingBag, ChevronRight, Image as ImageIcon, Video, Youtube, MessageSquare, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import StaffLounge from './staff-lounge';
 import CampusVibeFeed from '../spotlight/campus-vibe-feed';
@@ -22,6 +22,7 @@ import { summarizeSocialFeed } from '@/ai/flows/summarize-social-feed';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import ShareVibeModal from '../social/ShareVibeModal';
+import SocialPostCard from '../social/social-post-card';
 
 function StudentOrders() {
   const { user } = useAuth();
@@ -39,9 +40,9 @@ function StudentOrders() {
   const { data: orders, isLoading } = useCollection<Order>(ordersQuery);
 
   return (
-    <Card>
+    <Card className="rounded-[2.5rem] border-slate-100 dark:border-border">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><ShoppingBag size={20} /> My Recent Orders</CardTitle>
+        <CardTitle className="flex items-center gap-2"><ShoppingBag size={20} className="text-primary" /> My Recent Orders</CardTitle>
         <CardDescription>Track your recent purchases and manage disputes.</CardDescription>
       </CardHeader>
       <CardContent>
@@ -56,14 +57,14 @@ function StudentOrders() {
               const statusVariant = order.status === 'awaiting_confirmation' ? 'secondary' : order.status === 'disputed' ? 'destructive' : 'default';
 
               return (
-                <Link href={`/orders/${order.id}`} key={order.id} className="block rounded-lg border p-4 hover:bg-muted/50 transition-colors">
+                <Link href={`/orders/${order.id}`} key={order.id} className="block rounded-2xl border p-4 hover:bg-muted/50 transition-colors">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-semibold">{order.productName}</p>
-                      <p className="text-sm text-muted-foreground">GH₵{order.amount.toFixed(2)}</p>
+                      <p className="font-bold text-sm">{order.productName}</p>
+                      <p className="text-xs text-muted-foreground">GH₵{order.amount.toFixed(2)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Badge variant={statusVariant} className={cn(order.status === 'confirmed' && 'bg-blue-600')}>{status}</Badge>
+                        <Badge variant={statusVariant} className={cn('text-[8px] font-black uppercase', order.status === 'confirmed' && 'bg-blue-600')}>{status}</Badge>
                         <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </div>
                   </div>
@@ -72,7 +73,7 @@ function StudentOrders() {
             })}
           </div>
         ) : (
-          <p className="text-center text-sm text-muted-foreground py-8">You haven't placed any orders yet.</p>
+          <p className="text-center text-xs text-muted-foreground py-8 italic">You haven't placed any orders yet.</p>
         )}
       </CardContent>
     </Card>
@@ -89,18 +90,17 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
   const [loadingRecs, setLoadingRecs] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
 
-  // FETCH: From Unified campus_pulse instead of deprecated social_posts
-  const socialFeedQuery = useMemoFirebase(() => {
-    // Basic handshake: Fires as soon as user is identified
-    if (!firestore || !user?.campusId) return null;
+  // FETCH: Real-time vibes for the "Recent Activity" section
+  const recentVibesQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.campusId || !isTokenReady) return null;
     return query(
         collection(firestore, 'campus_pulse'), 
         where('campusId', '==', user.campusId),
         orderBy('createdAt', 'desc'),
-        limit(10)
+        limit(3)
     );
-  }, [firestore, user?.campusId, user?.id]);
-  const { data: socialFeed, isLoading: isLoadingSocial } = useCollection<SocialPost>(socialFeedQuery);
+  }, [firestore, user?.campusId, isTokenReady]);
+  const { data: recentVibes, isLoading: isLoadingVibes } = useCollection<SocialPost>(recentVibesQuery);
 
   // Fetch product catalog for recommendations
   const productsQuery = useMemoFirebase(() => {
@@ -110,10 +110,10 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
   const { data: allProducts, isLoading: isLoadingProducts } = useCollection<Product>(productsQuery);
 
   async function handleSummarize() {
-    if (!user || !user.campusId || !socialFeed) return;
+    if (!user || !user.campusId || !recentVibes) return;
     try {
       setLoadingSummary(true);
-      const socialContent = socialFeed
+      const socialContent = recentVibes
         .map(p => p.content)
         .join('\n---\n');
       
@@ -173,22 +173,23 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
   }
 
   return (
-    <div className="space-y-12">
-        <Card onClick={() => setShowShareModal(true)} className="cursor-pointer hover:bg-muted/50 transition-colors">
-            <CardContent className="p-4">
+    <div className="space-y-12 pb-24">
+        {/* BROADCAST HUB */}
+        <Card onClick={() => setShowShareModal(true)} className="cursor-pointer hover:bg-muted/50 transition-colors rounded-[3rem] border-slate-100 dark:border-border mx-4">
+            <CardContent className="p-6">
             <div className="flex items-start space-x-4">
-                <Avatar>
+                <Avatar className="h-12 w-12 border-2 border-background shadow-sm">
                     <AvatarImage src={user.avatarUrl} alt={user.name} />
-                    <AvatarFallback>{user.name?.charAt(0)}</AvatarFallback>
+                    <AvatarFallback className="font-black">{user.name?.charAt(0)}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                    <div className="p-3 bg-muted rounded-xl text-muted-foreground h-12 flex items-center">
+                    <div className="p-4 bg-muted rounded-[1.5rem] text-muted-foreground h-14 flex items-center font-medium">
                         What's on your mind, {user.name?.split(' ')[0]}?
                     </div>
-                    <div className="flex items-center justify-end mt-2 space-x-2 text-muted-foreground">
-                        <ImageIcon className="h-5 w-5" />
-                        <Video className="h-5 w-5" />
-                        <Youtube className="h-5 w-5" />
+                    <div className="flex items-center justify-end mt-3 space-x-4 text-muted-foreground px-2">
+                        <div className="flex items-center gap-1.5"><ImageIcon className="h-4 w-4 text-blue-500" /> <span className="text-[10px] font-black uppercase">Photo</span></div>
+                        <div className="flex items-center gap-1.5"><Video className="h-4 w-4 text-red-500" /> <span className="text-[10px] font-black uppercase">Video</span></div>
+                        <div className="flex items-center gap-1.5"><Mic className="h-4 w-4 text-indigo-500" /> <span className="text-[10px] font-black uppercase">Shoutout</span></div>
                     </div>
                 </div>
             </div>
@@ -198,21 +199,49 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
         {showShareModal && <ShareVibeModal userProfile={user} onClose={() => setShowShareModal(false)} />}
 
         {showBulletin && <CampusBulletin />}
+        
+        {/* RECENT VIBES PREVIEW */}
+        <section className="px-4">
+            <div className="flex justify-between items-center mb-6 px-2">
+                <h3 className="text-xl font-black text-foreground flex items-center gap-2">
+                    <Zap className="text-indigo-500 fill-indigo-500" size={20} /> Recent Pulse
+                </h3>
+                <Link href="/pulse" className="text-[10px] font-black text-primary uppercase tracking-[0.2em] hover:underline">View Full Feed</Link>
+            </div>
+            <div className="space-y-6">
+                {isLoadingVibes ? (
+                    <Skeleton className="h-48 w-full rounded-[2.5rem]" />
+                ) : recentVibes && recentVibes.length > 0 ? (
+                    recentVibes.map(vibe => (
+                        <div key={vibe.id} className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <SocialPostCard post={vibe} />
+                        </div>
+                    ))
+                ) : (
+                    <div className="p-12 text-center bg-muted/20 rounded-[3.5rem] border-2 border-dashed border-border/50">
+                        <MessageSquare className="mx-auto text-muted-foreground/20 mb-4" size={48} />
+                        <p className="text-sm font-bold text-muted-foreground">The Yard is quiet.</p>
+                        <p className="text-[10px] text-muted-foreground/60 mt-1 italic">Be the first to share a vibe today!</p>
+                    </div>
+                )}
+            </div>
+        </section>
+
         {showVibeFeed && <CampusVibeFeed />}
         {showStaffLounge && <StaffLounge user={user} />}
 
-        <section>
+        <section className="px-4">
             <div className="grid gap-6 lg:grid-cols-2">
             <StudentOrders />
-            <Card>
+            <Card className="rounded-[2.5rem] border-slate-100 dark:border-border">
             <CardHeader>
                 <div className="flex items-center justify-between">
                     <div>
-                        <CardTitle>Campus Buzz</CardTitle>
-                        <CardDescription>AI summary of your {user.campusAcronym || 'Campus'} feed.</CardDescription>
+                        <CardTitle className="flex items-center gap-2"><Sparkles className="text-indigo-500" size={20}/> Campus Buzz</CardTitle>
+                        <CardDescription>AI summary of your campus feed.</CardDescription>
                     </div>
-                    <Button onClick={handleSummarize} size="sm" variant="outline" disabled={loadingSummary || isLoadingSocial}>
-                        {loadingSummary ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                    <Button onClick={handleSummarize} size="sm" variant="outline" disabled={loadingSummary || isLoadingVibes} className="rounded-xl font-black text-[10px] uppercase tracking-widest">
+                        {loadingSummary ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Zap className="mr-2 h-3 w-3" />}
                         Vibe-Check
                     </Button>
                 </div>
@@ -225,23 +254,24 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
                     <Skeleton className="h-4 w-3/4" />
                 </div>
                 ) : summary ? (
-                <p className="text-sm text-muted-foreground leading-relaxed">{summary}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed italic">"{summary}"</p>
                 ) : (
-                    <p className="text-center text-sm text-muted-foreground py-8 italic opacity-60">Click "Vibe-Check" to summarize the latest vibrations.</p>
+                    <p className="text-center text-[10px] text-muted-foreground py-8 italic opacity-60">Click "Vibe-Check" to summarize the latest vibrations.</p>
                 )}
             </CardContent>
             </Card>
         </div>
       </section>
 
-      <section className="p-6 bg-blue-50/50 dark:bg-primary/10 rounded-[2.5rem] border border-blue-100 dark:border-primary/20">
-        <div className="flex items-center justify-between mb-4">
-            <h3 className="font-black text-blue-900 dark:text-blue-300 flex items-center gap-2">
-              <Sparkles size={18} /> Tailored for {user.name?.split(' ')[0]}
+      {/* PERSONALIZED RECS */}
+      <section className="mx-4 p-8 bg-blue-50/50 dark:bg-primary/10 rounded-[3rem] border border-blue-100 dark:border-primary/20 shadow-inner">
+        <div className="flex items-center justify-between mb-8">
+            <h3 className="font-black text-2xl text-blue-900 dark:text-blue-300 tracking-tight flex items-center gap-3">
+              <Sparkles size={24} className="fill-blue-500 text-blue-500" /> Tailored for {user.name?.split(' ')[0]}
             </h3>
-            <Button onClick={handleGetRecommendations} size="sm" variant="outline" disabled={loadingRecs || isLoadingProducts} className="bg-background/70 dark:bg-primary/20 backdrop-blur-sm">
-                {loadingRecs ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Refresh Recs
+            <Button onClick={handleGetRecommendations} size="sm" variant="outline" disabled={loadingRecs || isLoadingProducts} className="bg-white dark:bg-primary/20 backdrop-blur-sm rounded-xl font-black text-[10px] uppercase tracking-widest px-6 h-10 border-blue-200">
+                {loadingRecs ? <Loader2 className="mr-2 h-3 w-3 animate-spin" /> : <Zap className="mr-2 h-3 w-3" />}
+                Refresh
             </Button>
         </div>
 
@@ -250,7 +280,7 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
                 <div className="flex space-x-4 pb-4">
                     {[...Array(3)].map((_, i) => (
                         <div key={i} className="w-80 space-y-3">
-                            <Skeleton className="h-40 w-full rounded-lg"/>
+                            <Skeleton className="h-40 w-full rounded-3xl"/>
                             <Skeleton className="h-6 w-3/4" />
                             <Skeleton className="h-4 w-1/2" />
                         </div>
@@ -259,7 +289,7 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
             </div>
         ) : recommendations.length > 0 ? (
           <ScrollArea>
-            <div className="flex space-x-4 pb-4">
+            <div className="flex space-x-6 pb-6">
               {recommendations.map(product => (
                 <ProductCard key={product.id} product={product} className="w-80 flex-shrink-0" />
               ))}
@@ -267,9 +297,9 @@ export default function StudentDashboard({ showBulletin = true, showStaffLounge 
             <ScrollBar orientation="horizontal" />
           </ScrollArea>
         ) : (
-          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-blue-200/50 py-16 text-center">
-            <h2 className="text-xl font-semibold tracking-tight text-blue-900/80 dark:text-blue-300/80">Discover Your Next Favorite Thing</h2>
-            <p className="text-sm text-muted-foreground">Click "Refresh Recs" to see products tailored for you.</p>
+          <div className="flex flex-col items-center justify-center rounded-[2.5rem] border-2 border-dashed border-blue-200/50 py-16 text-center bg-white/20">
+            <h2 className="text-xl font-black tracking-tight text-blue-900/80 dark:text-blue-300/80">Discover Your Next Favorite Thing</h2>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-2">Click "Refresh" to see products tailored for you.</p>
           </div>
         )}
       </section>
