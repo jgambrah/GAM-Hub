@@ -72,7 +72,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading || !isTokenReady || !userProfile || !auth?.currentUser || !firestore) return;
+    if (loading || !isTokenReady || !userProfile || !auth?.currentUser || !firestore || !storage) return;
     
     const hasMedia = (postType === 'image' && imageFile) || (postType === 'native' && videoFile) || (postType === 'link' && externalUrl.trim()) || (postType === 'shoutout' && audioBlob);
     if (!content.trim() && !hasMedia) {
@@ -224,7 +224,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 </div>
             )}
 
-            {/* THE BIG MIC POD: Dedicated recording stage when "Shoutout" is selected */}
+            {/* THE BIG MIC POD */}
             {postType === 'shoutout' && (
                 <div className="p-8 bg-blue-50 dark:bg-blue-900/20 rounded-[2.5rem] border-2 border-blue-100 dark:border-blue-800 animate-in slide-in-from-top-2 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
@@ -283,6 +283,24 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                     { id: 'link', icon: Youtube, label: 'Embed' }
                 ].map(t => {
                     const isActive = postType === t.id;
+                    const isShoutout = t.id === 'shoutout';
+                    
+                    if (isShoutout) {
+                        return (
+                            <div 
+                                key={t.id} 
+                                className={cn(
+                                    "flex-1 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 p-4 cursor-pointer",
+                                    isActive ? "bg-white dark:bg-slate-800 text-primary border-primary shadow-md" : "bg-transparent border-transparent text-muted-foreground"
+                                )}
+                                onClick={() => { resetMedia(); setPostType('shoutout'); }}
+                            >
+                                <t.icon size={20} />
+                                <span className="text-[8px] font-black uppercase tracking-widest">{t.label}</span>
+                            </div>
+                        )
+                    }
+
                     return (
                         <button 
                             key={t.id} 
