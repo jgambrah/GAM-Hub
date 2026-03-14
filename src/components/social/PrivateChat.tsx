@@ -15,6 +15,12 @@ import { uploadAudio } from '@/lib/audio-service';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
+/**
+ * PrivateChat Component
+ * --------------------
+ * High-performance real-time messaging interface.
+ * Implements the sub-collection pattern for messages and non-blocking metadata updates.
+ */
 export default function PrivateChat({ chatId, otherUser }: { chatId: string, otherUser: User }) {
   const { firestore, auth, storage } = useFirebase();
   const { user: userProfile } = useAuth();
@@ -27,12 +33,14 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
   const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // 1. REAL-TIME MESSAGE STREAM: Sub-collection listener
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(collection(firestore, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc')) : null
   , [firestore, chatId]);
   
   const { data: messages } = useCollection<Message>(messagesQuery);
 
+  // Auto-scroll to bottom on new vibrations
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -42,19 +50,21 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
     if (!text.trim() || !firestore || !auth.currentUser || !userProfile) return;
 
     const messageData: Partial<Message> = {
-      text,
+      text: text.trim(),
       senderId: auth.currentUser.uid,
-      senderName: userProfile.name || auth.currentUser.displayName || "Unknown User",
+      senderName: userProfile.name || "Unknown User",
       createdAt: new Date().toISOString(),
       type: 'text',
       replyTo: replyingTo ? { messageId: replyingTo.id, text: replyingTo.text || '', senderName: replyingTo.senderName } : null,
       isForwarded: false,
     };
 
+    // A. Add to sub-collection (Non-blocking)
     addDocumentNonBlocking(collection(firestore, 'chats', chatId, 'messages'), messageData);
 
+    // B. Update parent chat metadata for sidebar sorting (Non-blocking)
     updateDocumentNonBlocking(doc(firestore, 'chats', chatId), {
-      lastMessage: text,
+      lastMessage: text.trim(),
       updatedAt: new Date().toISOString()
     });
 
@@ -81,8 +91,10 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
         isForwarded: false,
       };
 
+      // A. Add to sub-collection
       addDocumentNonBlocking(collection(firestore, 'chats', chatId, 'messages'), messageData);
       
+      // B. Update metadata
       updateDocumentNonBlocking(doc(firestore, 'chats', chatId), {
         lastMessage: "🎤 Voice Message",
         updatedAt: new Date().toISOString()
@@ -98,7 +110,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
 
   return (
     <>
-      <div className="flex flex-col h-full bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden">
+      <div className="flex flex-col h-full bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in duration-500">
         {/* CHAT HEADER */}
         <div className="p-6 bg-slate-900 text-white flex justify-between items-center flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -108,7 +120,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
             <div>
               <h3 className="font-bold text-sm">{otherUser.name}</h3>
               <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest">
-                {otherUser.campusAcronym || 'GH'} • Online
+                {otherUser.campusAcronym || 'GH'} • Yard Signal Active
               </p>
             </div>
           </div>
@@ -123,7 +135,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
               <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                 <div className={cn(
                     "max-w-[85%] group relative p-4 transition-all",
-                    isMe ? 'bg-blue-600 text-white rounded-3xl rounded-tr-none' : 'bg-white text-slate-800 rounded-3xl rounded-tl-none shadow-sm'
+                    isMe ? 'bg-blue-600 text-white rounded-3xl rounded-tr-none' : 'bg-white text-slate-800 rounded-3xl rounded-tl-none shadow-sm border border-slate-100'
                 )}>
                   
                   {msg.isForwarded && (
@@ -152,7 +164,8 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
                     <p className="font-medium text-sm leading-relaxed">{msg.text}</p>
                   )}
 
-                  <div className={`absolute top-0 ${isMe ? '-left-12' : '-right-12'} opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1`}>
+                  {/* Context Actions */}
+                  <div className={`absolute top-0 ${isMe ? '-left-12' : '-right-12'} opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1 z-10`}>
                      <button onClick={() => setReplyingTo(msg)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-blue-600 active:scale-90 transition-all"><Reply size={14}/></button>
                      <button onClick={() => setForwardingMessage(msg)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-green-600 active:scale-90 transition-all"><Forward size={14}/></button>
                   </div>
@@ -205,7 +218,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
               <input 
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Message the Yard..."
+                placeholder="Broadcast your vibe..."
                 className="flex-1 bg-slate-50 p-4 rounded-[2rem] border-none outline-none text-sm font-medium focus:bg-slate-100 transition-all"
               />
               <button type="submit" disabled={!text.trim()} className="p-4 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-100 active:scale-90 transition-transform disabled:opacity-30">
