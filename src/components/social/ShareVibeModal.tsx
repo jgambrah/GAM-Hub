@@ -88,12 +88,14 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
       let videoHash: string | null = null;
       let finalDuration = 0;
 
+      const uid = auth.currentUser.uid;
       const targetCampusId = (isGlobal && isAdmin) ? "all" : (userProfile.campusId ?? "all");
       const targetCampusAcronym = (isGlobal && isAdmin) ? "GH" : (userProfile.campusAcronym ?? "GH");
 
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
-        const fileRef = ref(storage, `social_posts/${userProfile.campusId}/${Date.now()}_${imageFile.name}`);
+        // USE USER-SPECIFIC PATH FOR SECURITY
+        const fileRef = ref(storage, `users/${uid}/images/${Date.now()}_${imageFile.name}`);
         await uploadBytes(fileRef, imageFile);
         imageUrl = await getDownloadURL(fileRef);
         mediaUrl = imageUrl;
@@ -111,7 +113,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
             await updateDoc(hashRef, { uploads: increment(1) });
             toast({ title: "Viral Match!", description: "Reusing existing high-quality video node." });
         } else {
-            const filePath = `videos/hot/${auth.currentUser.uid}/${Date.now()}_${videoFile.name}`;
+            const filePath = `users/${uid}/videos/${Date.now()}_${videoFile.name}`;
             const fileRef = ref(storage, filePath);
             await uploadBytes(fileRef, videoFile, { customMetadata: { hash: videoHash } });
             mediaUrl = await getDownloadURL(fileRef);
@@ -127,7 +129,8 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         }
       } else if (postType === 'shoutout' && audioBlob) {
         mediaType = 'audio';
-        const path = `social_shoutouts/${userProfile.campusId}/${Date.now()}_voice_shout.webm`;
+        // USE USER-SPECIFIC PATH FOR SECURITY
+        const path = `users/${uid}/shoutouts/${Date.now()}_voice_shout.webm`;
         mediaUrl = await uploadAudio(storage, audioBlob, path);
         finalDuration = audioDuration;
       } else if (postType === 'link' && externalUrl) {
@@ -137,7 +140,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       const manualTags = extractHashtags(content);
       const postData: any = {
-        authorId: auth.currentUser.uid,
+        authorId: uid,
         authorName: userProfile.name || "Campus Member",
         authorAvatarUrl: userProfile.avatarUrl ?? "",
         campusId: targetCampusId,
@@ -182,9 +185,9 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       toast({ title: 'Vibe Shared!' });
       onClose();
-    } catch (err) { 
+    } catch (err: any) { 
       console.error(err);
-      toast({ variant: 'destructive', title: 'Broadcast Failed' }); 
+      toast({ variant: 'destructive', title: 'Broadcast Failed', description: err.message }); 
     } finally { 
       setLoading(false); 
     }
@@ -224,7 +227,7 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
                 </div>
             )}
 
-            {/* THE BIG MIC POD */}
+            {/* THE BIG MIC POD - HERO MODE */}
             {postType === 'shoutout' && (
                 <div className="p-8 bg-blue-50 dark:bg-blue-900/20 rounded-[2.5rem] border-2 border-blue-100 dark:border-blue-800 animate-in slide-in-from-top-2 relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">

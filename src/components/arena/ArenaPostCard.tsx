@@ -5,7 +5,7 @@ import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic, Music } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
@@ -208,10 +208,20 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                 <>
                     {post.content && <p className="text-lg font-bold text-foreground leading-tight">"{post.content}"</p>}
                     
+                    {/* 🎙️ SHOUTOUT HERO STAGE (ARENA MODE) */}
                     {post.mediaType === 'audio' && post.mediaUrl && (
-                        <div className="mt-4 p-6 bg-slate-900 rounded-3xl border-2 border-white/5 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-4 opacity-5"><Mic size={80} className="text-blue-400" /></div>
-                            <VoicePlayer url={post.mediaUrl} duration={post.duration} theme="dark" />
+                        <div className="mt-4 p-8 bg-slate-900 rounded-[2.5rem] border-2 border-white/5 relative overflow-hidden flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-slate-800 transition-all group/audio">
+                            <div className="absolute inset-0 bg-gradient-to-br from-red-600/10 to-blue-600/10 opacity-50" />
+                            <div className="relative z-10 p-6 bg-white/5 backdrop-blur-md rounded-full border-2 border-white/10 group-hover/audio:scale-110 transition-transform duration-500">
+                                <Mic size={40} className="text-blue-400" />
+                            </div>
+                            <div className="relative z-10 w-full max-w-sm">
+                                <VoicePlayer url={post.mediaUrl} duration={post.duration} theme="dark" />
+                                <div className="mt-3 flex items-center justify-center gap-2">
+                                    <Music size={12} className="text-slate-500" />
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Arena Vocal Signal</span>
+                                </div>
+                            </div>
                         </div>
                     )}
 

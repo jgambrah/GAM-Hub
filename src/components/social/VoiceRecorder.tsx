@@ -123,55 +123,70 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center justify-center w-full">
       {isRecording ? (
-        <div className="flex items-center gap-3 bg-red-50 dark:bg-red-950/20 px-4 py-2 rounded-2xl animate-in slide-in-from-left-2 border border-red-100 dark:border-red-900 shadow-sm min-w-[140px]">
-          <div className="w-2 h-2 bg-red-600 rounded-full animate-pulse" />
-          <span className={cn(
-            "text-xs font-black tabular-nums",
-            duration > 50 ? "text-amber-600 animate-bounce" : "text-red-600"
-          )}>
-            {formatTime(duration)} / 1:00
-          </span>
+        <div className="flex flex-col items-center gap-4 bg-red-50 dark:bg-red-950/20 p-8 rounded-[2.5rem] animate-in zoom-in border-2 border-red-100 dark:border-red-900 shadow-xl w-full">
+          <div className="relative">
+            <div className="w-20 h-20 bg-red-600 rounded-full animate-ping absolute inset-0 opacity-20" />
+            <div className="w-20 h-20 bg-red-600 rounded-full flex items-center justify-center relative z-10">
+                <Mic size={32} className="text-white animate-pulse" />
+            </div>
+          </div>
+          
+          <div className="text-center">
+            <span className={cn(
+                "text-2xl font-black tabular-nums",
+                duration > 50 ? "text-amber-600" : "text-red-600"
+            )}>
+                {formatTime(duration)}
+            </span>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Recording Live Vibe</p>
+          </div>
+
           <button 
             type="button"
             onClick={(e) => { e.preventDefault(); stopRecording(); }}
-            className="p-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition-all active:scale-90"
+            className="px-10 py-4 bg-red-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-700 transition-all active:scale-90 shadow-lg"
           >
-            <Square size={14} fill="currentColor" />
+            Stop & Review
           </button>
         </div>
       ) : previewUrl ? (
-        <div className="flex items-center gap-2 bg-slate-900 dark:bg-card p-2 rounded-2xl animate-in zoom-in-95 border border-white/10 shadow-2xl min-w-[200px]">
-          <button 
-            type="button" 
-            onClick={(e) => { e.preventDefault(); togglePlayback(); }}
-            className="p-2.5 bg-blue-600 text-white rounded-xl shadow-md hover:bg-blue-500 transition-all"
-          >
-            {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
-          </button>
-          
-          <div className="flex-1 px-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-white">{formatTime(duration)}</span>
+        <div className="flex flex-col items-center gap-6 bg-slate-900 dark:bg-card p-8 rounded-[3rem] animate-in zoom-in-95 border-4 border-white/10 shadow-2xl w-full">
+          <div className="flex items-center gap-4 w-full">
+            <button 
+                type="button" 
+                onClick={(e) => { e.preventDefault(); togglePlayback(); }}
+                className="w-16 h-16 bg-blue-600 text-white rounded-2xl shadow-xl hover:bg-blue-500 transition-all active:scale-95 flex items-center justify-center"
+            >
+                {isPlaying ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}
+            </button>
+            
+            <div className="flex-1 space-y-1">
+                <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 transition-all" style={{ width: isPlaying ? '100%' : '0%', transitionDuration: isPlaying ? `${duration}s` : '0s' }} />
+                </div>
+                <div className="flex justify-between items-center text-[10px] font-black uppercase text-white/40 tracking-widest">
+                    <span>Vibration Recorded</span>
+                    <span className="text-white">{formatTime(duration)}</span>
+                </div>
+            </div>
           </div>
 
-          <div className="flex gap-1">
+          <div className="grid grid-cols-2 gap-3 w-full">
             <button 
                 type="button" 
                 onClick={(e) => { e.preventDefault(); handleReset(); }}
-                className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
-                title="Discard"
+                className="flex items-center justify-center gap-2 py-4 bg-white/5 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest border border-white/5"
             >
-                <Trash2 size={16} />
+                <Trash2 size={16} /> Discard
             </button>
             <button 
                 type="button" 
                 onClick={handleSend}
-                className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-lg hover:bg-emerald-500 transition-all active:scale-95 flex items-center gap-2"
-                title="Attach Voice"
+                className="flex items-center justify-center gap-2 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest shadow-xl active:scale-95"
             >
-                <Send size={16} />
-                <span className="text-[10px] font-black uppercase hidden sm:inline">Attach</span>
+                <Send size={16} /> Attach Vibe
             </button>
           </div>
           <audio 
@@ -186,11 +201,15 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
           type="button"
           disabled={disabled}
           onClick={(e) => { e.preventDefault(); startRecording(); }}
-          className="p-2.5 text-muted-foreground hover:text-primary transition-all hover:scale-110 active:scale-90 disabled:opacity-30 flex items-center gap-2 group"
-          title="Record Voice Vibe"
+          className="group flex flex-col items-center gap-4 p-12 rounded-[3.5rem] bg-indigo-50 dark:bg-indigo-950/20 border-4 border-dashed border-indigo-200 dark:border-indigo-900/50 hover:border-indigo-500 transition-all w-full"
         >
-          <Mic size={22} />
-          <span className="text-[8px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">Speak to the Yard</span>
+          <div className="p-6 bg-white dark:bg-slate-900 rounded-full shadow-xl group-hover:scale-110 transition-transform group-active:scale-95">
+            <Mic size={48} className="text-indigo-600" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-widest">Speak to the Yard</p>
+            <p className="text-[10px] text-indigo-400 font-bold mt-1 uppercase tracking-widest opacity-60 italic">Tap to start vocalizing</p>
+          </div>
         </button>
       )}
     </div>
