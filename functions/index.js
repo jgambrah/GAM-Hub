@@ -175,7 +175,6 @@ exports.compressVideo = onObjectFinalized({
 
 /**
  * 🔔 NOTIFICATION ENGINE
- * Automatically triggers alerts for social and commercial events.
  */
 
 // 1. Push Notification Relay: Dispatches FCM message whenever a notification doc is created
@@ -184,7 +183,6 @@ exports.onNotificationCreated = onDocumentCreated("users/{userId}/notifications/
   const userId = event.params.userId;
   const db = admin.firestore();
 
-  // Fetch the recipient's FCM token from their profile
   const userSnap = await db.collection("users").doc(userId).get();
   const userData = userSnap.data();
   const token = userData?.fcmToken;
@@ -299,6 +297,30 @@ exports.onChatMessageCreated = onDocumentCreated("chats/{chatId}/messages/{messa
     read: false,
     createdAt: admin.firestore.FieldValue.serverTimestamp()
   });
+});
+
+/**
+ * 🧹 NOTIFICATION PRUNING (Cost Optimization)
+ */
+exports.pruneNotifications = onSchedule("every 24 hours", async (event) => {
+  const db = admin.firestore();
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  // Archive or delete notifications older than 30 days
+  const expiredSnap = await db.collectionGroup("notifications")
+    .where("createdAt", "<", thirtyDaysAgo)
+    .limit(500) // Process in chunks to prevent timeout
+    .get();
+
+  if (expiredSnap.empty) return null;
+
+  const batch = db.batch();
+  expiredSnap.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+  
+  console.log(`🧹 Liaison: Pruned ${expiredSnap.size} stale notifications from the Yard.`);
+  return null;
 });
 
 /**

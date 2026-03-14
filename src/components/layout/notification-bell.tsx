@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { useFirebase, useCollection, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, limit, doc, where } from 'firebase/firestore';
+import { collection, query, orderBy, limit, doc } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
 import type { Notification } from '@/lib/types';
 import { 
@@ -28,14 +28,14 @@ import { cn } from '@/lib/utils';
  * NotificationBell Component
  * ------------------------
  * Real-time notification orchestrator for the Yard.
- * Now expanded with FCM push context and exhaustive type handling.
+ * Implements cost-optimized retrieval (limit 20) and push context.
  */
 export function NotificationBell() {
   const { firestore } = useFirebase();
   const { user } = useAuth();
   const router = useRouter();
 
-  // 📶 REAL-TIME LISTENER HANDSHAKE
+  // 📶 REAL-TIME LISTENER: Optimized to last 20 vibrations
   const notifQuery = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
     return query(
@@ -132,7 +132,7 @@ export function NotificationBell() {
                   onClick={() => handleNotifClick(notif)}
                   className={cn(
                     "flex items-start gap-4 p-4 cursor-pointer transition-colors focus:bg-muted/50",
-                    !notif.read ? "bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-blue-500" : "border-l-4 border-transparent"
+                    !notif.read ? "bg-blue-50/50 dark:bg-blue-900/10 border-l-4 border-blue-500 shadow-sm" : "border-l-4 border-transparent"
                   )}
                 >
                   <div className={cn(
