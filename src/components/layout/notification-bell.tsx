@@ -8,7 +8,8 @@ import { useAuth } from '@/hooks/use-auth';
 import type { Notification } from '@/lib/types';
 import { 
   Bell, MessageSquare, ThumbsUp, ShoppingBag, Flame, 
-  Zap, Circle, CheckCircle2, UserPlus, Mic, Calendar, Loader2 
+  Zap, Circle, CheckCircle2, UserPlus, Mic, Calendar, 
+  Loader2, Share2, Tag, Info, AlertTriangle, PackageSearch
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -18,7 +19,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'next/navigation';
@@ -28,7 +28,7 @@ import { cn } from '@/lib/utils';
  * NotificationBell Component
  * ------------------------
  * Real-time notification orchestrator for the Yard.
- * Synchronizes with the user's private notification sub-collection.
+ * Now expanded with FCM push context and exhaustive type handling.
  */
 export function NotificationBell() {
   const { firestore } = useFirebase();
@@ -52,7 +52,7 @@ export function NotificationBell() {
   const handleNotifClick = async (notif: Notification) => {
     if (!firestore || !user?.id) return;
     
-    // Mark as read (Non-blocking)
+    // Mark as read instantly (Non-blocking)
     const notifRef = doc(firestore, 'users', user.id, 'notifications', notif.id);
     updateDocumentNonBlocking(notifRef, { read: true });
 
@@ -73,12 +73,19 @@ export function NotificationBell() {
     switch (type) {
       case 'comment': return <MessageSquare className="text-blue-500" size={16} />;
       case 'like': return <Flame className="text-orange-500" size={16} />;
-      case 'order': 
-      case 'marketplace_order': return <ShoppingBag className="text-emerald-500" size={16} />;
-      case 'message': return <Zap className="text-indigo-500" size={16} />;
+      case 'share': return <Share2 className="text-cyan-500" size={16} />;
       case 'follow': return <UserPlus className="text-purple-500" size={16} />;
       case 'voice_reply': return <Mic className="text-pink-500" size={16} />;
+      case 'message':
+      case 'voice_message':
+      case 'group_message': return <Zap className="text-indigo-500" size={16} />;
+      case 'order': return <ShoppingBag className="text-emerald-500" size={16} />;
+      case 'price_drop': return <Tag className="text-red-500" size={16} />;
+      case 'vendor_reply': return <MessageSquare className="text-amber-500" size={16} />;
+      case 'product_recommendation': return <PackageSearch className="text-blue-600" size={16} />;
       case 'event': return <Calendar className="text-amber-500" size={16} />;
+      case 'hostel_update': return <Info className="text-slate-500" size={16} />;
+      case 'department_news': return <AlertTriangle className="text-red-400" size={16} />;
       default: return <Bell className="text-slate-400" size={16} />;
     }
   };
@@ -99,9 +106,11 @@ export function NotificationBell() {
         <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
           <div>
             <DropdownMenuLabel className="p-0 text-lg font-black tracking-tight italic">
-                Notifications {unreadCount > 0 && `(${unreadCount})`}
+                Yard Notifications
             </DropdownMenuLabel>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Real-time Yard Activity</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                {unreadCount > 0 ? `${unreadCount} new vibrations` : 'Pulse is quiet'}
+            </p>
           </div>
           {unreadCount > 0 && (
             <button onClick={markAllRead} className="text-[10px] font-black text-blue-400 hover:text-blue-300 uppercase tracking-widest flex items-center gap-1">
@@ -135,15 +144,13 @@ export function NotificationBell() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start gap-2">
                         <p className={cn("text-sm leading-tight", !notif.read ? "font-black text-slate-900 dark:text-white" : "font-semibold text-slate-500 dark:text-slate-400")}>
-                            {notif.title || notif.message}
+                            {notif.title}
                         </p>
                         {!notif.read && <Circle className="fill-blue-500 text-blue-500 shrink-0 mt-1" size={8} />}
                     </div>
-                    {notif.title && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                            {notif.message}
-                        </p>
-                    )}
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                        {notif.message}
+                    </p>
                     <p className="text-[9px] font-black text-slate-400 uppercase mt-2">
                       {formatDistanceToNow(new Date(notif.createdAt?.toDate?.() || notif.createdAt), { addSuffix: true })}
                     </p>
@@ -154,8 +161,8 @@ export function NotificationBell() {
               <div className="p-16 text-center text-muted-foreground flex flex-col items-center gap-4 opacity-40">
                 <Bell size={48} className="stroke-[1.5]" />
                 <div className="space-y-1">
-                    <p className="font-black uppercase tracking-widest text-[10px]">Your Yard is Quiet</p>
-                    <p className="text-[10px] font-medium leading-relaxed">No new vibrations yet.</p>
+                    <p className="font-black uppercase tracking-widest text-[10px]">Inbox Empty</p>
+                    <p className="text-[10px] font-medium leading-relaxed">Vibe with your peers to see alerts.</p>
                 </div>
               </div>
             )}
@@ -163,7 +170,7 @@ export function NotificationBell() {
         </ScrollArea>
         
         <div className="p-4 bg-slate-50 dark:bg-muted/20 border-t text-center">
-           <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Official Notification Node • GH</p>
+           <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">National Handshake Node • GH</p>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

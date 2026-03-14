@@ -1,86 +1,72 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
-import { useAuth } from '@/hooks/use-auth';
-import { saveFcmToken } from '@/lib/market-intelligence';
-import { getMessaging, getToken, onMessage } from 'firebase/messaging';
-import { collection, query, where, orderBy, limit, getDocs, doc } from 'firebase/firestore';
-
 /**
  * useNotifications Hook
  * --------------------
  * Orchestrates device token registration and foreground message handling.
- * Now expanded with Analytics Tracking for Open/Click events.
+ * Synchronizes with the Yard's Push Notification Node.
  */
+
+import { useEffect, useState } from 'react';
+import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
+import { useAuth } from '@/hooks/use-auth';
+import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { doc } from 'firebase/firestore';
+
 export function useNotifications() {
   const { firestore, firebaseApp } = useFirebase();
   const { user } = useAuth();
   const [permission, setPermission] = useState<NotificationPermission>('default');
 
   useEffect(() => {
+    // 🛡️ SECURITY GUARD: FCM requires browser context and authenticated user
     if (typeof window === 'undefined' || !user?.id || !firestore || !firebaseApp) return;
 
-    // Check if browser supports notifications
     if (!("Notification" in window)) {
       console.warn("Liaison Alert: Browser does not support push notifications.");
       return;
     }
 
-    if (Notification.permission !== 'granted') {
-        setPermission(Notification.permission);
-    }
-
-    const registerToken = async () => {
+    const registerPushProtocol = async () => {
       try {
         const messaging = getMessaging(firebaseApp);
         
-        // Request permission
+        // 1. Request Permission
         const status = await Notification.requestPermission();
         setPermission(status);
 
         if (status === 'granted') {
-          // Get FCM Token
+          // 2. Get Device Token
           const token = await getToken(messaging, {
+            // Liaison Note: Replace with your actual VAPID key from Firebase Console
             vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY
           });
 
           if (token && token !== user.fcmToken) {
-            await saveFcmToken(firestore, user.id, token);
-            console.log("🔔 Liaison: Device token synced to Yard.");
+            // 3. Handshake: Sync token to user profile
+            const userRef = doc(firestore, 'users', user.id);
+            updateDocumentNonBlocking(userRef, { fcmToken: token });
+            console.log("🔔 Liaison: Device push token synced to Yard.");
           }
         }
       } catch (err) {
-        console.error("🔔 Liaison: Notification registration failed:", err);
+        console.warn("🔔 Liaison: Notification protocol failed:", err);
       }
     };
 
-    registerToken();
+    registerPushProtocol();
 
-    // 📈 ANALYTICS: Listener for foreground notifications
+    // 4. Foreground Listener: Handle vibes while user is active
     const messaging = getMessaging(firebaseApp);
-    const unsubscribe = onMessage(messaging, async (payload) => {
-      console.log('🔔 Liaison: Foreground Vibe Received:', payload);
-      
-      // LOG OPEN EVENT: Since the user is active in the app when this fires
-      if (payload.data?.productId) {
-          try {
-              const q = query(
-                  collection(firestore, 'notifications'),
-                  where('userId', '==', user.id),
-                  where('relatedProductId', '==', payload.data.productId),
-                  orderBy('sentAt', 'desc'),
-                  limit(1)
-              );
-              const snap = await getDocs(q);
-              if (!snap.empty) {
-                  const notifRef = doc(firestore, 'notifications', snap.docs[0].id);
-                  updateDocumentNonBlocking(notifRef, { opened: true, clicked: true });
-              }
-          } catch (e) {
-              console.warn("Analytics Sync Failed:", e);
-          }
+    const unsubscribe = onMessage(messaging, (payload) => {
+      console.log('🔔 Liaison: Foreground vibe received:', payload);
+      // Native browser notification if user allows
+      if (Notification.permission === 'granted') {
+          new Notification(payload.notification?.title || "New Vibe", {
+              body: payload.notification?.body,
+              icon: '/favicon.ico'
+          });
       }
     });
 

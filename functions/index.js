@@ -178,17 +178,50 @@ exports.compressVideo = onObjectFinalized({
  * Automatically triggers alerts for social and commercial events.
  */
 
-// 1. Social: Comment Notifications
+// 1. Push Notification Relay: Dispatches FCM message whenever a notification doc is created
+exports.onNotificationCreated = onDocumentCreated("users/{userId}/notifications/{notifId}", async (event) => {
+  const notif = event.data.data();
+  const userId = event.params.userId;
+  const db = admin.firestore();
+
+  // Fetch the recipient's FCM token from their profile
+  const userSnap = await db.collection("users").doc(userId).get();
+  const userData = userSnap.data();
+  const token = userData?.fcmToken;
+
+  if (!token) return null;
+
+  const payload = {
+    notification: {
+      title: notif.title,
+      body: notif.message,
+    },
+    data: {
+      link: notif.link || "",
+      type: notif.type,
+      notifId: event.params.notifId,
+    },
+    token: token
+  };
+
+  try {
+    await admin.messaging().send(payload);
+    console.log(`📡 Liaison FCM: Dispatched push to ${userId} for ${notif.type}`);
+  } catch (err) {
+    console.error("Liaison FCM Dispatch Error:", err);
+  }
+  return null;
+});
+
+// 2. Social: Comment Notifications
 exports.onCommentCreated = onDocumentCreated("campus_pulse/{postId}/comments/{commentId}", async (event) => {
   const comment = event.data.data();
   const db = admin.firestore();
   
-  // Get post to find the author
   const postSnap = await db.collection("campus_pulse").doc(event.params.postId).get();
   if (!postSnap.exists) return null;
   const post = postSnap.data();
   
-  // Don't notify self
   if (post.authorId === comment.userId) return null;
 
   return db.collection("users").doc(post.authorId).collection("notifications").add({
@@ -203,7 +236,7 @@ exports.onCommentCreated = onDocumentCreated("campus_pulse/{postId}/comments/{co
   });
 });
 
-// 2. Social: Like Notifications (Sub-collection)
+// 3. Social: Like Notifications
 exports.onLikeCreated = onDocumentCreated("campus_pulse/{postId}/likedBy/{userId}", async (event) => {
   const db = admin.firestore();
   
@@ -228,7 +261,7 @@ exports.onLikeCreated = onDocumentCreated("campus_pulse/{postId}/likedBy/{userId
   });
 });
 
-// 3. Commercial: New Order Notifications (To Vendor)
+// 4. Commercial: New Order Notifications (To Vendor)
 exports.onOrderCreated = onDocumentCreated("orders/{orderId}", async (event) => {
   const order = event.data.data();
   const db = admin.firestore();
@@ -245,31 +278,6 @@ exports.onOrderCreated = onDocumentCreated("orders/{orderId}", async (event) => 
   });
 });
 
-// 4. Commercial: Order Status Updates (To Buyer)
-exports.onOrderStatusUpdated = onDocumentUpdated("orders/{orderId}", async (event) => {
-  const before = event.data.before.data();
-  const after = event.data.after.data();
-  const db = admin.firestore();
-
-  if (before.status === after.status) return null;
-
-  let message = "";
-  if (after.status === 'confirmed') message = `Stock confirmed for ${after.productName}. You can now pay.`;
-  if (after.status === 'paid') message = `Payment for ${after.productName} secured in Escrow.`;
-  if (after.status === 'completed') message = `Transaction for ${after.productName} finalized.`;
-
-  if (!message) return null;
-
-  return db.collection("users").doc(after.buyerId).collection("notifications").add({
-    type: "order",
-    title: "Order Update",
-    message: message,
-    link: `/orders/${event.params.orderId}`,
-    read: false,
-    createdAt: admin.firestore.FieldValue.serverTimestamp()
-  });
-});
-
 // 5. Chat: Private Message Notifications
 exports.onChatMessageCreated = onDocumentCreated("chats/{chatId}/messages/{messageId}", async (event) => {
   const message = event.data.data();
@@ -278,7 +286,6 @@ exports.onChatMessageCreated = onDocumentCreated("chats/{chatId}/messages/{messa
   const chatSnap = await db.collection("chats").doc(event.params.chatId).get();
   const chat = chatSnap.data();
   
-  // Find the other user in the chat
   const recipientId = chat.users.find(uid => uid !== message.senderId);
   if (!recipientId) return null;
 
@@ -332,8 +339,6 @@ exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event
 exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   const db = admin.firestore();
   const bucket = admin.storage().bucket();
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
@@ -356,27 +361,6 @@ exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
           await bucket.file(newPath).setStorageClass("COLDLINE");
           const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
           await doc.ref.update({ mediaUrl: newUrl, storageTier: 'cold', storagePath: newPath });
-      }
-    }
-
-    const warmSnap = await db.collection("campus_pulse")
-      .where("mediaType", "==", "video")
-      .where("likes", "<", 10)
-      .where("createdAt", "<", thirtyDaysAgo.toISOString())
-      .get();
-
-    for (const doc of warmSnap.docs) {
-      const data = doc.data();
-      if (data.storageTier === 'warm' || data.storageTier === 'cold' || !data.storagePath) continue;
-      
-      if (data.storagePath.includes("videos/hot/")) {
-        const oldPath = data.storagePath;
-        const newPath = oldPath.replace("videos/hot/", "videos/warm/");
-        
-        await bucket.file(oldPath).move(newPath);
-        await bucket.file(newPath).setStorageClass("NEARLINE");
-        const newUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(newPath)}?alt=media`;
-        await doc.ref.update({ mediaUrl: newUrl, storageTier: 'warm', storagePath: newPath });
       }
     }
   } catch (err) {

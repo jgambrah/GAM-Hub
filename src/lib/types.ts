@@ -35,7 +35,11 @@ export type User = {
 
 export type Notification = {
   id: string;
-  type: 'like' | 'comment' | 'message' | 'order' | 'marketplace_order' | 'follow' | 'voice_reply' | 'event' | 'system';
+  type: 
+    | 'like' | 'comment' | 'share' | 'follow' | 'voice_reply' 
+    | 'message' | 'voice_message' | 'group_message'
+    | 'order' | 'price_drop' | 'vendor_reply' | 'product_recommendation'
+    | 'event' | 'hostel_update' | 'department_news' | 'system';
   title: string;
   message: string;
   link?: string;
