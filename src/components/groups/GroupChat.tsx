@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, limitToLast } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
 import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ImagePlus, ShoppingBag } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
@@ -21,6 +21,12 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 
+/**
+ * GroupChat Component
+ * ------------------
+ * Real-time community messaging hub.
+ * COST OPTIMIZED: limitToLast(50) and parent metadata synchronization.
+ */
 export default function GroupChat({ group }: { group: Group }) {
   const { firestore, storage, auth } = useFirebase();
   const { user: userProfile } = useAuth();
@@ -35,8 +41,13 @@ export default function GroupChat({ group }: { group: Group }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 1. REAL-TIME GROUP FEED: Sub-collection listener
+  // Optimization: Only load the last 50 vibrations to save on read costs.
   const messagesQuery = useMemoFirebase(() => 
-    firestore ? query(collection(firestore, 'groups', group.id, 'messages'), orderBy('createdAt', 'asc')) : null
+    firestore ? query(
+        collection(firestore, 'groups', group.id, 'messages'), 
+        orderBy('createdAt', 'asc'),
+        limitToLast(50)
+    ) : null
   , [firestore, group.id]);
   
   const { data: messages, isLoading } = useCollection<Message>(messagesQuery);
@@ -59,7 +70,15 @@ export default function GroupChat({ group }: { group: Group }) {
       isForwarded: false,
     };
 
+    // A. Sub-collection Write
     addDocumentNonBlocking(collection(firestore, 'groups', group.id, 'messages'), messageData);
+
+    // B. Root Metadata Sync: For community list previews
+    updateDocumentNonBlocking(doc(firestore, 'groups', group.id), {
+      lastMessage: text.trim(),
+      updatedAt: new Date().toISOString()
+    });
+
     setText('');
     setReplyingTo(null);
     setShowEmoji(false);
@@ -84,6 +103,12 @@ export default function GroupChat({ group }: { group: Group }) {
       };
 
       addDocumentNonBlocking(collection(firestore, 'groups', group.id, 'messages'), messageData);
+
+      updateDocumentNonBlocking(doc(firestore, 'groups', group.id), {
+        lastMessage: "🎤 Voice Message",
+        updatedAt: new Date().toISOString()
+      });
+
     } catch (err) {
       console.error("Liaison Voice Upload Error:", err);
       toast({ variant: 'destructive', title: "Voice Note Failed" });
@@ -124,6 +149,12 @@ export default function GroupChat({ group }: { group: Group }) {
         };
 
         addDocumentNonBlocking(collection(firestore, 'groups', group.id, 'messages'), messageData);
+
+        updateDocumentNonBlocking(doc(firestore, 'groups', group.id), {
+            lastMessage: file.type.startsWith('image') ? "🖼️ Shared an image" : "📄 Shared a file",
+            updatedAt: new Date().toISOString()
+        });
+
     } catch (err) {
         console.error(err);
         toast({ variant: 'destructive', title: 'Upload Failed' });

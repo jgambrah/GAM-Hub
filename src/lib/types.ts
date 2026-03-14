@@ -371,6 +371,22 @@ export type Message = {
   } | null;
 };
 
+export type Group = {
+  id: string;
+  name: string;
+  description?: string;
+  campusId: string;
+  createdBy: string;
+  members: string[];
+  admins: string[];
+  type: 'class' | 'department' | 'social' | 'staff-only';
+  isPrivate: boolean;
+  isMainRoom?: boolean;
+  createdAt: string;
+  lastMessage?: string;
+  updatedAt: string;
+};
+
 export type MarketIntent = {
   category?: string;
   tags?: string[];

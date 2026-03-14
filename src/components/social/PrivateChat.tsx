@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, limitToLast } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
 import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ShoppingBag } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
  * --------------------
  * High-performance real-time messaging interface.
  * Implements the sub-collection pattern for messages and non-blocking metadata updates.
+ * COST OPTIMIZED: Uses limitToLast(50) to prevent excessive read operations.
  */
 export default function PrivateChat({ chatId, otherUser }: { chatId: string, otherUser: User }) {
   const { firestore, auth, storage } = useFirebase();
@@ -37,8 +38,13 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 1. REAL-TIME MESSAGE STREAM: Sub-collection listener (The Heartbeat)
+  // COST OPTIMIZATION: limitToLast(50) ensures we only load the newest vibrations
   const messagesQuery = useMemoFirebase(() => 
-    firestore ? query(collection(firestore, 'chats', chatId, 'messages'), orderBy('createdAt', 'asc')) : null
+    firestore ? query(
+        collection(firestore, 'chats', chatId, 'messages'), 
+        orderBy('createdAt', 'asc'),
+        limitToLast(50)
+    ) : null
   , [firestore, chatId]);
   
   const { data: messages, isLoading } = useCollection<Message>(messagesQuery);
@@ -66,6 +72,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
     addDocumentNonBlocking(collection(firestore, 'chats', chatId, 'messages'), messageData);
 
     // B. Update parent chat metadata for sidebar sorting (Non-blocking)
+    // Optimization: Renderers use this field instead of querying the sub-collection for previews.
     updateDocumentNonBlocking(doc(firestore, 'chats', chatId), {
       lastMessage: text.trim(),
       updatedAt: new Date().toISOString()
@@ -224,7 +231,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
           )}
 
           {showEmoji && (
-            <div className="absolute bottom-full mb-4 left-4 z-50 shadow-2xl animate-in slide-in-from-bottom-2">
+            <div className="absolute bottom-full mb-4 left-4 z-50 shadow-2xl animate-in slide-in-from-bottom-2 duration-200">
                 <div className="flex justify-end p-2 bg-background rounded-t-2xl border-b border-border">
                     <button onClick={() => setShowEmoji(false)} className="p-1 hover:bg-muted rounded-full">
                         <X size={16} className="text-muted-foreground" />
