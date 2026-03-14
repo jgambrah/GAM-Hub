@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -94,7 +95,6 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
 
       if (postType === 'image' && imageFile) {
         mediaType = 'image';
-        // USE USER-SPECIFIC PATH FOR SECURITY
         const fileRef = ref(storage, `users/${uid}/images/${Date.now()}_${imageFile.name}`);
         await uploadBytes(fileRef, imageFile);
         imageUrl = await getDownloadURL(fileRef);
@@ -129,8 +129,8 @@ export default function ShareVibeModal({ userProfile, onClose }: any) {
         }
       } else if (postType === 'shoutout' && audioBlob) {
         mediaType = 'audio';
-        // USE USER-SPECIFIC PATH FOR SECURITY
-        const path = `users/${uid}/shoutouts/${Date.now()}_voice_shout.webm`;
+        // USE SIMPLIFIED USER-SPECIFIC PATH FOR MAXIMUM PERMISSION CLEARANCE
+        const path = `users/${uid}/${Date.now()}_voice_shout.webm`;
         mediaUrl = await uploadAudio(storage, audioBlob, path);
         finalDuration = audioDuration;
       } else if (postType === 'link' && externalUrl) {

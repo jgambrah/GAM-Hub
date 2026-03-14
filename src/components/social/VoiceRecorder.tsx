@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
@@ -63,7 +64,7 @@ export default function VoiceRecorder({ onSend, disabled }: VoiceRecorderProps) 
         const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' });
         setAudioBlob(blob);
         setPreviewUrl(URL.createObjectURL(blob));
-        // Stop all tracks to release the microphone
+        // CRITICAL: release all tracks immediately to free the hardware
         stream.getTracks().forEach(track => track.stop());
       };
 

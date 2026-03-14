@@ -48,8 +48,10 @@ export async function uploadAudio(
     const downloadUrl = await getDownloadURL(fileRef);
     console.log(`📡 Liaison Audio: Vibe synced to ${path}`);
     return downloadUrl;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Liaison Audio Upload Error:", error);
-    throw new Error("Failed to sync voice vibration to the Yard. Check your connection.");
+    // Provide the actual error message for better debugging
+    const message = error.message || "Unknown storage error";
+    throw new Error(`Failed to sync voice vibration: ${message}`);
   }
 }
