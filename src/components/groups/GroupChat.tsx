@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, limitToLast } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, limitToLast, setDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
 import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ImagePlus, ShoppingBag } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton';
  * GroupChat Component
  * ------------------
  * Real-time community messaging hub.
- * COST OPTIMIZED: limitToLast(50) and parent metadata synchronization.
+ * Now expanded with Multi-User Typing Indicators and Group Read Receipts.
  */
 export default function GroupChat({ group }: { group: Group }) {
   const { firestore, storage, auth } = useFirebase();
@@ -39,9 +39,9 @@ export default function GroupChat({ group }: { group: Group }) {
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 1. REAL-TIME GROUP FEED: Sub-collection listener
-  // Optimization: Only load the last 50 vibrations to save on read costs.
+  // 1. REAL-TIME GROUP FEED
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
         collection(firestore, 'groups', group.id, 'messages'), 
@@ -52,9 +52,55 @@ export default function GroupChat({ group }: { group: Group }) {
   
   const { data: messages, isLoading } = useCollection<Message>(messagesQuery);
 
+  // 2. TYPING INDICATOR LISTENER
+  const typingQuery = useMemoFirebase(() => 
+    firestore ? query(collection(firestore, 'groups', group.id, 'typing')) : null
+  , [firestore, group.id]);
+  const { data: typingDocs } = useCollection<any>(typingQuery);
+  const typingUsers = typingDocs?.filter(d => d.id !== auth.currentUser?.uid) || [];
+
+  // 3. READ RECEIPTS HANDSHAKE
+  useEffect(() => {
+    if (!messages || !auth.currentUser || !firestore) return;
+    const myId = auth.currentUser.uid;
+    
+    messages.forEach(msg => {
+      if (!msg.readBy?.includes(myId)) {
+        const msgRef = doc(firestore, 'groups', group.id, 'messages', msg.id);
+        updateDocumentNonBlocking(msgRef, { readBy: arrayUnion(myId) });
+      }
+    });
+  }, [messages, auth.currentUser?.uid, firestore, group.id]);
+
+  // 4. TYPING LOGIC
+  useEffect(() => {
+    if (!text.trim()) {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      updateTypingStatus(false);
+      return;
+    }
+
+    updateTypingStatus(true);
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      updateTypingStatus(false);
+    }, 3000);
+  }, [text]);
+
+  const updateTypingStatus = (isTyping: boolean) => {
+    if (!firestore || !auth.currentUser || !group.id) return;
+    const typingRef = doc(firestore, 'groups', group.id, 'typing', auth.currentUser.uid);
+    if (isTyping) {
+      setDoc(typingRef, { isTyping: true, userName: userProfile?.name, updatedAt: serverTimestamp() }, { merge: true });
+    } else {
+      deleteDoc(typingRef).catch(() => {});
+    }
+  };
+
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, typingUsers.length]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,14 +112,13 @@ export default function GroupChat({ group }: { group: Group }) {
       senderName: userProfile.name || "Unknown User",
       createdAt: new Date().toISOString(),
       type: 'text',
+      readBy: [auth.currentUser.uid],
       replyTo: replyingTo ? { messageId: replyingTo.id, text: replyingTo.text || '', senderName: replyingTo.senderName } : null,
       isForwarded: false,
     };
 
-    // A. Sub-collection Write
     addDocumentNonBlocking(collection(firestore, 'groups', group.id, 'messages'), messageData);
 
-    // B. Root Metadata Sync: For community list previews
     updateDocumentNonBlocking(doc(firestore, 'groups', group.id), {
       lastMessage: text.trim(),
       updatedAt: new Date().toISOString()
@@ -82,6 +127,7 @@ export default function GroupChat({ group }: { group: Group }) {
     setText('');
     setReplyingTo(null);
     setShowEmoji(false);
+    updateTypingStatus(false);
   };
 
   const handleSendAudio = async (blob: Blob, duration: number) => {
@@ -98,6 +144,7 @@ export default function GroupChat({ group }: { group: Group }) {
         duration: duration,
         senderId: auth.currentUser.uid,
         senderName: userProfile.name || "User",
+        readBy: [auth.currentUser.uid],
         createdAt: new Date().toISOString(),
         isForwarded: false,
       };
@@ -141,6 +188,7 @@ export default function GroupChat({ group }: { group: Group }) {
         const messageData: Partial<Message> = {
             senderId: userProfile.id,
             senderName: userProfile.name || "User",
+            readBy: [userProfile.id],
             createdAt: new Date().toISOString(),
             type: file.type.startsWith('image') ? 'image' : 'file',
             mediaUrl: downloadUrl,
@@ -175,6 +223,7 @@ export default function GroupChat({ group }: { group: Group }) {
         ) : messages && messages.length > 0 ? (
             messages.map((msg: Message) => {
                 const isMe = msg.senderId === auth.currentUser?.uid;
+                const readCount = (msg.readBy?.length || 1) - 1; // Exclude sender
                 return (
                     <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} gap-2`}>
                         {!isMe && (
@@ -235,6 +284,12 @@ export default function GroupChat({ group }: { group: Group }) {
                                 <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
                             )}
 
+                            {isMe && readCount > 0 && (
+                                <div className="mt-1 flex justify-end">
+                                    <p className="text-[8px] font-black uppercase opacity-60">Seen by {readCount}</p>
+                                </div>
+                            )}
+
                             <div className={`absolute top-0 ${isMe ? '-left-12' : '-right-12'} opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1`}>
                                 <button onClick={() => setReplyingTo(msg)} className="p-2 bg-background border shadow-md rounded-full text-muted-foreground hover:text-primary active:scale-90 transition-all"><Reply size={14}/></button>
                                 <button onClick={() => setForwardingMessage(msg)} className="p-2 bg-background border shadow-md rounded-full text-muted-foreground hover:text-green-600 active:scale-90 transition-all"><Forward size={14}/></button>
@@ -248,6 +303,23 @@ export default function GroupChat({ group }: { group: Group }) {
                 <ShieldCheck size={64} className="mb-4" />
                 <p className="font-black uppercase tracking-widest text-xs">Yard Fortress Encrypted</p>
                 <p className="text-[10px] mt-2 italic font-medium">Start the vibration by sending a message.</p>
+            </div>
+        )}
+
+        {typingUsers.length > 0 && (
+            <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2">
+                <div className="bg-muted/50 p-2.5 rounded-2xl flex items-center gap-2 border border-border/50">
+                    <span className="text-[9px] font-black text-primary uppercase tracking-widest">
+                        {typingUsers.length === 1 
+                            ? `${typingUsers[0].userName} is typing` 
+                            : `${typingUsers.length} members are typing`}
+                    </span>
+                    <div className="flex gap-0.5">
+                        <div className="w-1 h-1 bg-primary rounded-full animate-bounce" />
+                        <div className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:0.2s]" />
+                        <div className="w-1 h-1 bg-primary rounded-full animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                </div>
             </div>
         )}
         <div ref={scrollRef} />

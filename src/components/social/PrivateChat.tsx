@@ -3,9 +3,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, limitToLast } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, limitToLast, setDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
-import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ShoppingBag } from 'lucide-react';
+import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ShoppingBag, Check, CheckCheck } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
 import { ForwardMessageModal } from './ForwardMessageModal';
 import type { Message, User } from '@/lib/types';
@@ -22,8 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
  * PrivateChat Component
  * --------------------
  * High-performance real-time messaging interface.
- * Implements the sub-collection pattern for messages and non-blocking metadata updates.
- * COST OPTIMIZED: Uses limitToLast(50) to prevent excessive read operations.
+ * Now expanded with Typing Indicators and Read Receipts.
  */
 export default function PrivateChat({ chatId, otherUser }: { chatId: string, otherUser: User }) {
   const { firestore, auth, storage } = useFirebase();
@@ -36,9 +35,9 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 1. REAL-TIME MESSAGE STREAM: Sub-collection listener (The Heartbeat)
-  // COST OPTIMIZATION: limitToLast(50) ensures we only load the newest vibrations
+  // 1. REAL-TIME MESSAGE STREAM
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
         collection(firestore, 'chats', chatId, 'messages'), 
@@ -49,10 +48,55 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
   
   const { data: messages, isLoading } = useCollection<Message>(messagesQuery);
 
-  // Auto-scroll to bottom on new vibrations
+  // 2. TYPING INDICATOR LISTENER
+  const typingQuery = useMemoFirebase(() => 
+    firestore ? query(collection(firestore, 'chats', chatId, 'typing')) : null
+  , [firestore, chatId]);
+  const { data: typingDocs } = useCollection<any>(typingQuery);
+  const isOtherUserTyping = typingDocs?.some(d => d.id === otherUser.id);
+
+  // 3. READ RECEIPTS HANDSHAKE
+  useEffect(() => {
+    if (!messages || !auth.currentUser || !firestore) return;
+    const myId = auth.currentUser.uid;
+    
+    messages.forEach(msg => {
+      if (!msg.readBy?.includes(myId)) {
+        const msgRef = doc(firestore, 'chats', chatId, 'messages', msg.id);
+        updateDocumentNonBlocking(msgRef, { readBy: arrayUnion(myId) });
+      }
+    });
+  }, [messages, auth.currentUser?.uid, firestore, chatId]);
+
+  // 4. TYPING LOGIC
+  useEffect(() => {
+    if (!text.trim()) {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      updateTypingStatus(false);
+      return;
+    }
+
+    updateTypingStatus(true);
+
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      updateTypingStatus(false);
+    }, 3000);
+  }, [text]);
+
+  const updateTypingStatus = (isTyping: boolean) => {
+    if (!firestore || !auth.currentUser || !chatId) return;
+    const typingRef = doc(firestore, 'chats', chatId, 'typing', auth.currentUser.uid);
+    if (isTyping) {
+      setDoc(typingRef, { isTyping: true, userName: userProfile?.name, updatedAt: serverTimestamp() }, { merge: true });
+    } else {
+      deleteDoc(typingRef).catch(() => {});
+    }
+  };
+
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isOtherUserTyping]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,15 +108,13 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
       senderName: userProfile.name || "Unknown User",
       createdAt: new Date().toISOString(),
       type: 'text',
+      readBy: [auth.currentUser.uid],
       replyTo: replyingTo ? { messageId: replyingTo.id, text: replyingTo.text || '', senderName: replyingTo.senderName } : null,
       isForwarded: false,
     };
 
-    // A. Add to sub-collection (Non-blocking - Firestore handles local cache instant update)
     addDocumentNonBlocking(collection(firestore, 'chats', chatId, 'messages'), messageData);
 
-    // B. Update parent chat metadata for sidebar sorting (Non-blocking)
-    // Optimization: Renderers use this field instead of querying the sub-collection for previews.
     updateDocumentNonBlocking(doc(firestore, 'chats', chatId), {
       lastMessage: text.trim(),
       updatedAt: new Date().toISOString()
@@ -81,6 +123,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
     setText('');
     setReplyingTo(null);
     setShowEmoji(false);
+    updateTypingStatus(false);
   };
 
   const handleSendAudio = async (blob: Blob, duration: number) => {
@@ -97,6 +140,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
         duration: duration,
         senderId: auth.currentUser.uid,
         senderName: userProfile.name || "User",
+        readBy: [auth.currentUser.uid],
         createdAt: new Date().toISOString(),
         isForwarded: false,
       };
@@ -144,11 +188,11 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
               <div className="flex flex-col gap-4">
                   <Skeleton className="h-16 w-3/4 rounded-3xl" />
                   <Skeleton className="h-16 w-1/2 ml-auto rounded-3xl" />
-                  <Skeleton className="h-16 w-2/3 rounded-3xl" />
               </div>
           ) : messages && messages.length > 0 ? (
             messages.map((msg: Message) => {
                 const isMe = msg.senderId === auth.currentUser?.uid;
+                const isRead = msg.readBy?.includes(otherUser.id);
                 return (
                 <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={cn(
@@ -202,7 +246,12 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
                         <p className="font-medium text-sm leading-relaxed">{msg.text}</p>
                     )}
 
-                    {/* Context Actions */}
+                    {isMe && (
+                        <div className="mt-1 flex justify-end">
+                            {isRead ? <CheckCheck size={12} className="text-white/60" /> : <Check size={12} className="text-white/40" />}
+                        </div>
+                    )}
+
                     <div className={`absolute top-0 ${isMe ? '-left-12' : '-right-12'} opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1 z-10`}>
                         <button onClick={() => setReplyingTo(msg)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-blue-600 active:scale-90 transition-all"><Reply size={14}/></button>
                         <button onClick={() => setForwardingMessage(msg)} className="p-2 bg-white shadow-md rounded-full text-slate-400 hover:text-green-600 active:scale-90 transition-all"><Forward size={14}/></button>
@@ -216,6 +265,19 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
                 <ShieldCheck size={64} className="mb-4" />
                 <p className="font-black uppercase tracking-widest text-xs">Vibe Fortress Encrypted</p>
                 <p className="text-[10px] mt-2 italic font-medium">Start the vibration by sending a message.</p>
+            </div>
+          )}
+
+          {isOtherUserTyping && (
+            <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2">
+                <div className="bg-white/50 p-3 rounded-2xl flex items-center gap-2 border border-slate-100">
+                    <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{otherUser.name} is typing</span>
+                    <div className="flex gap-0.5">
+                        <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce" />
+                        <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce [animation-delay:0.2s]" />
+                        <div className="w-1 h-1 bg-blue-500 rounded-full animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                </div>
             </div>
           )}
           <div ref={scrollRef} />

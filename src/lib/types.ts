@@ -364,6 +364,7 @@ export type Message = {
   };
   createdAt: string;
   isForwarded?: boolean;
+  readBy?: string[];
   replyTo?: {
     messageId: string;
     text: string;
