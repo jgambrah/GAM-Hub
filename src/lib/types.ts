@@ -343,9 +343,9 @@ export type Chat = {
   users: string[];
   lastMessage: string;
   updatedAt: string;
-  userAInfo?: { id: string; name: string; avatarUrl: string };
-  userBInfo?: { id: string; name: string; avatarUrl: string };
-  type?: 'private' | 'support';
+  userAInfo?: { id: string; name: string; avatarUrl: string; role?: string };
+  userBInfo?: { id: string; name: string; avatarUrl: string; role?: string };
+  type?: 'private' | 'support' | 'vendor' | 'creator';
 };
 
 export type Message = {

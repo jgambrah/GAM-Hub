@@ -5,10 +5,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc, limitToLast, setDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
-import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ShoppingBag, Check, CheckCheck } from 'lucide-react';
+import { Send, Smile, Reply, Forward, X, ShieldCheck, Paperclip, Loader2, ShoppingBag, Check, CheckCheck, Sparkles } from 'lucide-react';
 import EmojiPicker from 'emoji-picker-react';
 import { ForwardMessageModal } from './ForwardMessageModal';
-import type { Message, User } from '@/lib/types';
+import type { Message, User, Chat } from '@/lib/types';
 import VoiceRecorder from './VoiceRecorder';
 import VoicePlayer from './VoicePlayer';
 import { uploadAudio } from '@/lib/audio-service';
@@ -17,12 +17,13 @@ import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 
 /**
  * PrivateChat Component
  * --------------------
  * High-performance real-time messaging interface.
- * Now expanded with Typing Indicators and Read Receipts.
+ * Updated to handle Vendor, Creator, and Link-Up header variations.
  */
 export default function PrivateChat({ chatId, otherUser }: { chatId: string, otherUser: User }) {
   const { firestore, auth, storage } = useFirebase();
@@ -37,7 +38,19 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
   const scrollRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 1. REAL-TIME MESSAGE STREAM
+  // 1. CHAT METADATA SYNC (For Type detection)
+  const chatDocRef = useMemoFirebase(() => firestore ? doc(firestore, 'chats', chatId) : null, [firestore, chatId]);
+  const [chatMetadata, setChatMetadata] = useState<Chat | null>(null);
+
+  useEffect(() => {
+    if (!chatDocRef) return;
+    const unsub = onSnapshot(chatDocRef, (snap) => {
+        if (snap.exists()) setChatMetadata(snap.data() as Chat);
+    });
+    return () => unsub();
+  }, [chatDocRef]);
+
+  // 2. REAL-TIME MESSAGE STREAM
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
         collection(firestore, 'chats', chatId, 'messages'), 
@@ -48,14 +61,14 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
   
   const { data: messages, isLoading } = useCollection<Message>(messagesQuery);
 
-  // 2. TYPING INDICATOR LISTENER
+  // 3. TYPING INDICATOR LISTENER
   const typingQuery = useMemoFirebase(() => 
     firestore ? query(collection(firestore, 'chats', chatId, 'typing')) : null
   , [firestore, chatId]);
   const { data: typingDocs } = useCollection<any>(typingQuery);
   const isOtherUserTyping = typingDocs?.some(d => d.id === otherUser.id);
 
-  // 3. READ RECEIPTS HANDSHAKE
+  // 4. READ RECEIPTS HANDSHAKE
   useEffect(() => {
     if (!messages || !auth.currentUser || !firestore) return;
     const myId = auth.currentUser.uid;
@@ -68,7 +81,7 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
     });
   }, [messages, auth.currentUser?.uid, firestore, chatId]);
 
-  // 4. TYPING LOGIC
+  // 5. TYPING LOGIC
   useEffect(() => {
     if (!text.trim()) {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -160,25 +173,51 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
     }
   };
 
+  const isVendor = otherUser.role === 'vendor' || chatMetadata?.type === 'vendor';
+  const isCreator = chatMetadata?.type === 'creator';
+
   return (
     <>
       <div className="flex flex-col h-full bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in duration-500">
-        {/* CHAT HEADER */}
-        <div className="p-6 bg-slate-900 text-white flex justify-between items-center flex-shrink-0">
+        {/* CHAT HEADER: CONTEXTUAL HANDSHAKE */}
+        <div className={cn(
+            "p-6 flex justify-between items-center flex-shrink-0 transition-colors duration-500",
+            isVendor ? "bg-orange-600 text-white" : isCreator ? "bg-indigo-900 text-white" : "bg-slate-900 text-white"
+        )}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full border-2 border-blue-500 overflow-hidden bg-slate-800">
-              <img src={otherUser.avatarUrl} alt="avatar" />
+            <div className={cn(
+                "w-12 h-12 rounded-2xl border-2 overflow-hidden shadow-xl",
+                isVendor ? "border-orange-400 bg-orange-700" : isCreator ? "border-indigo-400 bg-indigo-950" : "border-blue-500 bg-slate-800"
+            )}>
+              <img src={otherUser.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
             </div>
             <div>
-              <h3 className="font-bold text-sm">{otherUser.name}</h3>
-              <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest">
-                {otherUser.campusAcronym || 'GH'} • Yard Signal Active
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-sm tracking-tight">{otherUser.name}</h3>
+                {isVendor && <Badge className="bg-white/20 text-white border-none text-[8px] font-black uppercase px-2 py-0">Official Store</Badge>}
+                {isCreator && <Badge className="bg-amber-500 text-slate-950 border-none text-[8px] font-black uppercase px-2 py-0">Verified Creator</Badge>}
+              </div>
+              <p className={cn(
+                  "text-[10px] font-black uppercase tracking-widest mt-0.5",
+                  isVendor ? "text-orange-200" : isCreator ? "text-indigo-300" : "text-blue-400"
+              )}>
+                {otherUser.campusAcronym || otherUser.campusId?.toUpperCase() || 'GH'} • {isVendor ? 'Market Signal Active' : isCreator ? 'Vibe Stream Active' : 'Yard Handshake Active'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+             {isVendor && (
+                 <Link href="/products" className="p-2.5 bg-white/10 hover:bg-white/20 rounded-xl transition-all active:scale-90" title="Visit Store">
+                    <ShoppingBag size={18} />
+                 </Link>
+             )}
+             {isCreator && (
+                 <div className="p-2.5 bg-white/10 rounded-xl">
+                    <Sparkles size={18} className="text-amber-400 animate-pulse" />
+                 </div>
+             )}
              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-             <ShieldCheck className="text-blue-500 opacity-50" size={20} />
+             <ShieldCheck className="opacity-50" size={20} />
           </div>
         </div>
 
@@ -325,10 +364,13 @@ export default function PrivateChat({ chatId, otherUser }: { chatId: string, oth
               <input 
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Broadcast your vibe..."
+                placeholder={isVendor ? "Ask about stock or pickup..." : isCreator ? "Send appreciation to the creator..." : "Broadcast your vibe..."}
                 className="flex-1 bg-slate-50 p-4 rounded-[2rem] border-none outline-none text-sm font-medium focus:bg-slate-100 transition-all shadow-inner"
               />
-              <button type="submit" disabled={!text.trim()} className="p-4 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-100 active:scale-90 transition-transform disabled:opacity-30">
+              <button type="submit" disabled={!text.trim()} className={cn(
+                  "p-4 text-white rounded-full shadow-lg transition-transform active:scale-90 disabled:opacity-30",
+                  isVendor ? "bg-orange-600 shadow-orange-100" : isCreator ? "bg-indigo-900 shadow-indigo-100" : "bg-blue-600 shadow-blue-100"
+              )}>
                 <Send size={20} />
               </button>
             </form>

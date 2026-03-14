@@ -7,11 +7,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Chat, User } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
-import { Search, Loader2, MessageSquare, Plus } from 'lucide-react';
+import { Search, Loader2, MessageSquare, Plus, ShoppingBag, Sparkles, ShieldCheck } from 'lucide-react';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, limit, getDoc, doc, setDoc } from 'firebase/firestore';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
 
 interface ChatSidebarProps {
   chats: Chat[] | null;
@@ -25,7 +26,7 @@ interface ChatSidebarProps {
  * ChatSidebar Component
  * --------------------
  * High-performance chat navigator.
- * Queries the root 'chats' collection for active conversations.
+ * Updated to support Vendor, Creator, and Support chat modalities.
  */
 export function ChatSidebar({ chats, isLoading, selectedChat, onSelectChat, currentUser }: ChatSidebarProps) {
     const { firestore } = useFirebase();
@@ -60,6 +61,11 @@ export function ChatSidebar({ chats, isLoading, selectedChat, onSelectChat, curr
         }
         setIsCreatingChat(true);
 
+        // Determine chat type based on recipient role
+        let chatType: Chat['type'] = 'private';
+        if (selectedUser.role === 'vendor') chatType = 'vendor';
+        // (Other logic for 'creator' or 'support' can be injected here based on entry point)
+
         // Generate deterministic Chat ID
         const chatId = [currentUser.id, selectedUser.id].sort().join('_');
         const chatRef = doc(firestore, 'chats', chatId);
@@ -75,17 +81,22 @@ export function ChatSidebar({ chats, isLoading, selectedChat, onSelectChat, curr
                 const newChatData: Omit<Chat, 'id'> = {
                     users: [currentUser.id, selectedUser.id],
                     updatedAt: new Date().toISOString(),
+                    type: chatType,
                     userAInfo: {
                         id: currentUser.id,
                         name: currentUser.name || "User",
-                        avatarUrl: currentUser.avatarUrl || ""
+                        avatarUrl: currentUser.avatarUrl || "",
+                        role: currentUser.role
                     },
                     userBInfo: {
                         id: selectedUser.id,
                         name: selectedUser.name || "User",
-                        avatarUrl: selectedUser.avatarUrl || ""
+                        avatarUrl: selectedUser.avatarUrl || "",
+                        role: selectedUser.role
                     },
-                    lastMessage: `Handshake initiated with ${selectedUser.name}.`
+                    lastMessage: chatType === 'vendor' 
+                        ? `Market inquiry started with ${selectedUser.name}.` 
+                        : `Handshake initiated with ${selectedUser.name}.`
                 };
                 await setDoc(chatRef, newChatData);
                 chatData = { id: chatId, ...newChatData } as Chat;
@@ -149,7 +160,12 @@ export function ChatSidebar({ chats, isLoading, selectedChat, onSelectChat, curr
                                 </Avatar>
                                 <div className="min-w-0">
                                     <p className="font-black text-sm truncate">{user.name}</p>
-                                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-tighter">{user.campusAcronym || user.campusId.toUpperCase()}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <Badge variant="outline" className="text-[8px] font-black uppercase tracking-tighter">
+                                            {user.role}
+                                        </Badge>
+                                        <p className="text-[10px] font-bold text-blue-500 uppercase tracking-tighter">{user.campusAcronym || user.campusId.toUpperCase()}</p>
+                                    </div>
                                 </div>
                             </div>
                         ))
@@ -193,13 +209,24 @@ export function ChatSidebar({ chats, isLoading, selectedChat, onSelectChat, curr
                                 <AvatarImage src={otherUser.avatarUrl} alt={otherUser.name} />
                                 <AvatarFallback className="font-black">{otherUser.name?.charAt(0)}</AvatarFallback>
                             </Avatar>
-                            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full" />
+                            {otherUser.role === 'vendor' && (
+                                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-orange-500 border-2 border-white rounded-full flex items-center justify-center">
+                                    <ShoppingBag size={10} className="text-white" />
+                                </div>
+                            )}
+                            {otherUser.role !== 'vendor' && (
+                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full" />
+                            )}
                         </div>
                         <div className="flex-1 overflow-hidden">
                             <div className="flex justify-between items-baseline mb-1">
-                                <p className={cn("font-black truncate transition-all", isActive ? "text-primary text-base" : "text-sm")}>
-                                    {otherUser.name}
-                                </p>
+                                <div className="flex items-center gap-2">
+                                    <p className={cn("font-black truncate transition-all", isActive ? "text-primary text-base" : "text-sm")}>
+                                        {otherUser.name}
+                                    </p>
+                                    {chat.type === 'vendor' && <Badge variant="secondary" className="bg-orange-50 text-orange-600 text-[7px] font-black uppercase px-1.5 py-0">Vendor</Badge>}
+                                    {chat.type === 'creator' && <Badge variant="secondary" className="bg-purple-50 text-purple-600 text-[7px] font-black uppercase px-1.5 py-0">Creator</Badge>}
+                                </div>
                                 <p className="text-[9px] font-black text-slate-400 uppercase">
                                     {formatDistanceToNow(new Date(chat.updatedAt), { addSuffix: false })}
                                 </p>
