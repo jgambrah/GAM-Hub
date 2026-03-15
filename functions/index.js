@@ -304,6 +304,14 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
+        // 🎖️ ARENA CHAMPIONS: Increment individual win count & energy
+        const champRef = db.collection("arena_leaderboard").doc(winnerId);
+        await champRef.set({ 
+            wins: admin.firestore.FieldValue.increment(1),
+            votes_received: admin.firestore.FieldValue.increment(vA > vB ? vA : vB),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+
         // 🏛️ CAMPUS WARS: Update University Leaderboard
         if (winnerInfo.campusId) {
             const campusRef = db.collection("campus_leaderboard").doc(winnerInfo.campusId);
