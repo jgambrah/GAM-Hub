@@ -67,6 +67,15 @@
             "votes": { "type": "number" }
           }
         },
+        "aiVerdict": {
+          "type": "object",
+          "properties": {
+            "verdict": { "type": "string" },
+            "burnLevel": { "type": "number" },
+            "winner": { "type": "string" },
+            "refereeAdvice": { "type": "string" }
+          }
+        },
         "participantInfo": { "type": "object" },
         "participants": { "type": "array", "items": { "type": "string" } },
         "viewerCount": { "type": "number" },

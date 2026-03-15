@@ -53,8 +53,14 @@ export type ArenaBattle = {
   };
   participantInfo: Record<string, { name: string; avatarUrl: string; campusAcronym: string; primaryColor: string }>;
   status: 'live' | 'ended';
-  votes: Record<string, number>; // Flat map for Cloud Function increments
+  votes: Record<string, number>; 
   viewerCount: number;
+  aiVerdict?: {
+    verdict: string;
+    burnLevel: number;
+    winner: 'original' | 'comeback' | 'draw';
+    refereeAdvice: string;
+  };
   createdAt: any;
   endsAt: any;
 };
