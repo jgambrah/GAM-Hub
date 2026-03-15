@@ -4,7 +4,7 @@
 /**
  * @fileOverview Liaison Monetization Engine: Wallet Transactions.
  * Implements Step 2 & 3: Spam Prevention & 50/50 Creator Revenue Split.
- * Now synchronized with the National Leaderboard for Achievement Tracking.
+ * Now synchronized with the National Leaderboard and Battle Gift Leaderboard.
  */
 
 import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -57,20 +57,26 @@ export async function addCoins(db: Firestore, userId: string, coins: number, amo
  * spendCoins
  * ----------
  * High-integrity transaction with 50/50 Creator Split logic.
- * Also updates the Arena Leaderboard to track boosts and earnings.
+ * Also updates the Arena Leaderboard and Battle Support Leaderboard.
  */
 export async function spendCoins(
   db: Firestore, 
   userId: string, 
   amount: number, 
   type: 'gift_sent' | 'powerup_used' | 'tournament_entry',
-  metadata: { battleId?: string; targetCreatorId?: string } = {}
+  metadata: { 
+    battleId?: string; 
+    targetCreatorId?: string;
+    userName?: string;
+    userAvatarUrl?: string;
+  } = {}
 ) {
   if (!db || !userId || amount <= 0) return Promise.reject("Invalid amount");
 
   const walletRef = doc(db, 'wallets', userId);
   const historyRef = collection(db, 'wallet_transactions');
   const creatorId = metadata.targetCreatorId;
+  const battleId = metadata.battleId;
 
   return runTransaction(db, async (transaction) => {
     // 1. Audit Viewer Balance
@@ -109,7 +115,18 @@ export async function spendCoins(
       }, { merge: true });
     }
 
-    // 4. Log History
+    // 4. Battle Supporter Leaderboard Handshake
+    if (battleId && metadata.userName) {
+        const battleSupporterRef = doc(db, 'arena_battles', battleId, 'gift_leaderboard', userId);
+        transaction.set(battleSupporterRef, {
+            userName: metadata.userName,
+            avatarUrl: metadata.userAvatarUrl || '',
+            coinsSent: increment(amount),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+    }
+
+    // 5. Log History
     const historyData = {
       userId,
       type,

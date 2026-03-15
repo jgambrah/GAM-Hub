@@ -53,6 +53,14 @@ export type WalletTransaction = {
   createdAt: any;
 };
 
+export type GiftLeaderboardEntry = {
+  id: string;
+  userName: string;
+  avatarUrl: string;
+  coinsSent: number;
+  updatedAt: any;
+};
+
 export type ArenaBattle = {
   id: string;
   title: string;

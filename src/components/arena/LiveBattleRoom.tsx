@@ -6,7 +6,7 @@
  * -----------------------
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
- * Implements Step 3: Cinematic Gift Animations with 50/50 Creator Revenue Split.
+ * Implements Step 3: Cinematic Gift Animations & Support Leaderboard.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -18,10 +18,10 @@ import {
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
-import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -44,44 +44,75 @@ const POWER_UPS = [
 ];
 
 const GIFTS = {
-  fire: {
-    id: 'fire',
-    label: 'Fire',
-    emoji: '🔥',
-    cost: 10,
-    animation: "fire.json"
-  },
-  mic: {
-    id: 'mic',
-    label: 'Mic',
-    emoji: '🎤',
-    cost: 25,
-    animation: "mic.json"
-  },
-  crown: {
-    id: 'crown',
-    label: 'Crown',
-    emoji: '👑',
-    cost: 50,
-    animation: "crown.json"
-  },
-  rocket: {
-    id: 'rocket',
-    label: 'Rocket',
-    emoji: '🚀',
-    cost: 100,
-    animation: "rocket.json"
-  },
-  dragon: {
-    id: 'dragon',
-    label: 'Dragon',
-    emoji: '🐉',
-    cost: 500,
-    animation: "dragon.json"
-  }
+  fire: { id: 'fire', label: 'Fire', emoji: '🔥', cost: 10 },
+  mic: { id: 'mic', label: 'Mic', emoji: '🎤', cost: 25 },
+  crown: { id: 'crown', label: 'Crown', emoji: '👑', cost: 50 },
+  rocket: { id: 'rocket', label: 'Rocket', emoji: '🚀', cost: 100 },
+  dragon: { id: 'dragon', label: 'Dragon', emoji: '🐉', cost: 500 }
 };
 
 const MAX_BOOSTS_PER_USER = 5;
+
+/**
+ * SupportLeaderboard Component
+ * Renders the top contributors for the current battle.
+ */
+function SupportLeaderboard({ battleId }: { battleId: string }) {
+    const { firestore } = useFirebase();
+    
+    const supportersQuery = useMemoFirebase(() => {
+        if (!firestore || !battleId) return null;
+        return query(
+            collection(firestore, 'arena_battles', battleId, 'gift_leaderboard'),
+            orderBy('coinsSent', 'desc'),
+            limit(10)
+        );
+    }, [firestore, battleId]);
+
+    const { data: supporters, isLoading } = useCollection<GiftLeaderboardEntry>(supportersQuery);
+
+    if (isLoading) return <div className="flex gap-2 p-4 overflow-hidden opacity-50"><Skeleton className="h-10 w-10 rounded-full" /></div>;
+    if (!supporters || supporters.length === 0) return null;
+
+    return (
+        <div className="bg-slate-900/50 border-b border-white/5 py-3 px-6 animate-in slide-in-from-top-2">
+            <div className="flex items-center gap-3 mb-2">
+                <Medal size={12} className="text-amber-500" />
+                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Top Yard Supporters</span>
+            </div>
+            <ScrollArea className="w-full">
+                <div className="flex gap-3 pb-2">
+                    {supporters.map((s, i) => (
+                        <div key={s.id} className="flex items-center gap-2 bg-white/5 pr-3 pl-1 py-1 rounded-full border border-white/5 group hover:bg-white/10 transition-all">
+                            <div className="relative">
+                                <Avatar className="h-7 w-7 border-2 border-slate-800">
+                                    <AvatarImage src={s.avatarUrl} />
+                                    <AvatarFallback className="text-[10px]">{s.userName[0]}</AvatarFallback>
+                                </Avatar>
+                                {i < 3 && (
+                                    <div className={cn(
+                                        "absolute -top-1 -right-1 p-0.5 rounded-full border border-slate-900 shadow-lg",
+                                        i === 0 ? "bg-amber-500" : i === 1 ? "bg-slate-300" : "bg-orange-400"
+                                    )}>
+                                        <Crown size={8} className="text-white" />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-[9px] font-black text-white truncate max-w-[60px]">{s.userName.split(' ')[0]}</p>
+                                <div className="flex items-center gap-0.5">
+                                    <Zap size={8} className="text-amber-500" fill="currentColor" />
+                                    <span className="text-[8px] font-bold text-slate-400">{s.coinsSent}</span>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <ScrollBar orientation="horizontal" />
+            </ScrollArea>
+        </div>
+    );
+}
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore, auth, storage } = useFirebase();
@@ -108,7 +139,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
 
-  // Status flags (Calculated AFTER battle data load)
+  // Status flags
   const isCreator = user?.id === battle?.creatorId;
   const isWaiting = battle?.status === 'waiting';
   const isLive = battle?.status === 'live';
@@ -260,7 +291,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             battleId,
             targetSide: target,
             powerupType: powerup.type,
-            targetCreatorId: targetUserId 
+            targetCreatorId: targetUserId,
+            userName: user.name,
+            userAvatarUrl: user.avatarUrl
         });
 
         const bRef = doc(firestore, 'arena_battles', battleId);
@@ -295,12 +328,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
 
     try {
-        // 💰 REVENUE SPLIT HANDSHAKE (50/50 Split managed in spendCoins)
         await spendCoins(firestore, user.id, gift.cost, 'gift_sent', {
             battleId,
             targetSide: target,
             giftType: gift.id,
-            targetCreatorId: targetUserId 
+            targetCreatorId: targetUserId,
+            userName: user.name,
+            userAvatarUrl: user.avatarUrl
         });
 
         await addDoc(collection(firestore, 'arena_battles', battleId, 'gifts'), {
@@ -335,7 +369,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       
       {/* ── CINEMATIC OVERLAYS ────────────────────────────────────────────────── */}
       
-      {/* 1. POWERUP OVERLAY (Mid-Center) */}
       <AnimatePresence>
         {recentPowerUp && (
           <motion.div initial={{ opacity: 0, y: 100, scale: 0.5 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] pointer-events-none w-full max-w-sm px-4">
@@ -348,7 +381,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
       </AnimatePresence>
 
-      {/* 2. FULL-SCREEN GIFT OVERLAY (Premium Takeover) */}
       <AnimatePresence>
         {recentGift && (
           <motion.div 
@@ -367,22 +399,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 recentGift.giftType === 'rocket' ? "bg-gradient-to-br from-indigo-600 to-blue-600" : "bg-slate-900/90"
               )}
             >
-              {/* Animation Flare */}
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.2),transparent)] animate-pulse" />
-              
               <div className="text-[12rem] drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-10">
                 {(GIFTS as any)[recentGift.giftType]?.emoji}
               </div>
-              
               <div className="z-10">
-                <h4 className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter italic leading-none mb-2">
-                  {recentGift.senderName} 
-                </h4>
-                <p className="text-xl font-black text-white/80 uppercase tracking-widest italic">
-                  SENT A {recentGift.giftType.toUpperCase()}!
-                </p>
+                <h4 className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter italic leading-none mb-2">{recentGift.senderName}</h4>
+                <p className="text-xl font-black text-white/80 uppercase tracking-widest italic">SENT A {recentGift.giftType.toUpperCase()}!</p>
               </div>
-
               <div className="bg-white/20 backdrop-blur-md px-8 py-3 rounded-2xl border border-white/30 z-10">
                 <p className="text-xs font-black text-white uppercase tracking-[0.4em]">Creator Reward Dispatched 💰</p>
               </div>
@@ -413,7 +437,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                     </div>
                     <div className="text-center space-y-4">
                         <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">"{battle.title}"</h2>
-                        <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
+                        <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-50 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
                     </div>
                     {isCreator && (
                         <div className="space-y-4 pt-10">
@@ -504,6 +528,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             <button onClick={() => setInputMode('gift')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'gift' ? "bg-pink-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300")} title="Gifts"><Gift size={18}/></button>
           </div>
         </div>
+
+        {/* 🏆 GIFT LEADERBOARD: TOP SUPPORTERS */}
+        {isLive && <SupportLeaderboard battleId={battleId} />}
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
           {messages?.map((m) => (

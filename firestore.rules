@@ -74,6 +74,11 @@ service cloud.firestore {
         allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
       }
 
+      match /gift_leaderboard/{userId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn() && request.auth.uid == userId;
+      }
+
       match /engagement_events/{eventId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn();
