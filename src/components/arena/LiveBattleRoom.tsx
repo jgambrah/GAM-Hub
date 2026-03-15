@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -32,6 +31,9 @@ import { Button } from '@/components/ui/button';
 import { JoinBattleModal } from './JoinBattleModal';
 import { spendCoins } from '@/lib/monetization';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ScrollArea, ScrollBar } from '../ui/scroll-area';
+import { Badge } from '../ui/badge';
+import { Label } from '../ui/label';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },
@@ -51,7 +53,7 @@ const GIFTS = [
 const MAX_BOOSTS_PER_USER = 5;
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
-  const { firestore, auth } = useFirebase();
+  const { firestore, auth, storage } = useFirebase();
   const { user, campus } = useAuth();
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
@@ -74,6 +76,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   }, [firestore, battleId]);
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
+
+  // Status flags should be declared before they are used in hooks
+  const isCreator = user?.id === battle?.creatorId;
+  const isWaiting = battle?.status === 'waiting';
+  const isLive = battle?.status === 'live';
+  const isEnded = battle?.status === 'ended';
 
   const walletRef = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
@@ -140,7 +148,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     });
 
     return () => { unsubP(); unsubG(); };
-  }, [firestore, battleId, !!battle?.status]);
+  }, [firestore, battleId, isLive]);
 
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
@@ -287,11 +295,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   if (isLoadingBattle || !battle) {
     return <div className="fixed inset-0 z-[7000] bg-black flex items-center justify-center"><Loader2 className="animate-spin text-red-600" size={48} /></div>;
   }
-
-  const isCreator = user?.id === battle.creatorId;
-  const isWaiting = battle.status === 'waiting';
-  const isLive = battle.status === 'live';
-  const isEnded = battle.status === 'ended';
 
   const p1 = battle.participantInfo[battle.opponentA.userId];
   const p2 = battle.opponentB ? battle.participantInfo[battle.opponentB.userId] : null;
