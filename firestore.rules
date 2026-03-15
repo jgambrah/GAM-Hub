@@ -66,9 +66,12 @@ service cloud.firestore {
 
       match /powerups/{powerupId} {
         allow read: if isSignedIn();
-        // 🛡️ ANTI-SPAM PROTOCOL: UI level cap at 5, rules allow create if user is signed in.
-        allow create: if isSignedIn() && 
-                      request.resource.data.userId == request.auth.uid;
+        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      }
+
+      match /gifts/{giftId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
       }
 
       match /engagement_events/{eventId} {

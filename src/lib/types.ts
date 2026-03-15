@@ -87,6 +87,16 @@ export type ArenaBattle = {
   endsAt: any;
 };
 
+export type ArenaGift = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  receiverId: string;
+  giftType: 'fire' | 'mic' | 'crown' | 'rocket' | 'dragon';
+  coinsSpent: number;
+  createdAt: any;
+};
+
 export type EngagementEvent = {
   id: string;
   type: 'vote' | 'powerup' | 'reaction';
@@ -361,6 +371,7 @@ export type ArenaLeaderboard = {
   votes_received: number;
   highlightCount: number;
   boostsReceived: number;
+  giftsReceived: number;
   coinsEarned: number;
   updatedAt: any;
 };

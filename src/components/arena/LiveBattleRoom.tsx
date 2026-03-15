@@ -6,7 +6,7 @@
  * -----------------------
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
- * Implements Step 2: Paid Audience Power-Ups, 50/50 Revenue Split & Anti-Spam Caps.
+ * Implements Step 3: Battle Gifts System with 50/50 Creator Revenue Split.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -18,10 +18,10 @@ import {
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
-import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -40,6 +40,14 @@ const POWER_UPS = [
     { type: 'knockout', label: 'Knockout', emoji: '⚡', weight: 50, cost: 120 },
 ];
 
+const GIFTS = [
+    { type: 'fire', label: 'Fire', emoji: '🔥', cost: 10 },
+    { type: 'mic', label: 'Mic', emoji: '🎤', cost: 25 },
+    { type: 'crown', label: 'Crown', emoji: '👑', cost: 50 },
+    { type: 'rocket', label: 'Rocket', emoji: '🚀', cost: 100 },
+    { type: 'dragon', label: 'Dragon', emoji: '🐉', cost: 500 },
+];
+
 const MAX_BOOSTS_PER_USER = 5;
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
@@ -48,7 +56,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
   
-  const [inputMode, setInputMode] = useState<'chat' | 'boost'>('chat');
+  const [inputMode, setInputMode] = useState<'chat' | 'boost' | 'gift'>('chat');
   const [message, setMessage] = useState('');
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
@@ -56,6 +64,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [selectingOpponentId, setSelectingOpponentId] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   const [recentPowerUp, setRecentPowerUp] = useState<any>(null);
+  const [recentGift, setRecentGift] = useState<ArenaGift | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -100,27 +109,37 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
+  // GIFTS & POWERUPS REAL-TIME LISTENERS
   useEffect(() => {
     if (!firestore || !battleId || !isLive) return;
     
-    const q = query(
-      collection(firestore, 'arena_battles', battleId, 'powerups'),
-      orderBy('createdAt', 'desc'),
-      limit(1)
-    );
-    
-    const unsub = onSnapshot(q, (snap) => {
+    // Powerups Listener
+    const qP = query(collection(firestore, 'arena_battles', battleId, 'powerups'), orderBy('createdAt', 'desc'), limit(1));
+    const unsubP = onSnapshot(qP, (snap) => {
       if (!snap.empty) {
         const data = snap.docs[0].data();
-        const createdAt = data.createdAt?.toMillis?.() || 0;
-        if (Date.now() - createdAt < 5000) {
+        if (Date.now() - (data.createdAt?.toMillis?.() || 0) < 5000) {
           setRecentPowerUp({ id: snap.docs[0].id, ...data });
           const timer = setTimeout(() => setRecentPowerUp(null), 4500);
           return () => clearTimeout(timer);
         }
       }
     });
-    return () => unsub();
+
+    // Gifts Listener
+    const qG = query(collection(firestore, 'arena_battles', battleId, 'gifts'), orderBy('createdAt', 'desc'), limit(1));
+    const unsubG = onSnapshot(qG, (snap) => {
+      if (!snap.empty) {
+        const data = snap.docs[0].data();
+        if (Date.now() - (data.createdAt?.toMillis?.() || 0) < 5000) {
+          setRecentGift({ id: snap.docs[0].id, ...data } as ArenaGift);
+          const timer = setTimeout(() => setRecentGift(null), 4500);
+          return () => clearTimeout(timer);
+        }
+      }
+    });
+
+    return () => { unsubP(); unsubG(); };
   }, [firestore, battleId, !!battle?.status]);
 
   useEffect(() => {
@@ -189,7 +208,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
     
-    // 🛡️ SPAM GUARD
     if (boostsRemaining <= 0) {
         toast({ variant: 'destructive', title: 'Limit Reached', description: 'Maximum 5 boosts per battle. Conserve your artillery!' });
         return;
@@ -203,12 +221,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
 
     try {
-        // 💰 REVENUE SPLIT HANDSHAKE
         await spendCoins(firestore, user.id, powerup.cost, 'powerup_used', {
             battleId,
             targetSide: target,
             powerupType: powerup.type,
-            targetCreatorId: targetUserId // Triggers 50% split to creator
+            targetCreatorId: targetUserId 
         });
 
         const battleRef = doc(firestore, 'arena_battles', battleId);
@@ -232,6 +249,39 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     } catch (err: any) { toast({ variant: 'destructive', title: 'Deployment Failed' }); }
   };
 
+  const handleSendGift = async (gift: typeof GIFTS[0], target: 'A' | 'B') => {
+    if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
+    
+    if (wallet.coins < gift.cost) {
+        toast({ variant: 'destructive', title: 'Insufficient Coins' });
+        return;
+    }
+
+    const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
+
+    try {
+        // 💰 REVENUE SPLIT HANDSHAKE
+        await spendCoins(firestore, user.id, gift.cost, 'gift_sent', {
+            battleId,
+            targetSide: target,
+            giftType: gift.type,
+            targetCreatorId: targetUserId 
+        });
+
+        await addDoc(collection(firestore, 'arena_battles', battleId, 'gifts'), {
+            senderId: user.id,
+            senderName: user.name,
+            receiverId: targetUserId,
+            giftType: gift.type,
+            coinsSpent: gift.cost,
+            createdAt: serverTimestamp()
+        });
+
+        toast({ title: `${gift.label} Sent! ${gift.emoji}` });
+
+    } catch (err: any) { toast({ variant: 'destructive', title: 'Gift Failed' }); }
+  };
+
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   if (isLoadingBattle || !battle) {
@@ -239,7 +289,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   }
 
   const isCreator = user?.id === battle.creatorId;
-  const isTarget = user?.id === battle.targetUserId;
   const isWaiting = battle.status === 'waiting';
   const isLive = battle.status === 'live';
   const isEnded = battle.status === 'ended';
@@ -254,6 +303,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
       
+      {/* POWERUP OVERLAY */}
       <AnimatePresence>
         {recentPowerUp && (
           <motion.div initial={{ opacity: 0, y: 100, scale: 0.5 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] pointer-events-none w-full max-w-sm">
@@ -261,6 +311,24 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
               <div className="text-7xl">{POWER_UPS.find(p => p.type === recentPowerUp.type)?.emoji}</div>
               <h4 className="text-2xl font-black text-white uppercase italic">{recentPowerUp.userName} sent {recentPowerUp.type.replace('_', ' ')}</h4>
               <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black text-lg">+{recentPowerUp.votesAdded} Energy</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* GIFT OVERLAY */}
+      <AnimatePresence>
+        {recentGift && (
+          <motion.div initial={{ opacity: 0, x: -200, scale: 0.5 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 200, scale: 0.5 }} className="absolute top-1/3 left-1/2 -translate-x-1/2 z-[10001] pointer-events-none w-full max-w-md">
+            <div className={cn(
+                "p-8 rounded-[3.5rem] shadow-2xl flex flex-col items-center text-center gap-4 border-4",
+                recentGift.giftType === 'dragon' ? "bg-red-600 border-red-400 shadow-red-500/50" : "bg-indigo-900/90 backdrop-blur-xl border-indigo-400 shadow-indigo-500/50"
+            )}>
+              <div className="text-[10rem] animate-bounce">{GIFTS.find(g => g.type === recentGift.giftType)?.emoji}</div>
+              <h4 className="text-3xl font-black text-white uppercase tracking-tighter italic">
+                {recentGift.senderName} sent a {recentGift.giftType.toUpperCase()}!
+              </h4>
+              <p className="text-xs font-black text-white/70 uppercase tracking-[0.4em]">Creator Reward Dispatched</p>
             </div>
           </motion.div>
         )}
@@ -372,10 +440,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
       <div className="flex-1 bg-slate-900 flex flex-col shadow-2xl max-h-screen">
         <div className="p-6 border-b border-white/5 bg-slate-950/50 flex justify-between items-center">
-          <h3 className="text-white font-black italic uppercase truncate max-w-[180px]">{battle.title}</h3>
-          <div className="flex gap-2">
-            <button onClick={() => setInputMode('chat')} className={cn("p-2 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500")}><MessageSquare size={18}/></button>
-            <button onClick={() => setInputMode('boost')} className={cn("p-2 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950" : "text-slate-500")}><Zap size={18}/></button>
+          <h3 className="text-white font-black italic uppercase truncate max-w-[120px]">{battle.title}</h3>
+          <div className="flex gap-1.5">
+            <button onClick={() => setInputMode('chat')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500")} title="Chat"><MessageSquare size={18}/></button>
+            <button onClick={() => setInputMode('boost')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950" : "text-slate-500")} title="Power-Ups"><Zap size={18}/></button>
+            <button onClick={() => setInputMode('gift')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'gift' ? "bg-pink-600 text-white" : "text-slate-500")} title="Gifts"><Gift size={18}/></button>
           </div>
         </div>
 
@@ -390,12 +459,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         </div>
 
         <div className="p-6 bg-slate-950 border-t border-white/5">
-            {inputMode === 'chat' ? (
+            {inputMode === 'chat' && (
                 <form onSubmit={handleSendMessage} className="flex gap-2">
                     <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Drop a shade..." className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none" />
                     <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-full"><Send size={20} /></button>
                 </form>
-            ) : (
+            )}
+
+            {inputMode === 'boost' && (
                 <div className="flex flex-col gap-4 animate-in slide-in-from-bottom-4">
                     <div className="flex justify-between items-center px-2">
                         <div className="flex items-center gap-2">
@@ -433,11 +504,37 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             </button>
                         ))}
                     </div>
-                    {boostsRemaining <= 0 && (
-                        <p className="text-[9px] text-red-500 font-black text-center uppercase tracking-widest">
-                            <AlertTriangle className="inline mr-1" size={10} /> Maximum deployment reached for this session.
-                        </p>
-                    )}
+                </div>
+            )}
+
+            {inputMode === 'gift' && (
+                <div className="flex flex-col gap-4 animate-in slide-in-from-bottom-4">
+                    <div className="flex justify-between items-center px-2">
+                        <p className="text-[10px] font-black text-pink-500 uppercase tracking-widest">Send Appreciation</p>
+                        <div className="flex items-center gap-1.5 bg-pink-500/10 px-2 py-1 rounded-lg">
+                            <Zap size={10} className="text-pink-500" fill="currentColor" />
+                            <span className="text-[10px] font-black text-pink-500">{wallet?.coins || 0}</span>
+                        </div>
+                    </div>
+                    <ScrollArea className="w-full">
+                        <div className="flex gap-2 pb-2">
+                            {GIFTS.map(gift => (
+                                <button 
+                                    key={gift.type} 
+                                    onClick={() => handleSendGift(gift, 'A')}
+                                    className="flex-shrink-0 flex flex-col items-center gap-1 p-4 bg-white/5 border border-white/10 rounded-3xl hover:bg-pink-500/10 hover:border-pink-500/30 transition-all active:scale-90 group"
+                                >
+                                    <span className="text-3xl group-hover:scale-125 transition-transform">{gift.emoji}</span>
+                                    <p className="text-[8px] font-black text-white uppercase mt-1">{gift.label}</p>
+                                    <div className="mt-1 flex items-center gap-1">
+                                        <Zap size={8} className="text-amber-500" fill="currentColor" />
+                                        <span className="text-[8px] font-black text-slate-400">{gift.cost}</span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                        <ScrollBar orientation="horizontal" />
+                    </ScrollArea>
                 </div>
             )}
         </div>
