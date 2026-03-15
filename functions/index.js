@@ -29,7 +29,6 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
 
   return db.runTransaction(async (transaction) => {
     // 1. Find oldest entry in pool (excluding self)
-    // We limit to 5 to handle high concurrency while prioritizing the queue
     const poolQuery = db.collection("arena_waiting_pool")
       .orderBy("createdAt", "asc")
       .limit(5);
@@ -181,20 +180,58 @@ exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
 });
 
 /**
- * 🛡️ ARENA RING: PRUNE WAITING POOL
+ * 🛡️ ARENA RING: PRUNE & GRADUATE WAITING POOL
+ * Logic: If no match after 30s, graduate to a public 'waiting' battle.
  */
-exports.pruneWaitingPool = onSchedule("every 5 minutes", async (event) => {
+exports.pruneWaitingPool = onSchedule("every 1 minutes", async (event) => {
   const db = admin.firestore();
+  const thirtySecondsAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 30000));
   const fiveMinutesAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 300000));
 
   const staleEntries = await db.collection("arena_waiting_pool")
-    .where("createdAt", "<=", fiveMinutesAgo)
+    .where("createdAt", "<=", thirtySecondsAgo)
     .get();
 
   if (staleEntries.empty) return null;
 
   const batch = db.batch();
-  staleEntries.forEach(doc => batch.delete(doc.ref));
+  
+  staleEntries.forEach(doc => {
+    const data = doc.data();
+    
+    // If older than 5 mins, just delete
+    if (data.createdAt.toMillis() <= fiveMinutesAgo.toMillis()) {
+        batch.delete(doc.ref);
+    } else {
+        // Graduate to Public Challenge
+        const battleRef = db.collection("arena_battles").doc();
+        batch.set(battleRef, {
+            title: data.title || "Open Auto-Match Challenge",
+            creatorId: data.userId,
+            status: "waiting",
+            participants: [data.userId],
+            opponentA: {
+                userId: data.userId,
+                videoUrl: data.videoUrl,
+                votes: 0
+            },
+            opponentB: null,
+            participantInfo: {
+                [data.userId]: {
+                    name: data.userName,
+                    avatarUrl: data.avatarUrl,
+                    campusAcronym: data.campusAcronym,
+                    primaryColor: "#0f172a"
+                }
+            },
+            viewerCount: 1,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+        });
+        batch.delete(doc.ref);
+    }
+  });
+
   return batch.commit();
 });
 

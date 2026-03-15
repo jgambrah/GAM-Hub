@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, limit, where, doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
 import { Swords, Trophy, Zap, Loader2, Plus, Flame, Sparkles, Globe, Search, Radar, X, Timer } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
@@ -39,7 +39,7 @@ const INITIAL_LIMIT = 50;
  */
 export default function ArenaPage() {
     const { firestore } = useFirebase();
-    const { user, isTokenReady, isAdmin } = useAuth();
+    const { user, isTokenReady, isAdmin, campus } = useAuth();
     const { toast } = useToast();
     
     const [isPosting, setIsPosting] = useState(false);
@@ -53,6 +53,7 @@ export default function ArenaPage() {
     const [activeBattleId, setActiveBattleId] = useState<string | null>(null);
     const [activeWarId, setActiveWarId] = useState<string | null>(null);
     const [matchCountdown, setMatchCountdown] = useState<number | null>(null);
+    const [secondsInPool, setSecondsInPool] = useState(0);
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
@@ -108,6 +109,69 @@ export default function ArenaPage() {
 
         return () => unsub();
     }, [isMatching, firestore, user?.id]);
+
+    // ⏱️ MATCHING TIMEOUT: If no auto-match in 30s, automatically graduate to public challenge
+    useEffect(() => {
+        let interval: any;
+        if (isMatching && !matchCountdown) {
+            interval = setInterval(() => {
+                setSecondsInPool(prev => {
+                    const next = prev + 1;
+                    if (next >= 30) {
+                        handleGoPublic();
+                        clearInterval(interval);
+                    }
+                    return next;
+                });
+            }, 1000);
+        } else {
+            setSecondsInPool(0);
+        }
+        return () => clearInterval(interval);
+    }, [isMatching, !!matchCountdown]);
+
+    const handleGoPublic = async () => {
+        if (!firestore || !poolEntries?.[0] || !user) return;
+        setIsPosting(true);
+        try {
+            const entry = poolEntries[0];
+            // 1. Delete Pool Entry
+            await deleteDocumentNonBlocking(doc(firestore, 'arena_waiting_pool', entry.id));
+            
+            // 2. Create Public Challenge
+            const battleData: any = {
+                title: entry.title || "Open Auto-Match Challenge",
+                creatorId: user.id,
+                creatorName: user.name,
+                participants: [user.id],
+                opponentA: {
+                    userId: user.id,
+                    videoUrl: entry.videoUrl,
+                    votes: 0
+                },
+                opponentB: null,
+                participantInfo: {
+                    [user.id]: {
+                        name: user.name,
+                        avatarUrl: user.avatarUrl || '',
+                        campusAcronym: campus?.acronym || 'GH',
+                        primaryColor: campus?.primaryColor || '#0f172a'
+                    }
+                },
+                status: 'waiting',
+                votes: { [user.id]: 0 },
+                viewerCount: 1,
+                createdAt: serverTimestamp(),
+                endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+            };
+            await addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
+            toast({ title: "Challenge Graduated! 🚀", description: "Liaison matchmaker timed out. Opening challenge to public rivals." });
+        } catch (e) {
+            toast({ variant: 'destructive', title: "Transition failed" });
+        } finally {
+            setIsPosting(false);
+        }
+    };
 
     // 📡 4. RETRIEVE LIVE WARS (University vs University)
     const warsQuery = useMemoFirebase(() => {
@@ -207,6 +271,13 @@ export default function ArenaPage() {
                                 <div className="space-y-4">
                                     <h2 className="text-3xl font-black italic text-white tracking-tight uppercase italic">Searching for Rival</h2>
                                     <p className="text-sm text-slate-400 font-medium italic">"Liaison Matchmaker is auditing the National Hub for a worthy contender..."</p>
+                                    <div className="w-full bg-white/5 h-1.5 rounded-full mt-6 overflow-hidden">
+                                        <div 
+                                            className="bg-indigo-500 h-full transition-all duration-1000 ease-linear" 
+                                            style={{ width: `${(secondsInPool / 30) * 100}%` }}
+                                        />
+                                    </div>
+                                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{30 - secondsInPool}s until Public Release</p>
                                 </div>
 
                                 <div className="flex flex-col gap-4">
