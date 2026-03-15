@@ -2,12 +2,12 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, increment } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, increment, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { campuses } from '@/lib/data';
-import { Send, Zap, Loader2, Smile, ImagePlus, Video, X, Play, Youtube, Bot, ShieldAlert, AlertTriangle, Scale } from 'lucide-react';
+import { Send, Zap, Loader2, Smile, ImagePlus, Video, X, Play, Youtube, Bot, ShieldAlert, AlertTriangle, Scale, ShieldCheck } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -172,6 +172,25 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
+
+    // 🛡️ ANTI-SPAM HANDSHAKE: Check Cooldown
+    const lastReplyRef = doc(firestore, "users", userProfile.id, "rateLimits", "arenaReply");
+    const lastSnap = await getDoc(lastReplyRef);
+
+    if (lastSnap.exists()) {
+      const lastTime = lastSnap.data().time?.toMillis?.() || 0;
+      const now = Date.now();
+
+      if (now - lastTime < 5000) {
+        toast({
+          variant: "destructive",
+          title: "Slow down!",
+          description: "Wait a few seconds before posting again."
+        });
+        return;
+      }
+    }
+
     setIsPosting(true);
 
     const userCampusInfo = campuses.find(c => c.id === userProfile.campusId);
@@ -202,7 +221,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
               const progress =
                 (snapshot.bytesTransferred / snapshot.totalBytes) * 100
               setUploadProgress(progress);
-              console.log("Upload progress:", progress)
             },
             reject,
             () => resolve(null)
@@ -218,6 +236,10 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       
       await addDocumentNonBlocking(collection(firestore, 'campus_pulse', post.id, 'comebacks'), comebackData);
       await updateDocumentNonBlocking(doc(firestore, 'campus_pulse', post.id), { comebackCount: increment(1) });
+      
+      // Update the cooldown timestamp after successful post initiation
+      await setDoc(lastReplyRef, { time: serverTimestamp() });
+      
       resetInputs();
     } catch(err) {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not post comeback.' });
