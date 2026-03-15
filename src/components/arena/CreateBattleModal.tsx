@@ -10,17 +10,11 @@ import { useFirebase, addDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { collection, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
-import { Loader2, Swords, Zap, Search, X, Info, Video, AlertCircle, UserCheck } from 'lucide-react';
+import { Loader2, Swords, Zap, Search, X, Video, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { campuses } from '@/lib/data';
 import { cn } from '@/lib/utils';
 
-/**
- * CreateBattleModal Component
- * --------------------------
- * Gateway to the Dual-Stream Competitive Stage.
- * Restructured to support OpponentA/B data schema.
- */
 export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { firestore } = useFirebase();
   const { user } = useAuth();
@@ -49,11 +43,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
         const data = d.data();
         
         if (d.id === user.id) {
-            toast({ 
-                variant: 'destructive', 
-                title: "Challenge Denied", 
-                description: "You cannot challenge yourself to a battle!" 
-            });
+            toast({ variant: 'destructive', title: "Challenge Denied", description: "You cannot challenge yourself!" });
             return;
         }
 
@@ -77,7 +67,6 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
       const opponentCampus = campuses.find(c => c.id === opponent.campusId);
       const myCampus = campuses.find(c => c.id === user.campusId);
 
-      // Prepare high-fidelity dual-stream battle record
       const battleData = {
         title: title.trim(),
         creatorId: user.id,
@@ -108,10 +97,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           }
         },
         status: 'live',
-        votes: {
-          [user.id]: 0,
-          [opponent.id]: 0
-        },
+        votes: { [user.id]: 0, [opponent.id]: 0 },
         viewerCount: 1,
         createdAt: serverTimestamp(),
         endsAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() 
@@ -119,20 +105,12 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
 
       addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
       
-      toast({ 
-        title: "Arena Ring Active! ⚔️", 
-        description: "Dual-stream frequency is live." 
-      });
-
+      toast({ title: "Arena Ring Active! ⚔️" });
       onOpenChange(false);
       setTitle(''); setMyStreamUrl(''); setOpponentStreamUrl(''); setOpponentEmail(''); setOpponent(null);
 
     } catch (err: any) {
-      toast({ 
-        variant: 'destructive', 
-        title: "Launch Refused", 
-        description: err.message || "A technical error occurred." 
-      });
+      toast({ variant: 'destructive', title: "Launch Refused" });
     } finally {
       setIsLoading(false);
     }
@@ -149,7 +127,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
               <Swords size={24} />
             </div>
             <div>
-              <DialogTitle className="text-2xl font-black italic">Arena Battle Architect</DialogTitle>
+              <DialogTitle className="text-2xl font-black italic">Arena Architect</DialogTitle>
               <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400">Launch a Dual-Stream Competitive Stage</DialogDescription>
             </div>
           </div>
@@ -159,45 +137,22 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           <div className="space-y-4">
             <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Battle Headline</Label>
-                <Input 
-                placeholder="e.g. UG vs KNUST: The Ultimate Roast" 
-                value={title} 
-                onChange={e => setTitle(e.target.value)} 
-                className="rounded-xl border-none bg-muted font-bold h-12 focus:ring-2 focus:ring-red-500 transition-all"
-                />
+                <Input placeholder="e.g. UG vs KNUST: The Ultimate Roast" value={title} onChange={e => setTitle(e.target.value)} className="rounded-xl border-none bg-muted font-bold h-12" />
             </div>
 
             <div className="space-y-2">
-                <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Challenge Opponent (Email)</Label>
+                <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Opponent Email</Label>
                 <div className="flex gap-2">
-                <Input 
-                    placeholder="opponent@st.edu.gh" 
-                    value={opponentEmail} 
-                    onChange={e => setOpponentEmail(e.target.value)} 
-                    onKeyDown={(e) => e.key === 'Enter' && handleSearchOpponent()}
-                    className="rounded-xl border-none bg-muted font-bold h-12 focus:ring-2 focus:ring-red-500 transition-all flex-1"
-                />
-                <Button 
-                    onClick={handleSearchOpponent}
-                    disabled={searching || !opponentEmail}
-                    className="h-12 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase px-6"
-                >
-                    {searching ? <Loader2 className="animate-spin" size={14} /> : <Search size={14} />}
-                </Button>
+                <Input placeholder="opponent@st.edu.gh" value={opponentEmail} onChange={e => setOpponentEmail(e.target.value)} className="rounded-xl border-none bg-muted font-bold h-12 flex-1" />
+                <Button onClick={handleSearchOpponent} disabled={searching || !opponentEmail} className="h-12 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase px-6">{searching ? <Loader2 className="animate-spin" size={14} /> : <Search size={14} />}</Button>
                 </div>
             </div>
 
             {opponent && (
-                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border-2 border-emerald-100 dark:border-emerald-800 flex items-center justify-between animate-in zoom-in-95 duration-200">
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border-2 border-emerald-100 dark:border-emerald-800 flex items-center justify-between animate-in zoom-in-95">
                 <div className="flex items-center gap-3">
-                    <Avatar className="border-2 border-white shadow-sm h-10 w-10">
-                    <AvatarImage src={opponent.avatarUrl} />
-                    <AvatarFallback>{opponent.name?.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                    <p className="font-black text-sm text-foreground">{opponent.name}</p>
-                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{opponent.campusId?.toUpperCase()} RIVAL DETECTED</p>
-                    </div>
+                    <Avatar className="border-2 border-white shadow-sm h-10 w-10"><AvatarImage src={opponent.avatarUrl} /><AvatarFallback>{opponent.name?.charAt(0)}</AvatarFallback></Avatar>
+                    <div><p className="font-black text-sm text-foreground">{opponent.name}</p><p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{opponent.campusId?.toUpperCase()} RIVAL DETECTED</p></div>
                 </div>
                 <button onClick={() => setOpponent(null)} className="p-2 hover:bg-red-50 hover:text-red-500 transition-all"><X size={16}/></button>
                 </div>
@@ -208,24 +163,14 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
             <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase text-blue-500 px-1">Your Stream URL</Label>
                 <div className="relative">
-                    <Input 
-                        placeholder="Your TikTok/YT Link..." 
-                        value={myStreamUrl} 
-                        onChange={e => setMyStreamUrl(e.target.value)} 
-                        className="rounded-xl border-none bg-blue-50 dark:bg-blue-900/20 font-mono text-[10px] h-12 pl-10"
-                    />
+                    <Input placeholder="Your Link..." value={myStreamUrl} onChange={e => setMyStreamUrl(e.target.value)} className="rounded-xl border-none bg-blue-50 dark:bg-blue-900/20 font-mono text-[10px] h-12 pl-10" />
                     <Video className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400" size={16} />
                 </div>
             </div>
             <div className="space-y-2">
                 <Label className="text-[10px] font-black uppercase text-red-500 px-1">Opponent's Stream URL</Label>
                 <div className="relative">
-                    <Input 
-                        placeholder="Rival's TikTok/YT Link..." 
-                        value={opponentStreamUrl} 
-                        onChange={e => setOpponentStreamUrl(e.target.value)} 
-                        className="rounded-xl border-none bg-red-50 dark:bg-red-900/20 font-mono text-[10px] h-12 pl-10"
-                    />
+                    <Input placeholder="Rival's Link..." value={opponentStreamUrl} onChange={e => setOpponentStreamUrl(e.target.value)} className="rounded-xl border-none bg-red-50 dark:bg-red-900/20 font-mono text-[10px] h-12 pl-10" />
                     <Video className="absolute left-3 top-1/2 -translate-y-1/2 text-red-400" size={16} />
                 </div>
             </div>
@@ -234,16 +179,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
 
         <DialogFooter className="bg-muted/30 p-6 border-t">
             <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-xl font-bold">Cancel</Button>
-            <Button 
-                onClick={handleLaunch} 
-                disabled={isLoading || !isFormValid}
-                className={cn(
-                    "flex-1 rounded-xl font-black px-8 h-14 shadow-xl transition-all active:scale-95",
-                    isFormValid ? "bg-red-600 text-white hover:bg-red-500" : "bg-slate-200 text-slate-400 grayscale"
-                )}
-            >
-                {isLoading ? <Loader2 className="animate-spin" /> : <><Zap size={18} fill="currentColor" /> ENTER THE RING</>}
-            </Button>
+            <Button onClick={handleLaunch} disabled={isLoading || !isFormValid} className={cn("flex-1 rounded-xl font-black px-8 h-14 shadow-xl transition-all active:scale-95", isFormValid ? "bg-red-600 text-white" : "bg-slate-200 text-slate-400")}>{isLoading ? <Loader2 className="animate-spin" /> : <><Zap size={18} fill="currentColor" /> ENTER THE RING</>}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

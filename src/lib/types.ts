@@ -70,6 +70,8 @@ export type BattleMessage = {
   userId: string;
   userName: string;
   text: string;
+  mediaUrl?: string;
+  mediaType?: 'youtube' | 'tiktok' | 'native';
   createdAt: any;
 };
 
@@ -86,15 +88,6 @@ export type BattlePowerUp = {
   target: 'A' | 'B';
   type: string;
   weight: number;
-  createdAt: any;
-};
-
-export type CounterAttack = {
-  id: string;
-  userId: string;
-  userName: string;
-  videoUrl: string;
-  type: 'youtube' | 'tiktok' | 'native';
   createdAt: any;
 };
 

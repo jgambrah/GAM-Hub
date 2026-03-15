@@ -84,19 +84,19 @@
       },
       "required": ["id", "title", "status", "opponentA", "opponentB"]
     },
-    "BattleCounterAttack": {
-      "title": "BattleCounterAttack",
+    "BattleMessage": {
+      "title": "BattleMessage",
       "type": "object",
-      "description": "A video comeback reply within a live battle.",
+      "description": "A chat message or video attack within a live battle.",
       "properties": {
         "id": { "type": "string" },
         "userId": { "type": "string" },
         "userName": { "type": "string" },
-        "videoUrl": { "type": "string" },
-        "type": { "type": "string", "enum": ["youtube", "tiktok", "native"] },
+        "text": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "mediaType": { "type": "string", "enum": ["youtube", "tiktok", "native"] },
         "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["userId", "videoUrl", "type"]
+      }
     },
     "BattleReaction": {
       "title": "BattleReaction",
@@ -120,21 +120,6 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "target", "type", "weight"]
-    },
-    "ArenaLeaderboard": {
-      "title": "ArenaLeaderboard",
-      "type": "object",
-      "description": "Individual stats for Arena competitors.",
-      "properties": {
-        "userId": { "type": "string" },
-        "name": { "type": "string" },
-        "avatarUrl": { "type": "string" },
-        "campusAcronym": { "type": "string" },
-        "wins": { "type": "number" },
-        "losses": { "type": "number" },
-        "votes_received": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
     }
   },
   "auth": {
@@ -143,9 +128,8 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
-    "/arena_battles/{battleId}/messages/{msgId}": { "description": "Live chat for battles." },
+    "/arena_battles/{battleId}/messages/{msgId}": { "schema": "#/backend/entities/BattleMessage", "description": "Live chat and video attacks." },
     "/arena_battles/{battleId}/user_votes/{userId}": { "description": "Audit trail for voting to prevent duplicates." },
-    "/arena_battles/{battleId}/counter_attacks/{attackId}": { "schema": "#/backend/entities/BattleCounterAttack", "description": "Video artillery replies." },
     "/arena_battles/{battleId}/reactions/{reactionId}": { "schema": "#/backend/entities/BattleReaction", "description": "Live emoji reactions." },
     "/arena_battles/{battleId}/powerups/{powerupId}": { "schema": "#/backend/entities/BattlePowerUp", "description": "Weighted audience boosts." },
     "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." }

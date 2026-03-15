@@ -25,15 +25,10 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
       allow update: if isSignedIn() && (
         request.auth.uid in resource.data.participants ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'status', 'opponentA', 'opponentB'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'status', 'opponentA', 'opponentB', 'aiVerdict'])
       );
 
       match /messages/{msgId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn();
-      }
-
-      match /counter_attacks/{attackId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn();
       }
@@ -50,7 +45,6 @@ service cloud.firestore {
 
       match /user_votes/{userId} {
         allow read: if isSignedIn();
-        // 🛡️ ANTI-CHEAT PROTOCOL: One vote per user, authenticated ID must match document ID
         allow create: if isSignedIn() && request.auth.uid == userId;
       }
     }
