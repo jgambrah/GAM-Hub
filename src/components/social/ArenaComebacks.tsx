@@ -1,10 +1,9 @@
-
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc, increment } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { campuses } from '@/lib/data';
@@ -79,7 +78,7 @@ function ComebackItem({ c, onReply }: { c: ArenaComeback, onReply: (name: string
                 )}
             </div>
 
-            <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-[1.8rem] border border-slate-100 dark:border-slate-800 shadow-sm group-hover/comeback:shadow-lg transition-all relative">
+            <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-[1.8rem] border border-slate-100 dark:border-border shadow-sm group-hover/comeback:shadow-lg transition-all relative">
                 {c.mediaUrl && (
                     <div className="mb-4 rounded-[1.5rem] overflow-hidden bg-black border-2 border-white shadow-inner relative group/media">
                         {c.mediaType === 'image' && <Image src={c.mediaUrl} width={400} height={300} className="w-full h-auto object-cover max-h-60" alt="vibe evidence" />}
@@ -130,6 +129,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -137,6 +137,24 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const { firestore, storage } = useFirebase();
   const { user: userProfile } = useAuth();
   const { toast } = useToast();
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0]
+    if (!selectedFile) return
+
+    // Size guard (10MB max)
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      toast({
+        variant: "destructive",
+        title: "File too large",
+        description: "Maximum upload size is 10MB"
+      })
+      return
+    }
+
+    setFile(selectedFile)
+    setPreviewUrl(URL.createObjectURL(selectedFile))
+  }
 
   const comebacksQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -147,6 +165,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
 
   const resetInputs = () => {
     setText(''); setVideoUrl(''); setShowUrlInput(false); setShowEmojiPicker(false); setFile(null); setPreviewUrl(null);
+    setUploadProgress(null);
     if(fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -173,7 +192,23 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       if (file) {
         const filePath = `arena_media/${post.id}/${Date.now()}_${file.name}`;
         const fileRef = ref(storage, filePath);
-        await uploadBytes(fileRef, file);
+        
+        const uploadTask = uploadBytesResumable(fileRef, file)
+
+        await new Promise((resolve, reject) => {
+          uploadTask.on(
+            "state_changed",
+            (snapshot) => {
+              const progress =
+                (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+              setUploadProgress(progress);
+              console.log("Upload progress:", progress)
+            },
+            reject,
+            () => resolve(null)
+          )
+        })
+
         comebackData.mediaUrl = await getDownloadURL(fileRef);
         comebackData.mediaType = file.type.startsWith('image') ? 'image' : 'video';
       } else if (videoUrl.trim()) {
@@ -188,6 +223,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not post comeback.' });
     } finally {
       setIsPosting(false);
+      setUploadProgress(null);
     }
   };
 
@@ -276,6 +312,14 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         {previewUrl && (
             <div className="relative w-48 h-32 rounded-[2rem] overflow-hidden border-4 border-card shadow-2xl group animate-in zoom-in duration-300">
                 {file?.type.startsWith('image') ? <Image src={previewUrl} layout="fill" className="object-cover" alt="" /> : <video src={previewUrl} className="w-full h-full object-cover" />}
+                {uploadProgress !== null && uploadProgress < 100 && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                        <div className="text-center">
+                            <Loader2 className="animate-spin text-white mb-2 mx-auto" />
+                            <p className="text-[10px] text-white font-black">{Math.round(uploadProgress)}%</p>
+                        </div>
+                    </div>
+                )}
                 <button type="button" onClick={resetInputs} className="absolute top-3 right-3 bg-black/60 text-white p-2 rounded-full hover:bg-black transition-colors shadow-lg"><X size={14} /></button>
             </div>
         )}
