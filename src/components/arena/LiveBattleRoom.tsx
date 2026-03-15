@@ -5,22 +5,35 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { doc, onSnapshot, collection, query, orderBy, limitToLast, serverTimestamp, addDoc, updateDoc, increment, setDoc, getDoc } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
-import type { ArenaBattle, BattleMessage } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, CounterAttack } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube, CheckCircle2, Mic
+  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube, CheckCircle2, Mic, Video, Plus, Play
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import YouTube from 'react-youtube';
+import dynamic from 'next/dynamic';
+
+const TikTokEmbed = dynamic(() => import('../social/tiktok-embed').then(mod => mod.TikTokEmbed), {
+  ssr: false,
+  loading: () => <div className="h-60 w-[325px] bg-muted animate-pulse rounded-lg mx-auto" />
+});
+
+const getYouTubeId = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
 
 /**
  * LiveBattleRoom Component
  * -----------------------
  * Real-time competitive stage for inter-uni showdowns.
- * Features a Dual-Stream side-by-side grid.
- * Implements atomic voting and live comeback tracking.
+ * Features a Dual-Stream side-by-side grid and a video counter-attack system.
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
@@ -28,10 +41,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const { toast } = useToast();
   
   const [battle, setBattle] = useState<ArenaBattle | null>(null);
+  const [inputMode, setInputMode] = useState<'chat' | 'artillery'>('chat');
   const [message, setMessage] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const artilleryRef = useRef<HTMLDivElement>(null);
 
   // 1. REAL-TIME BATTLE SYNC
   useEffect(() => {
@@ -42,7 +58,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return () => unsub();
   }, [firestore, battleId]);
 
-  // 2. LIVE COMEBACK STREAM
+  // 2. LIVE COMEBACK STREAM (CHAT)
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
       collection(firestore, "arena_battles", battleId, "messages"),
@@ -53,17 +69,32 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 3. VOTE AUDIT: Check if user already voted in this battle
+  // 3. LIVE ARTILLERY STREAM (VIDEO COUNTER-ATTACKS)
+  const artilleryQuery = useMemoFirebase(() => 
+    firestore ? query(
+      collection(firestore, "arena_battles", battleId, "counter_attacks"),
+      orderBy("createdAt", "asc"),
+      limitToLast(10)
+    ) : null
+  , [firestore, battleId]);
+
+  const { data: counterAttacks } = useCollection<CounterAttack>(artilleryQuery);
+
+  // 4. VOTE AUDIT: Check if user already voted in this battle
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
     const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
     getDoc(voteRef).then(snap => { if (snap.exists()) setHasVoted(true); });
   }, [firestore, user, battleId]);
 
-  // 4. AUTO-SCROLL
+  // 5. AUTO-SCROLL
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    artilleryRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [counterAttacks]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +108,26 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       text,
       createdAt: serverTimestamp()
     });
+  };
+
+  const handleLaunchArtillery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!videoUrl.trim() || !firestore || !user || battle?.status === 'ended') return;
+    const url = videoUrl.trim();
+    setVideoUrl('');
+    setInputMode('chat');
+
+    const type = url.includes('youtube.com') || url.includes('youtu.be') ? 'youtube' : 'tiktok';
+
+    addDoc(collection(firestore, 'arena_battles', battleId, 'counter_attacks'), {
+      userId: user.id,
+      userName: user.name,
+      videoUrl: url,
+      type,
+      createdAt: serverTimestamp()
+    });
+
+    toast({ title: "Artillery Launched! 🔥" });
   };
 
   /**
@@ -94,7 +145,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     }
 
     try {
-      // 1. Create audit-trail document (One vote per user)
       const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
       await setDoc(voteRef, { 
         votedFor: targetUserId, 
@@ -102,11 +152,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         timestamp: serverTimestamp() 
       });
 
-      // 2. Atomic Increment on the main battle doc
       const battleRef = doc(firestore, 'arena_battles', battleId);
       await updateDoc(battleRef, {
         [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(1),
-        [`votes.${targetUserId}`]: increment(1) // Legacy tally for functions
+        [`votes.${targetUserId}`]: increment(1)
       });
 
       setHasVoted(true);
@@ -118,7 +167,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     }
   };
 
-  // 🛡️ LIAISON DEFENSE: Wait for full data sync before rendering competitors
   if (!battle || !battle.opponentA || !battle.opponentB) {
     return (
         <div className="fixed inset-0 z-[7000] bg-black flex items-center justify-center">
@@ -163,7 +211,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
         {/* SIDE-BY-SIDE GRID */}
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1 md:gap-4 p-1 md:p-4 bg-slate-900">
-          {/* OPPONENT A PLAYER */}
           <div className="relative rounded-[2rem] overflow-hidden border-4 border-white/5 bg-black group transition-all duration-700">
             <ReactPlayer url={opponentA.videoUrl} playing={!isEnded} muted={false} width="100%" height="100%" className="absolute inset-0" />
             <div className="absolute bottom-6 left-6 z-20 flex items-center gap-3">
@@ -178,7 +225,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             </div>
           </div>
 
-          {/* OPPONENT B PLAYER */}
           <div className="relative rounded-[2rem] overflow-hidden border-4 border-white/5 bg-black group transition-all duration-700">
             <ReactPlayer url={opponentB.videoUrl} playing={!isEnded} muted={false} width="100%" height="100%" className="absolute inset-0" />
             <div className="absolute bottom-6 right-6 z-20 flex items-center gap-3 flex-row-reverse">
@@ -194,7 +240,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           </div>
         </div>
 
-        {/* HUD: ENERGY TALLY & VOTING */}
+        {/* HUD: ENERGY TALLY & ARTILLERY SHELF */}
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-2xl px-6 z-50">
           <div className="bg-slate-950/80 backdrop-blur-xl p-8 rounded-[3.5rem] border border-white/10 shadow-2xl">
             <div className="flex justify-between items-end mb-6 px-4">
@@ -208,8 +254,34 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p2Pct}%` }} />
                 <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/20 -translate-x-1/2" />
             </div>
+
+            {/* 🔥 COUNTER-ATTACK SHELF */}
+            {counterAttacks && counterAttacks.length > 0 && (
+                <div className="mb-8 space-y-3">
+                    <div className="flex items-center gap-2 px-2">
+                        <Flame size={14} className="text-red-500 animate-pulse" />
+                        <span className="text-[10px] font-black text-white uppercase tracking-widest">Live Artillery</span>
+                    </div>
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                        {counterAttacks.map((attack) => (
+                            <button 
+                                key={attack.id}
+                                className="flex-shrink-0 flex items-center gap-3 bg-white/5 p-2 rounded-2xl border border-white/10 hover:bg-white/10 transition-all active:scale-95 group"
+                            >
+                                <div className="w-10 h-10 rounded-xl bg-slate-800 overflow-hidden flex items-center justify-center border border-white/5 group-hover:border-red-500 transition-all">
+                                    <Play size={16} fill="white" className="text-white" />
+                                </div>
+                                <div className="text-left pr-4">
+                                    <p className="text-[8px] font-black text-slate-500 uppercase leading-none">Attack</p>
+                                    <p className="text-[10px] font-bold text-white truncate max-w-[80px]">{attack.userName}</p>
+                                </div>
+                            </button>
+                        ))}
+                        <div ref={artilleryRef} />
+                    </div>
+                </div>
+            )}
             
-            {/* THE VOTING COMMANDS */}
             {!hasVoted && !isEnded ? (
                 <div className="grid grid-cols-2 gap-4">
                     <button 
@@ -238,7 +310,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         </div>
                     ) : (
                         <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-                            <CheckCircle2 size={14} /> Tally Authenticated by Liaison
+                            <CheckCircle2 size={14} /> Vote Authenticated by Liaison
                         </p>
                     )}
                 </div>
@@ -247,14 +319,27 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         </div>
       </div>
 
-      {/* --- SIDEBAR: LIVE CHAT --- */}
+      {/* --- SIDEBAR: LIVE CHAT & DISPATCH --- */}
       <div className="flex-1 bg-slate-900 border-l border-white/10 flex flex-col shadow-2xl">
         <div className="p-6 border-b border-white/5 bg-slate-950/50 flex items-center justify-between">
           <div>
             <h3 className="text-white font-black italic tracking-tight uppercase truncate max-w-[180px]">{battle.title}</h3>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Comeback Stream</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Combat Hub</span>
           </div>
-          <MessageSquare size={20} className="text-slate-400" />
+          <div className="flex gap-2">
+            <button 
+                onClick={() => setInputMode('chat')}
+                className={cn("p-2 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white")}
+            >
+                <MessageSquare size={18} />
+            </button>
+            <button 
+                onClick={() => setInputMode('artillery')}
+                className={cn("p-2 rounded-xl transition-all", inputMode === 'artillery' ? "bg-red-600 text-white" : "text-slate-500 hover:text-white")}
+            >
+                <Swords size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
@@ -270,15 +355,35 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         </div>
 
         {!isEnded && (
-            <form onSubmit={handleSendMessage} className="p-6 bg-slate-950/80 border-t border-white/10 flex gap-2">
-            <input 
-                value={message}
-                onChange={e => setMessage(e.target.value)}
-                placeholder="Drop a live shade..."
-                className="flex-1 bg-white/5 rounded-[1.5rem] px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-600 transition-all font-bold shadow-inner"
-            />
-            <button type="submit" disabled={!message.trim()} className="p-4 bg-red-600 text-white rounded-full active:scale-90 transition-transform shadow-lg"><Send size={20} /></button>
-            </form>
+            <div className="p-6 bg-slate-950/80 border-t border-white/10">
+                {inputMode === 'chat' ? (
+                    <form onSubmit={handleSendMessage} className="flex gap-2">
+                        <input 
+                            value={message}
+                            onChange={e => setMessage(e.target.value)}
+                            placeholder="Drop a live shade..."
+                            className="flex-1 bg-white/5 rounded-[1.5rem] px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all font-bold shadow-inner"
+                        />
+                        <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-full active:scale-90 transition-transform shadow-lg"><Send size={20} /></button>
+                    </form>
+                ) : (
+                    <form onSubmit={handleLaunchArtillery} className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2 px-2">
+                            <Video size={14} className="text-red-500" />
+                            <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Video Counter-Attack</span>
+                        </div>
+                        <div className="flex gap-2">
+                            <input 
+                                value={videoUrl}
+                                onChange={e => setVideoUrl(e.target.value)}
+                                placeholder="Paste TikTok/YT link..."
+                                className="flex-1 bg-red-900/20 rounded-[1.5rem] px-5 py-4 text-xs text-red-300 outline-none border border-red-900/50 focus:border-red-500 transition-all font-mono"
+                            />
+                            <button type="submit" disabled={!videoUrl.trim()} className="p-4 bg-red-600 text-white rounded-full active:scale-90 transition-transform shadow-lg"><Zap size={20} fill="white" /></button>
+                        </div>
+                    </form>
+                )}
+            </div>
         )}
       </div>
     </div>

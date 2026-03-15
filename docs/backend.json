@@ -75,6 +75,20 @@
       },
       "required": ["id", "title", "status", "opponentA", "opponentB"]
     },
+    "BattleCounterAttack": {
+      "title": "BattleCounterAttack",
+      "type": "object",
+      "description": "A video comeback reply within a live battle.",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "type": { "type": "string", "enum": ["youtube", "tiktok", "native"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "videoUrl", "type"]
+    },
     "ArenaLeaderboard": {
       "title": "ArenaLeaderboard",
       "type": "object",
@@ -99,6 +113,7 @@
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/arena_battles/{battleId}/messages/{msgId}": { "description": "Live chat for battles." },
     "/arena_battles/{battleId}/user_votes/{userId}": { "description": "Audit trail for voting to prevent duplicates." },
+    "/arena_battles/{battleId}/counter_attacks/{attackId}": { "schema": "#/backend/entities/BattleCounterAttack", "description": "Video artillery replies." },
     "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." }
   }
 }

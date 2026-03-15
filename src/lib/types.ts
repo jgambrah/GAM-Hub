@@ -67,6 +67,15 @@ export type BattleMessage = {
   createdAt: any;
 };
 
+export type CounterAttack = {
+  id: string;
+  userId: string;
+  userName: string;
+  videoUrl: string;
+  type: 'youtube' | 'tiktok' | 'native';
+  createdAt: any;
+};
+
 export type SocialPost = {
   id: string;
   authorId: string;
