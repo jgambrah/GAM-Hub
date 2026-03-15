@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Campus": {
@@ -53,6 +52,18 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
+    "WalletTransaction": {
+      "title": "WalletTransaction",
+      "type": "object",
+      "description": "A record of coin movements in the Yard.",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["purchase", "gift_sent", "gift_received", "powerup_used", "tournament_entry"] },
+        "coins": { "type": "number" },
+        "amountPaidGHS": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "ArenaBattle": {
       "title": "ArenaBattle",
       "type": "object",
@@ -88,6 +99,7 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances for monetization." },
+    "/wallet_transactions/{txId}": { "schema": "#/backend/entities/WalletTransaction", "description": "Historical ledger of coin movements." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/campus_pulse/{postId}": { "description": "Social feed content including highlights." }
   }

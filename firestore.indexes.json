@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "wallet_transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "campus_pulse",
       "queryScope": "COLLECTION",
       "fields": [
