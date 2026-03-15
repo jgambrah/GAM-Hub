@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CreateBattleModal } from '@/components/arena/CreateBattleModal';
 import { LiveBattleCard } from '@/components/arena/LiveBattleCard';
 import { LiveBattleRoom } from '@/components/arena/LiveBattleRoom';
+import { ArenaChampions } from '@/components/arena/ArenaChampions';
 
 const INITIAL_LIMIT = 50;
 
@@ -137,6 +138,9 @@ export default function ArenaPage() {
                     )}
                 </div>
             </section>
+
+            {/* INDIVIDUAL CHAMPIONS LEADERBOARD */}
+            <ArenaChampions />
 
             <div className="bg-slate-900 rounded-[3rem] p-8 mb-8 text-white relative overflow-hidden shadow-2xl mx-auto max-w-4xl">
                 <div className="absolute right-0 top-0 p-6 opacity-20"><Flame size={120} /></div>

@@ -59,6 +59,21 @@
         "endsAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "title", "creatorId", "participants", "status"]
+    },
+    "ArenaLeaderboard": {
+      "title": "ArenaLeaderboard",
+      "type": "object",
+      "description": "Individual stats for Arena competitors.",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "campusAcronym": { "type": "string" },
+        "wins": { "type": "number" },
+        "losses": { "type": "number" },
+        "votes_received": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -68,6 +83,7 @@
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/arena_battles/{battleId}/messages/{msgId}": { "description": "Live chat for battles." },
-    "/arena_battles/{battleId}/user_votes/{userId}": { "description": "Audit trail for voting to prevent duplicates." }
+    "/arena_battles/{battleId}/user_votes/{userId}": { "description": "Audit trail for voting to prevent duplicates." },
+    "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." }
   }
 }

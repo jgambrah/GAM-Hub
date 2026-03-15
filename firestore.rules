@@ -35,8 +35,14 @@ service cloud.firestore {
 
       match /user_votes/{userId} {
         allow read: if isSignedIn();
+        // 🛡️ ANTI-CHEAT PROTOCOL: One vote per user, authenticated ID must match document ID
         allow create: if isSignedIn() && request.auth.uid == userId;
       }
+    }
+
+    match /arena_leaderboard/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     match /video_hashes/{hash} {

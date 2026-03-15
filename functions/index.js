@@ -18,6 +18,64 @@ if (!admin.apps.length) {
 setGlobalOptions({maxInstances: 10});
 
 /**
+ * 🛡️ ARENA RING: AUTO-END BATTLES & LEADERBOARD SYNC
+ */
+exports.endBattle = onSchedule("every 1 minutes", async (event) => {
+  const db = admin.firestore();
+  const now = new Date().toISOString();
+
+  const expiredBattles = await db.collection("arena_battles")
+    .where("status", "==", "live")
+    .where("endsAt", "<=", now)
+    .get();
+
+  if (expiredBattles.empty) return null;
+
+  const batch = db.batch();
+
+  for (const doc of expiredBattles.docs) {
+    const data = doc.data();
+    const votes = data.votes || {};
+    const participants = data.participants || [];
+    const info = data.participantInfo || {};
+    
+    // Sort votes to find winner
+    const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+    const winnerId = sorted[0]?.[0];
+    const isDraw = sorted.length > 1 && sorted[0][1] === sorted[1][1];
+
+    // 1. Mark Battle as Ended
+    batch.update(doc.ref, { 
+      status: "ended", 
+      endedAt: admin.firestore.FieldValue.serverTimestamp() 
+    });
+
+    // 2. Update Leaderboard for all participants
+    for (const pId of participants) {
+      const isWinner = !isDraw && pId === winnerId;
+      const receivedVotes = votes[pId] || 0;
+      const pInfo = info[pId] || {};
+      
+      const leaderRef = db.collection("arena_leaderboard").doc(pId);
+      batch.set(leaderRef, {
+        userId: pId,
+        name: pInfo.name || "Anonymous",
+        avatarUrl: pInfo.avatarUrl || "",
+        campusAcronym: pInfo.campusAcronym || "GH",
+        wins: admin.firestore.FieldValue.increment(isWinner ? 1 : 0),
+        losses: admin.firestore.FieldValue.increment(!isWinner && !isDraw ? 1 : 0),
+        votes_received: admin.firestore.FieldValue.increment(receivedVotes),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+  }
+
+  await batch.commit();
+  console.log(`⚔️ Liaison Arena: Closed ${expiredBattles.size} expired showdowns and updated Leaderboard.`);
+  return null;
+});
+
+/**
  * 🎥 HLS & COMPRESSION ENGINE
  */
 exports.compressVideo = onObjectFinalized({
@@ -319,30 +377,6 @@ exports.pruneNotifications = onSchedule("every 24 hours", async (event) => {
   await batch.commit();
   
   console.log(`🧹 Liaison: Pruned ${expiredSnap.size} stale notifications from the Yard.`);
-  return null;
-});
-
-/**
- * 🛡️ ARENA RING: AUTO-END BATTLES
- */
-exports.endBattle = onSchedule("every 1 minutes", async (event) => {
-  const db = admin.firestore();
-  const now = new Date().toISOString();
-
-  const expiredBattles = await db.collection("arena_battles")
-    .where("status", "==", "live")
-    .where("endsAt", "<=", now)
-    .get();
-
-  if (expiredBattles.empty) return null;
-
-  const batch = db.batch();
-  expiredBattles.forEach(doc => {
-    batch.update(doc.ref, { status: "ended", endedAt: admin.firestore.FieldValue.serverTimestamp() });
-  });
-
-  await batch.commit();
-  console.log(`⚔️ Liaison Arena: Closed ${expiredBattles.size} expired showdowns.`);
   return null;
 });
 
