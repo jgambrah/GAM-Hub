@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -6,7 +5,7 @@ import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking,
 import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp, getDoc, setDoc, increment } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target, Smile, ImagePlus, Youtube, PlusCircle } from 'lucide-react';
+import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target, Smile, ImagePlus, Youtube, PlusCircle, Star } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -497,7 +496,7 @@ export default function ArenaPage() {
                                     disabled={isPosting || (!content.trim() && !file)}
                                     className={cn(
                                         "p-5 rounded-full shadow-lg transition-transform active:scale-90 h-auto",
-                                        vibeType === 'shade' ? "bg-red-600 hover:bg-red-700" : "bg-amber-500 hover:bg-amber-600"
+                                        vibeType === 'shade' ? "bg-red-600 hover:bg-red-700" : "bg-amber-50 hover:bg-amber-600"
                                     )}
                                 >
                                     {isPosting ? <Loader2 className="animate-spin" size={24} /> : <Zap size={24} fill="currentColor" />}
