@@ -80,6 +80,15 @@ export type BattleReaction = {
   createdAt: any;
 };
 
+export type BattlePowerUp = {
+  id: string;
+  userId: string;
+  target: 'A' | 'B';
+  type: string;
+  weight: number;
+  createdAt: any;
+};
+
 export type CounterAttack = {
   id: string;
   userId: string;
@@ -322,4 +331,209 @@ export type Notification = {
   actorName?: string;
   read: boolean;
   createdAt: any;
+};
+
+export type ArenaLeaderboard = {
+  userId: string;
+  name: string;
+  avatarUrl: string;
+  campusAcronym: string;
+  wins: number;
+  losses: number;
+  votes_received: number;
+  updatedAt: any;
+};
+
+export type HallOfFameEntry = {
+  id: string;
+  campusId: string;
+  weekEnding: any;
+  totalBurns: number;
+};
+
+export type DemandSignal = {
+  id: string;
+  item: string;
+  category: string;
+  demandCount: number;
+  lastUpdated: any;
+};
+
+export type MarketRequest = {
+  id: string;
+  userId: string;
+  userName: string;
+  query: string;
+  category: string;
+  campusId: string;
+  location?: string;
+  status: 'open' | 'closed';
+  createdAt: any;
+};
+
+export type MarketProfile = {
+  userId: string;
+  interests: string[];
+  favoriteProducts: string[];
+  lastSearch?: string;
+};
+
+export type UserIntelligence = {
+  interests: Record<string, number>;
+  affinities: {
+    creators: Record<string, number>;
+    vendors: Record<string, number>;
+  };
+  tasteVector?: number[];
+  engagementLevel: number;
+  currentStrategy?: string;
+  updatedAt: any;
+  pricePreference?: {
+      min: number;
+      max: number;
+  };
+};
+
+export type MarketplaceSignal = 'view' | 'click' | 'intent' | 'favorite' | 'purchase';
+export type VibeSignal = 'watch' | 'like' | 'comment' | 'share' | 'reaction' | 'skip';
+
+export type KnowledgeGraphNode = {
+  id: string;
+  type: 'tag' | 'creator' | 'vendor' | 'category' | 'location';
+  name: string;
+  connections: Record<string, { weight: number; lastUpdated: any }>;
+  updatedAt: any;
+};
+
+export type MarketIntent = {
+  category?: string;
+  tags?: string[];
+  priceMin?: number;
+  priceMax?: number;
+  intent?: string;
+};
+
+export type NotificationSettings = {
+  priceDrops: boolean;
+  trendingProducts: boolean;
+  vendorUpdates: boolean;
+  recommendations: boolean;
+  quietHours: { start: number; end: number };
+};
+
+export type LeadPrice = {
+  id: string;
+  category: string;
+  price: number;
+  updatedAt: string;
+};
+
+export type PayoutRequest = {
+  id: string;
+  vendorId: string;
+  vendorName: string;
+  amount: number;
+  momoNumber: string;
+  momoBankCode: string;
+  status: 'pending' | 'paid' | 'rejected';
+  createdAt: any;
+  processedAt?: any;
+};
+
+export type LiveBroadcast = {
+  id: string;
+  status: 'live' | 'off-air';
+  videoUrl: string;
+  hostName: string;
+  hostId: string;
+  title: string;
+  viewerCount: number;
+  currentTime: number;
+  updatedAt: any;
+};
+
+export type SrcPost = {
+  id: string;
+  title: string;
+  content: string;
+  campusId: string;
+  authorId: string;
+  createdAt: any;
+};
+
+export type RegistryPost = {
+  id: string;
+  title: string;
+  content: string;
+  campusId: string;
+  authorId: string;
+  isUrgent: boolean;
+  targetAudience: 'all' | 'staff' | 'student';
+  attachments: string[];
+  createdAt: string;
+};
+
+export type SpotlightItem = {
+  id: string;
+  title: string;
+  type: 'vendor' | 'student' | 'vlog' | 'event' | 'announcement';
+  campusId: string;
+  authorCampus?: string;
+  image?: string;
+  imageHint?: string;
+  score?: number;
+  vibeColor?: string;
+  isOfficial?: boolean;
+  content?: string;
+  category?: string;
+  updatedAt: any;
+  data?: any;
+};
+
+export type WatchParty = {
+  id: string;
+  groupId: string;
+  hostId: string;
+  videoUrl: string;
+  title: string;
+  isPlaying: boolean;
+  currentTime: number;
+  createdAt: any;
+  updatedAt: any;
+};
+
+export type PickupPoint = {
+  id: string;
+  name: string;
+  description: string;
+  campusId: string;
+  latitude: number;
+  longitude: number;
+  isOfficial: boolean;
+  status: 'active' | 'inactive';
+  createdAt: string;
+};
+
+export type Dispute = {
+  id: string;
+  orderId: string;
+  buyerId: string;
+  vendorId: string;
+  reason: string;
+  evidenceUrls: string[];
+  status: 'pending' | 'investigating' | 'resolved_refund' | 'resolved_payout';
+  refundNumber: string;
+  createdAt: string;
+  resolvedAt?: string;
+  liaisonNotes?: string;
+};
+
+export type Review = {
+  id: string;
+  orderId: string;
+  vendorId: string;
+  buyerId: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
 };

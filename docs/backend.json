@@ -108,6 +108,19 @@
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
+    "BattlePowerUp": {
+      "title": "BattlePowerUp",
+      "type": "object",
+      "description": "A weighted audience boost during a battle.",
+      "properties": {
+        "userId": { "type": "string" },
+        "target": { "type": "string", "enum": ["A", "B"] },
+        "type": { "type": "string" },
+        "weight": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "target", "type", "weight"]
+    },
     "ArenaLeaderboard": {
       "title": "ArenaLeaderboard",
       "type": "object",
@@ -134,6 +147,7 @@
     "/arena_battles/{battleId}/user_votes/{userId}": { "description": "Audit trail for voting to prevent duplicates." },
     "/arena_battles/{battleId}/counter_attacks/{attackId}": { "schema": "#/backend/entities/BattleCounterAttack", "description": "Video artillery replies." },
     "/arena_battles/{battleId}/reactions/{reactionId}": { "schema": "#/backend/entities/BattleReaction", "description": "Live emoji reactions." },
+    "/arena_battles/{battleId}/powerups/{powerupId}": { "schema": "#/backend/entities/BattlePowerUp", "description": "Weighted audience boosts." },
     "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." }
   }
 }

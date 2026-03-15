@@ -6,10 +6,10 @@ import { doc, onSnapshot, collection, query, orderBy, limitToLast, serverTimesta
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
-import type { ArenaBattle, BattleMessage, CounterAttack, BattleReaction } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, CounterAttack, BattleReaction, BattlePowerUp } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX
+  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX, Fuel
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -34,11 +34,17 @@ const getYouTubeId = (url: string) => {
 
 const REACTIONS: ('🔥' | '😂' | '😱' | '💯' | '👑')[] = ['🔥', '😂', '😱', '💯', '👑'];
 
+const POWER_UPS = [
+    { type: 'fire_boost', label: 'Fire Boost', emoji: '🔥', weight: 5, color: 'text-orange-500' },
+    { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 10, color: 'text-blue-500' },
+    { type: 'crown_boost', label: 'Crown Boost', emoji: '👑', weight: 25, color: 'text-amber-500' },
+];
+
 /**
  * LiveBattleRoom Component
  * -----------------------
  * Real-time competitive stage for inter-uni showdowns.
- * Features: Side-by-side streams, real-time voting, AI Referee, and viral reactions.
+ * Upgraded with Audience Power-Ups (Weighted Voting).
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
@@ -47,7 +53,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const { toast } = useToast();
   
   const [battle, setBattle] = useState<ArenaBattle | null>(null);
-  const [inputMode, setInputMode] = useState<'chat' | 'artillery'>('chat');
+  const [inputMode, setInputMode] = useState<'chat' | 'artillery' | 'boost'>('chat');
   const [message, setMessage] = useState('');
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
@@ -76,7 +82,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 3. JUDGMENT PROTOCOL: Trigger AI Referee when battle ends
+  // 3. JUDGMENT PROTOCOL
   useEffect(() => {
     if (!battle || battle.status !== 'ended' || battle.aiVerdict || !user || !firestore) return;
 
@@ -161,11 +167,44 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     } finally { setIsVoting(false); }
   };
 
+  const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
+    if (!firestore || !user || !battle || battle.status === 'ended') return;
+    const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
+    if (!targetUserId) return;
+
+    try {
+        const powerupData: Partial<BattlePowerUp> = {
+            userId: user.id,
+            target: target,
+            type: powerup.type,
+            weight: powerup.weight,
+            createdAt: serverTimestamp()
+        };
+
+        // 1. Log the Power-Up
+        addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), powerupData);
+
+        // 2. Atomic Increment based on Weight
+        await updateDoc(doc(firestore, 'arena_battles', battleId), { 
+            [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
+            [`votes.${targetUserId}`]: increment(powerup.weight) 
+        });
+
+        // 3. Visual Feedback
+        sendReaction(powerup.emoji);
+        toast({ 
+            title: `${powerup.label} Deployed!`, 
+            description: `Boosted ${target === 'A' ? p1.name : p2.name} by +${powerup.weight} Energy.` 
+        });
+    } catch (err) {
+        toast({ variant: 'destructive', title: 'Power-Up Refused' });
+    }
+  };
+
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // DEFENSIVE DATA CHECK: Ensure schema is correctly loaded
   if (!battle || !battle.opponentA || !battle.opponentB) {
     return (
         <div className="fixed inset-0 z-[7000] bg-black flex flex-col items-center justify-center text-center gap-4">
@@ -383,6 +422,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           <div className="flex gap-2">
             <button onClick={() => setInputMode('chat')} className={cn("p-2 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white")}><MessageSquare size={18}/></button>
             <button onClick={() => setInputMode('artillery')} className={cn("p-2 rounded-xl transition-all", inputMode === 'artillery' ? "bg-red-600 text-white" : "text-slate-500 hover:text-white")}><Swords size={18}/></button>
+            <button onClick={() => setInputMode('boost')} className={cn("p-2 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950" : "text-slate-500 hover:text-white")}><Zap size={18}/></button>
           </div>
         </div>
 
@@ -401,6 +441,56 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           <div ref={scrollRef} />
         </div>
 
+        {/* INPUT AREA: SWITCHABLE MODES */}
+        <div className="p-6 bg-slate-950 border-t border-white/5">
+            {inputMode === 'chat' && (
+                <form onSubmit={handleSendMessage} className="flex gap-2">
+                    <input 
+                        value={message} 
+                        onChange={e => setMessage(e.target.value)} 
+                        placeholder="Drop a live shade..." 
+                        className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all font-bold" 
+                    />
+                    <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-2xl active:scale-90 shadow-lg hover:bg-blue-500 transition-all">
+                        <Send size={20} />
+                    </button>
+                </form>
+            )}
+
+            {inputMode === 'boost' && (
+                <div className="space-y-4 animate-in slide-in-from-bottom-4">
+                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest text-center mb-2">Deploy Audience Power-Ups</p>
+                    <div className="grid grid-cols-3 gap-2">
+                        {POWER_UPS.map(up => (
+                            <div key={up.type} className="flex flex-col gap-2">
+                                <button 
+                                    onClick={() => handlePowerUp(up, 'A')}
+                                    className="flex-1 p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group"
+                                >
+                                    <span className="text-xl group-hover:scale-125 transition-transform inline-block">{up.emoji}</span>
+                                    <p className="text-[8px] font-black text-white mt-1 uppercase">To {p1.campusAcronym}</p>
+                                </button>
+                                <button 
+                                    onClick={() => handlePowerUp(up, 'B')}
+                                    className="flex-1 p-3 bg-amber-500/20 border border-amber-500/30 rounded-xl hover:bg-amber-500 transition-all active:scale-95 group"
+                                >
+                                    <span className="text-xl group-hover:scale-125 transition-transform inline-block">{up.emoji}</span>
+                                    <p className="text-[8px] font-black text-white mt-1 uppercase">To {p2.campusAcronym}</p>
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {inputMode === 'artillery' && (
+                <div className="p-4 bg-red-600/10 border border-red-500/20 rounded-2xl text-center">
+                    <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Vibe Artillery Mode</p>
+                    <p className="text-xs text-slate-400 mt-2 italic">Video comebacks are synchronized in the main Ring feed.</p>
+                </div>
+            )}
+        </div>
+
         {/* LIVE REACTIONS */}
         <div className="px-6 py-3 bg-slate-950/30 flex justify-center gap-4 border-t border-white/5">
             {REACTIONS.map(emoji => (
@@ -413,22 +503,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 </button>
             ))}
         </div>
-
-        {!isEnded && (
-            <div className="p-6 bg-slate-950 border-t border-white/5">
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                    <input 
-                        value={message} 
-                        onChange={e => setMessage(e.target.value)} 
-                        placeholder="Drop a live shade..." 
-                        className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all font-bold" 
-                    />
-                    <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-2xl active:scale-90 shadow-lg hover:bg-blue-500 transition-all">
-                        <Send size={20} />
-                    </button>
-                </form>
-            </div>
-        )}
       </div>
     </div>
   );
