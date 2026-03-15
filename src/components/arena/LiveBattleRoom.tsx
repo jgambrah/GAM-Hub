@@ -6,7 +6,6 @@
  * -----------------------
  * Elite National Arena Stage.
  * Handshake Lifecycle: WAITING (Challenge Mode) -> LIVE (Showdown Mode) -> ENDED (Verdict Mode)
- * Includes Creator Selection logic and Direct Rivalry Acceptance.
  * Enhanced with Engagement Spike Logging for Replay Highlights.
  */
 
@@ -189,6 +188,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         logEngagementSpike('powerup', target, powerup.weight);
         
     } catch (err) { toast({ variant: 'destructive', title: 'Power-Up Refused' }); }
+  };
+
+  const sendReactionSignal = (emoji: string) => {
+      // Log as reaction for highlight engine
+      logEngagementSpike('reaction', 'A', 1);
+      toast({ title: `Reacted with ${emoji}` });
   };
 
   useEffect(() => {
@@ -391,7 +396,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             ) : (
                 <div className="grid grid-cols-3 gap-2 animate-in slide-in-from-bottom-4">
                     {POWER_UPS.map(up => (
-                        <button key={up.type} onClick={() => handlePowerUp(up, 'A')} className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group">
+                        <button key={up.type} onClick={() => { handlePowerUp(up, 'A'); sendReactionSignal(up.emoji); }} className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group">
                             <span className="text-xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
                             <p className="text-[8px] font-black text-white mt-1 uppercase">+{up.weight}</p>
                         </button>
