@@ -1,11 +1,11 @@
 
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, limit, where } from 'firebase/firestore';
-import type { ArenaPost, ArenaBattle, CampusWar } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Plus, Flame, Sparkles, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { collection, query, orderBy, limit, where, doc, onSnapshot } from 'firebase/firestore';
+import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
+import { Swords, Trophy, Zap, Loader2, Plus, Flame, Sparkles, Globe, Search, Radar, X, Timer } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -31,6 +31,12 @@ import { CampusWarLeaderboard } from '@/components/arena/CampusWarLeaderboard';
 
 const INITIAL_LIMIT = 50;
 
+/**
+ * ArenaPage Component
+ * -------------------
+ * National Inter-Uni Battleground.
+ * Features the "Matching Desk" HUD for auto-match seekers.
+ */
 export default function ArenaPage() {
     const { firestore } = useFirebase();
     const { user, isTokenReady, isAdmin } = useAuth();
@@ -41,11 +47,12 @@ export default function ArenaPage() {
     const [vibeType, setVibeType] = useState<'shade' | 'celebration'>('celebration');
     const [targetCampus, setTargetCampus] = useState('all');
     
-    // MODAL STATES
+    // MODAL & HUD STATES
     const [isBattleModalOpen, setIsBattleModalOpen] = useState(false);
     const [isWarModalOpen, setIsWarModalOpen] = useState(false);
     const [activeBattleId, setActiveBattleId] = useState<string | null>(null);
     const [activeWarId, setActiveWarId] = useState<string | null>(null);
+    const [matchCountdown, setMatchCountdown] = useState<number | null>(null);
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
@@ -56,14 +63,60 @@ export default function ArenaPage() {
     }, [firestore]);
     const { data: liveBattles, isLoading: isLoadingBattles } = useCollection<ArenaBattle>(battlesQuery);
 
-    // 📡 2. RETRIEVE LIVE WARS (University vs University)
+    // 📡 2. MATCHING DESK: Detect if current user is in the Waiting Pool
+    const poolQuery = useMemoFirebase(() => {
+        if (!firestore || !user?.id) return null;
+        return query(collection(firestore, 'arena_waiting_pool'), where('userId', '==', user.id), limit(1));
+    }, [firestore, user?.id]);
+    const { data: poolEntries } = useCollection<ArenaWaitingPoolEntry>(poolQuery);
+    const isMatching = poolEntries && poolEntries.length > 0;
+
+    // 📡 3. MATCH HANDSHAKE: Auto-Open BattleRoom when matched
+    useEffect(() => {
+        if (!isMatching || !firestore || !user?.id) return;
+
+        // Listen for ANY live battle where the user is a participant
+        const q = query(
+            collection(firestore, 'arena_battles'), 
+            where('status', '==', 'live'),
+            where('participants', 'array-contains', user.id),
+            limit(1)
+        );
+
+        const unsub = onSnapshot(q, (snap) => {
+            if (!snap.empty) {
+                const battle = snap.docs[0];
+                const battleData = battle.data() as ArenaBattle;
+                
+                // Only trigger if battle was created RECENTLY (within last 30s)
+                const createdAt = battleData.createdAt?.toMillis?.() || 0;
+                if (Date.now() - createdAt < 30000) {
+                    setMatchCountdown(3);
+                    const timer = setInterval(() => {
+                        setMatchCountdown(prev => {
+                            if (prev === 1) {
+                                clearInterval(timer);
+                                setActiveBattleId(battle.id);
+                                return null;
+                            }
+                            return prev ? prev - 1 : null;
+                        });
+                    }, 1000);
+                }
+            }
+        });
+
+        return () => unsub();
+    }, [isMatching, firestore, user?.id]);
+
+    // 📡 4. RETRIEVE LIVE WARS (University vs University)
     const warsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(collection(firestore, 'campus_wars'), where('status', '==', 'live'), limit(2));
     }, [firestore]);
     const { data: liveWars, isLoading: isLoadingWars } = useCollection<CampusWar>(warsQuery);
 
-    // 📡 3. RETRIEVE BATTLE THREADS (Posts)
+    // 📡 5. RETRIEVE BATTLE THREADS (Posts)
     const postsQuery = useMemoFirebase(() => {
         if (!firestore || !user || !isTokenReady) return null;
         return query(
@@ -74,6 +127,14 @@ export default function ArenaPage() {
         );
     }, [firestore, user?.id, isTokenReady]);
     const { data: posts, isLoading: isLoadingPosts } = useCollection<ArenaPost>(postsQuery);
+
+    const handleCancelMatch = async () => {
+        if (!firestore || !poolEntries?.[0]) return;
+        try {
+            await deleteDocumentNonBlocking(doc(firestore, 'arena_waiting_pool', poolEntries[0].id));
+            toast({ title: 'Search Aborted' });
+        } catch (e) {}
+    };
 
     const handlePost = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -116,12 +177,64 @@ export default function ArenaPage() {
 
     return (
         <div className="p-4 bg-muted/50 min-h-screen pb-32">
+            
+            {/* ⏳ SMART MATCHING OVERLAY */}
+            {isMatching && (
+                <div className="fixed inset-0 z-[9000] bg-slate-950/95 backdrop-blur-2xl flex items-center justify-center p-6 animate-in fade-in duration-500">
+                    <div className="max-w-md w-full text-center space-y-10">
+                        {matchCountdown !== null ? (
+                            <div className="space-y-8 animate-in zoom-in duration-300">
+                                <div className="p-8 bg-green-500 rounded-full w-fit mx-auto shadow-[0_0_50px_rgba(34,197,94,0.5)]">
+                                    <Swords size={80} className="text-white animate-bounce" />
+                                </div>
+                                <div>
+                                    <h2 className="text-5xl font-black italic text-white tracking-tighter uppercase italic">Rival Found!</h2>
+                                    <p className="text-slate-400 font-bold uppercase tracking-[0.4em] mt-4">Deployment in {matchCountdown}...</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="relative">
+                                    <div className="w-48 h-48 border-4 border-indigo-500/20 rounded-full mx-auto flex items-center justify-center">
+                                        <div className="w-40 h-40 border-4 border-indigo-500/40 rounded-full flex items-center justify-center animate-spin-slow">
+                                            <div className="w-4 h-4 bg-indigo-500 rounded-full shadow-[0_0_20px_rgba(99,102,241,0.8)]" style={{ transform: 'translateX(80px)' }} />
+                                        </div>
+                                        <Radar className="absolute inset-0 m-auto text-indigo-500 animate-pulse" size={48} />
+                                    </div>
+                                    <div className="absolute inset-0 bg-indigo-500/10 rounded-full blur-3xl" />
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h2 className="text-3xl font-black italic text-white tracking-tight uppercase italic">Searching for Rival</h2>
+                                    <p className="text-sm text-slate-400 font-medium italic">"Liaison Matchmaker is auditing the National Hub for a worthy contender..."</p>
+                                </div>
+
+                                <div className="flex flex-col gap-4">
+                                    <div className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center gap-3">
+                                        <div className="p-2 bg-indigo-600 rounded-lg"><Sparkles size={14} className="text-white" /></div>
+                                        <p className="text-[10px] font-black text-indigo-200 uppercase tracking-widest text-left leading-relaxed">
+                                            Pairing priority: Inter-campus rivalry established.
+                                        </p>
+                                    </div>
+                                    <Button 
+                                        variant="ghost" 
+                                        onClick={handleCancelMatch}
+                                        className="text-slate-500 hover:text-white font-black text-xs uppercase tracking-widest h-14 rounded-2xl border border-white/5"
+                                    >
+                                        <X size={16} className="mr-2" /> Abort Combat Search
+                                    </Button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <ArenaLeaderboard />
             
-            {/* 🏛️ NATIONAL CAMPUS RANKINGS */}
             <CampusWarLeaderboard />
 
-            {/* 🏛️ CAMPUS WAR SECTION: THE NATIONAL STAGE */}
+            {/* 🏛️ CAMPUS WAR SECTION */}
             {liveWars && liveWars.length > 0 && (
                 <section className="max-w-5xl mx-auto mb-16 animate-in fade-in duration-700">
                     <div className="flex items-center justify-between mb-8 px-4">
@@ -185,7 +298,6 @@ export default function ArenaPage() {
                 </div>
             </section>
 
-            {/* INDIVIDUAL CHAMPIONS LEADERBOARD */}
             <ArenaChampions />
 
             <div className="bg-slate-900 rounded-[3rem] p-8 mb-8 text-white relative overflow-hidden shadow-2xl mx-auto max-w-4xl">

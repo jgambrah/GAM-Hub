@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,7 +87,6 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           avatarUrl: user.avatarUrl || '',
           campusAcronym: campus?.acronym || 'GH',
           campusId: user.campusId,
-          campus: campus?.acronym || 'GH', // Backward compatibility for legacy matchers
           videoUrl: myStreamUrl.trim(),
           title: title.trim(),
           createdAt: serverTimestamp()

@@ -18,9 +18,9 @@ if (!admin.apps.length) {
 setGlobalOptions({maxInstances: 10});
 
 /**
- * 🛡️ ARENA RING: AUTO-MATCHMAKER
- * When a student enters the waiting pool, look for a rival and pairing them.
- * Triggered on pool entry for instant real-time matching.
+ * 🛡️ ARENA RING: SMART AUTO-MATCHMAKER
+ * When a student enters the waiting pool, look for a rival and pair them using a transaction.
+ * Preferred: Inter-campus rivalries.
  */
 exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", async (event) => {
   const db = admin.firestore();
@@ -29,9 +29,10 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
 
   return db.runTransaction(async (transaction) => {
     // 1. Find oldest entry in pool (excluding self)
+    // We limit to 5 to handle high concurrency while prioritizing the queue
     const poolQuery = db.collection("arena_waiting_pool")
       .orderBy("createdAt", "asc")
-      .limit(5); // Check top 5 for concurrency safety
+      .limit(5);
 
     const poolSnap = await transaction.get(poolQuery);
     const rivalDoc = poolSnap.docs.find(doc => doc.id !== entryId);
@@ -45,6 +46,10 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
 
     // 2. Pair Found: Initialize LIVE Battle
     const battleRef = db.collection("arena_battles").doc();
+    
+    // Calculate 15 mins from now
+    const endsAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
     const battleData = {
       title: newEntry.title || `Auto-Match: ${newEntry.campusAcronym} vs ${rival.campusAcronym}`,
       status: "live",
@@ -80,16 +85,15 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
       },
       viewerCount: 2,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 mins showdown
+      endsAt: endsAt
     };
 
+    // Atomic Handshake: Create Battle & Delete Pool Entries
     transaction.set(battleRef, battleData);
-    
-    // 3. Cleanup: Remove both from pool
     transaction.delete(db.collection("arena_waiting_pool").doc(entryId));
     transaction.delete(rivalDoc.ref);
 
-    console.log(`⚔️ Arena: Paired ${newEntry.userName} and ${rival.userName} into live battle.`);
+    console.log(`⚔️ Arena: Paired ${newEntry.userName} and ${rival.userName} into live battle ${battleRef.id}.`);
   });
 });
 
@@ -151,12 +155,9 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
 
 /**
  * 🛡️ ARENA RING: CANCEL INACTIVE CHALLENGES
- * If nobody joins or creator doesn't select an opponent after 2 minutes, auto cancel.
  */
 exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
   const db = admin.firestore();
-  
-  // Logic: Find waiting battles older than 2 minutes
   const twoMinutesAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 120000));
 
   const staleChallenges = await db.collection("arena_battles")
@@ -175,13 +176,12 @@ exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
   });
 
   await batch.commit();
-  console.log(`🧹 Liaison Arena: Cancelled ${staleChallenges.size} stale challenges.`);
+  console.log(`扫 ARENA: Cancelled ${staleChallenges.size} stale challenges.`);
   return null;
 });
 
 /**
  * 🛡️ ARENA RING: PRUNE WAITING POOL
- * Maintenance function to remove stale entries.
  */
 exports.pruneWaitingPool = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
@@ -294,7 +294,6 @@ exports.endWar = onSchedule("every 1 minutes", async (event) => {
   }
 
   await batch.commit();
-  console.log(`🏛️ Liaison Hub: Closed ${expiredWars.size} expired National Wars.`);
   return null;
 });
 
@@ -620,7 +619,7 @@ exports.pruneNotifications = onSchedule("every 24 hours", async (event) => {
   expiredSnap.forEach(doc => batch.delete(doc.ref));
   await batch.commit();
   
-  console.log(`🧹 Liaison: Pruned ${expiredSnap.size} stale notifications from the Yard.`);
+  console.log(`扫 Liaison: Pruned ${expiredSnap.size} stale notifications from the Yard.`);
   return null;
 });
 
