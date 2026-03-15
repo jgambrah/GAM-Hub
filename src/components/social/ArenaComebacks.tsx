@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, increment, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, increment, getDoc, setDoc, limit } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -158,7 +158,11 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
 
   const comebacksQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, 'campus_pulse', post.id, 'comebacks'), orderBy('createdAt', 'asc'));
+    return query(
+        collection(firestore, 'campus_pulse', post.id, 'comebacks'), 
+        orderBy('createdAt', 'asc'),
+        limit(200)
+    );
   }, [firestore, post.id]);
 
   const { data: comebacks, isLoading } = useCollection<ArenaComeback>(comebacksQuery);
@@ -172,6 +176,17 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
+
+    // 🛡️ CONTENT MODERATION GUARD
+    const bannedWords = ["slur1", "slur2"]; // Placeholder for actual banned words
+    if (bannedWords.some(word => text.toLowerCase().includes(word))) {
+      toast({
+        variant: "destructive",
+        title: "Content blocked",
+        description: "Your comeback violates Arena rules."
+      });
+      return;
+    }
 
     // 🛡️ ANTI-SPAM HANDSHAKE: Check Cooldown
     const lastReplyRef = doc(firestore, "users", userProfile.id, "rateLimits", "arenaReply");
