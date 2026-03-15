@@ -37,7 +37,7 @@
         "momoNumber": { "type": "string" },
         "momoName": { "type": "string" },
         "lead_credits": { "type": "number" },
-        "isVerified": { "type": "boolean" },
+        "isVerified": { "boolean": "boolean" },
         "idVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "approved"] }
       },
       "required": ["id", "email", "role"]
@@ -45,20 +45,35 @@
     "ArenaBattle": {
       "title": "ArenaBattle",
       "type": "object",
-      "description": "A real-time competitive battle in the Arena.",
+      "description": "A real-time competitive dual-stream battle in the Arena.",
       "properties": {
         "id": { "type": "string" },
         "title": { "type": "string" },
         "creatorId": { "type": "string" },
-        "participants": { "type": "array", "items": { "type": "string" } },
         "status": { "type": "string", "enum": ["live", "ended"] },
-        "streamUrls": { "type": "object", "additionalProperties": { "type": "string" } },
-        "votes": { "type": "object", "additionalProperties": { "type": "number" } },
+        "opponentA": {
+          "type": "object",
+          "properties": {
+            "userId": { "type": "string" },
+            "videoUrl": { "type": "string" },
+            "votes": { "type": "number" }
+          }
+        },
+        "opponentB": {
+          "type": "object",
+          "properties": {
+            "userId": { "type": "string" },
+            "videoUrl": { "type": "string" },
+            "votes": { "type": "number" }
+          }
+        },
+        "participantInfo": { "type": "object" },
+        "participants": { "type": "array", "items": { "type": "string" } },
         "viewerCount": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" },
         "endsAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "title", "creatorId", "participants", "status"]
+      "required": ["id", "title", "status", "opponentA", "opponentB"]
     },
     "ArenaLeaderboard": {
       "title": "ArenaLeaderboard",

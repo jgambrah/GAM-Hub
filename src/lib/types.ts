@@ -41,11 +41,19 @@ export type ArenaBattle = {
   creatorId: string;
   creatorName: string;
   participants: string[];
+  opponentA: {
+    userId: string;
+    videoUrl: string;
+    votes: number;
+  };
+  opponentB: {
+    userId: string;
+    videoUrl: string;
+    votes: number;
+  };
   participantInfo: Record<string, { name: string; avatarUrl: string; campusAcronym: string; primaryColor: string }>;
   status: 'live' | 'ended';
-  streamUrl?: string; // Legacy
-  streamUrls: Record<string, string>; // Dual-stream support
-  votes: Record<string, number>;
+  votes: Record<string, number>; // Flat map for Cloud Function increments
   viewerCount: number;
   createdAt: any;
   endsAt: any;
