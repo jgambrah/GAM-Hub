@@ -3,7 +3,7 @@
 
 /**
  * @fileOverview Liaison Monetization Engine: Wallet Transactions.
- * Implements Step 2: Spam Prevention & 50/50 Creator Revenue Split.
+ * Implements Step 2 & 3: Spam Prevention & 50/50 Creator Revenue Split.
  * Now synchronized with the National Leaderboard for Achievement Tracking.
  */
 
@@ -87,11 +87,11 @@ export async function spendCoins(
       updatedAt: serverTimestamp()
     });
 
-    // 3. Creator Achievement Handshake (50% Split)
+    // 3. Creator Achievement Handshake (50/50 Revenue Split)
     if (creatorId) {
-      // A. Wallet Payout
+      // A. Wallet Payout (Earned Income Vault)
       const creatorWalletRef = doc(db, 'creator_wallets', creatorId);
-      const earnedAmount = Math.floor(amount * 0.5); // The Arena's 50% cut stays in platform pool
+      const earnedAmount = Math.floor(amount * 0.5); // platform keeps 50%
       
       transaction.set(creatorWalletRef, {
         earnedCoins: increment(earnedAmount),
@@ -102,7 +102,8 @@ export async function spendCoins(
       // B. Leaderboard Impact Tracking
       const leaderRef = doc(db, 'arena_leaderboard', creatorId);
       transaction.set(leaderRef, {
-        boostsReceived: increment(1),
+        boostsReceived: type === 'powerup_used' ? increment(1) : increment(0),
+        giftsReceived: type === 'gift_sent' ? increment(1) : increment(0),
         coinsEarned: increment(earnedAmount),
         updatedAt: serverTimestamp()
       }, { merge: true });

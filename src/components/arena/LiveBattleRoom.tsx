@@ -6,7 +6,7 @@
  * -----------------------
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
- * Implements Step 3: Battle Gifts System with 50/50 Creator Revenue Split.
+ * Implements Step 3: Cinematic Gift Animations with 50/50 Creator Revenue Split.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -108,7 +108,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
 
-  // Status flags
+  // Status flags (Calculated AFTER battle data load)
   const isCreator = user?.id === battle?.creatorId;
   const isWaiting = battle?.status === 'waiting';
   const isLive = battle?.status === 'live';
@@ -263,8 +263,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             targetCreatorId: targetUserId 
         });
 
-        const battleRef = doc(firestore, 'arena_battles', battleId);
-        await updateDoc(battleRef, { 
+        const bRef = doc(firestore, 'arena_battles', battleId);
+        await updateDoc(bRef, { 
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
             [`votes.${targetUserId}`]: increment(powerup.weight) 
         });
@@ -295,7 +295,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
 
     try {
-        // 💰 REVENUE SPLIT HANDSHAKE
+        // 💰 REVENUE SPLIT HANDSHAKE (50/50 Split managed in spendCoins)
         await spendCoins(firestore, user.id, gift.cost, 'gift_sent', {
             battleId,
             targetSide: target,
@@ -333,46 +333,71 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
       
-      {/* POWERUP OVERLAY */}
+      {/* ── CINEMATIC OVERLAYS ────────────────────────────────────────────────── */}
+      
+      {/* 1. POWERUP OVERLAY (Mid-Center) */}
       <AnimatePresence>
         {recentPowerUp && (
-          <motion.div initial={{ opacity: 0, y: 100, scale: 0.5 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] pointer-events-none w-full max-w-sm">
+          <motion.div initial={{ opacity: 0, y: 100, scale: 0.5 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] pointer-events-none w-full max-w-sm px-4">
             <div className="bg-slate-900/90 backdrop-blur-2xl border-4 border-amber-500 p-8 rounded-[3.5rem] shadow-[0_0_80px_rgba(245,158,11,0.6)] flex flex-col items-center text-center gap-4">
-              <div className="text-7xl">{POWER_UPS.find(p => p.type === recentPowerUp.type)?.emoji}</div>
-              <h4 className="text-2xl font-black text-white uppercase italic">{recentPowerUp.userName} sent {recentPowerUp.type.replace('_', ' ')}</h4>
+              <div className="text-7xl drop-shadow-[0_0_20px_rgba(245,158,11,0.8)]">{POWER_UPS.find(p => p.type === recentPowerUp.type)?.emoji}</div>
+              <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter">{recentPowerUp.userName} sent {recentPowerUp.type.replace('_', ' ')}</h4>
               <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black text-lg">+{recentPowerUp.votesAdded} Energy</div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* GIFT OVERLAY */}
+      {/* 2. FULL-SCREEN GIFT OVERLAY (Premium Takeover) */}
       <AnimatePresence>
         {recentGift && (
-          <motion.div initial={{ opacity: 0, x: -200, scale: 0.5 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 200, scale: 0.5 }} className="absolute top-1/3 left-1/2 -translate-x-1/2 z-[10001] pointer-events-none w-full max-w-md">
-            <div className={cn(
-                "p-8 rounded-[3.5rem] shadow-2xl flex flex-col items-center text-center gap-4 border-4",
-                recentGift.giftType === 'dragon' ? "bg-red-600 border-red-400 shadow-red-500/50" : "bg-indigo-900/90 backdrop-blur-xl border-indigo-400 shadow-indigo-500/50"
-            )}>
-              <div className="text-[10rem] animate-bounce">
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 z-[10001] pointer-events-none flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.5, rotate: -10, y: 200 }} 
+              animate={{ scale: [0.5, 1.2, 1], rotate: 0, y: 0 }} 
+              transition={{ duration: 0.8, type: 'spring' }}
+              className={cn(
+                "p-12 rounded-[4rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] flex flex-col items-center text-center gap-6 border-8 border-white/20 relative overflow-hidden",
+                recentGift.giftType === 'dragon' ? "bg-gradient-to-br from-red-600 to-orange-600" : 
+                recentGift.giftType === 'rocket' ? "bg-gradient-to-br from-indigo-600 to-blue-600" : "bg-slate-900/90"
+              )}
+            >
+              {/* Animation Flare */}
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.2),transparent)] animate-pulse" />
+              
+              <div className="text-[12rem] drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-10">
                 {(GIFTS as any)[recentGift.giftType]?.emoji}
               </div>
-              <h4 className="text-3xl font-black text-white uppercase tracking-tighter italic">
-                {recentGift.senderName} sent a {recentGift.giftType.toUpperCase()}!
-              </h4>
-              <p className="text-xs font-black text-white/70 uppercase tracking-[0.4em]">Creator Reward Dispatched</p>
-            </div>
+              
+              <div className="z-10">
+                <h4 className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter italic leading-none mb-2">
+                  {recentGift.senderName} 
+                </h4>
+                <p className="text-xl font-black text-white/80 uppercase tracking-widest italic">
+                  SENT A {recentGift.giftType.toUpperCase()}!
+                </p>
+              </div>
+
+              <div className="bg-white/20 backdrop-blur-md px-8 py-3 rounded-2xl border border-white/30 z-10">
+                <p className="text-xs font-black text-white uppercase tracking-[0.4em]">Creator Reward Dispatched 💰</p>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center">
-          <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl"><X size={24}/></button>
-          <div className={cn("px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10", isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-50")}>
+          <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl transition-all"><X size={24}/></button>
+          <div className={cn("px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10", isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-500")}>
             {isWaiting ? "DEPLOYMENT OPEN" : isLive ? "LIVE SHOWDOWN" : "CONCLUDED"}
           </div>
-          <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10">
+          <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 transition-all">
             {soundOn ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
         </div>
@@ -380,7 +405,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         {isWaiting && (
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar">
                 <div className="max-w-2xl w-full space-y-8 py-20">
-                    <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black">
+                    <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black group">
                         <ReactPlayer url={previewVideoUrl || battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
                         <div className="absolute bottom-6 left-6 z-20 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
                             <p className="text-xs font-black">{p1?.name}</p>
@@ -388,14 +413,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                     </div>
                     <div className="text-center space-y-4">
                         <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">"{battle.title}"</h2>
-                        <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
+                        <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
                     </div>
                     {isCreator && (
                         <div className="space-y-4 pt-10">
                             <h3 className="text-white font-black uppercase text-xs tracking-widest flex items-center gap-2"><Swords size={16} className="text-indigo-500" /> Rival Queue ({challengers?.length || 0})</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {challengers?.map(c => (
-                                    <div key={c.id} className="p-4 bg-white/5 border border-white/10 rounded-3xl flex items-center justify-between group">
+                                    <div key={c.id} className="p-4 bg-white/5 border border-white/10 rounded-3xl flex items-center justify-between group hover:border-indigo-500/50 transition-all">
                                         <div className="flex items-center gap-3">
                                             <Avatar className="border-2 border-white/20"><AvatarImage src={c.avatarUrl}/></Avatar>
                                             <p className="text-sm font-black text-white">{c.userName}</p>
@@ -438,17 +463,17 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-2xl px-6 z-50">
                     <div className="bg-slate-950/80 backdrop-blur-xl p-8 rounded-[3.5rem] border border-white/10 shadow-2xl">
                         <div className="h-5 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/10 mb-8 shadow-inner relative">
-                            <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p1Pct}%` }} />
-                            <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p2Pct}%` }} />
+                            <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(37,99,235,0.5)]" style={{ width: `${p1Pct}%` }} />
+                            <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(245,158,11,0.5)]" style={{ width: `${p2Pct}%` }} />
                         </div>
                         {!hasVoted ? (
                             <div className="grid grid-cols-2 gap-4">
-                                <button onClick={() => handleVote('A')} disabled={isVoting} className="py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl">VOTE {p1?.campusAcronym}</button>
-                                <button onClick={() => handleVote('B')} disabled={isVoting} className="py-5 bg-amber-500 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl">VOTE {p2?.campusAcronym}</button>
+                                <button onClick={() => handleVote('A')} disabled={isVoting} className="py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all active:scale-95">VOTE {p1?.campusAcronym}</button>
+                                <button onClick={() => handleVote('B')} disabled={isVoting} className="py-5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all active:scale-95">VOTE {p2?.campusAcronym}</button>
                             </div>
                         ) : (
                             <div className="text-center py-5 bg-white/5 rounded-2xl border border-white/5">
-                                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2"><CheckCircle2 size={14} /> Energy Contributed</p>
+                                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center justify-center gap-2"><CheckCircle2 size={14} /> National Vote Logged</p>
                             </div>
                         )}
                     </div>
@@ -458,12 +483,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
         {isEnded && (
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-950">
-                <Trophy size={80} className="text-amber-500 mb-8" />
-                <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter mb-10">Concluded</h1>
+                <Trophy size={100} className="text-amber-500 mb-8 animate-bounce" />
+                <h1 className="text-5xl font-black text-white italic uppercase tracking-tighter mb-10">Concluded</h1>
                 {battle.aiVerdict && (
-                    <div className="max-w-xl p-10 bg-slate-900 border-4 border-amber-500/30 rounded-[3rem] text-center shadow-2xl">
-                        <p className="text-xl font-black italic text-indigo-50 mb-6">"{battle.aiVerdict.verdict}"</p>
-                        <Button onClick={onClose} className="w-full bg-white text-slate-900 font-black rounded-2xl h-14">Return to Arena</Button>
+                    <div className="max-w-xl p-10 bg-slate-900 border-4 border-amber-500/30 rounded-[3rem] text-center shadow-[0_0_100px_rgba(245,158,11,0.1)]">
+                        <p className="text-xl font-black italic text-indigo-50 mb-8 leading-relaxed">"{battle.aiVerdict.verdict}"</p>
+                        <Button onClick={onClose} className="w-full bg-white hover:bg-slate-100 text-slate-900 font-black rounded-2xl h-16 shadow-xl active:scale-95 transition-all">Return to Arena</Button>
                     </div>
                 )}
             </div>
@@ -473,10 +498,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       <div className="flex-1 bg-slate-900 flex flex-col shadow-2xl max-h-screen">
         <div className="p-6 border-b border-white/5 bg-slate-950/50 flex justify-between items-center">
           <h3 className="text-white font-black italic uppercase truncate max-w-[120px]">{battle.title}</h3>
-          <div className="flex gap-1.5">
-            <button onClick={() => setInputMode('chat')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500")} title="Chat"><MessageSquare size={18}/></button>
-            <button onClick={() => setInputMode('boost')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950" : "text-slate-500")} title="Power-Ups"><Zap size={18}/></button>
-            <button onClick={() => setInputMode('gift')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'gift' ? "bg-pink-600 text-white" : "text-slate-500")} title="Gifts"><Gift size={18}/></button>
+          <div className="flex gap-1.5 bg-black/20 p-1 rounded-2xl border border-white/5">
+            <button onClick={() => setInputMode('chat')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300")} title="Chat"><MessageSquare size={18}/></button>
+            <button onClick={() => setInputMode('boost')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950 shadow-lg" : "text-slate-500 hover:text-slate-300")} title="Power-Ups"><Zap size={18}/></button>
+            <button onClick={() => setInputMode('gift')} className={cn("p-2.5 rounded-xl transition-all", inputMode === 'gift' ? "bg-pink-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300")} title="Gifts"><Gift size={18}/></button>
           </div>
         </div>
 
@@ -484,17 +509,19 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           {messages?.map((m) => (
             <div key={m.id} className="animate-in slide-in-from-bottom-2">
               <p className="text-[9px] font-black uppercase text-slate-500 mb-1">{m.userName}</p>
-              <div className="bg-white/5 border border-white/5 p-3 rounded-2xl text-slate-300 text-sm">{m.text}</div>
+              <div className="bg-white/5 border border-white/5 p-3 rounded-2xl text-slate-300 text-sm shadow-sm">
+                {m.text}
+              </div>
             </div>
           ))}
           <div ref={scrollRef} />
         </div>
 
-        <div className="p-6 bg-slate-950 border-t border-white/5">
+        <div className="p-6 bg-slate-950 border-t border-white/5 flex-shrink-0">
             {inputMode === 'chat' && (
                 <form onSubmit={handleSendMessage} className="flex gap-2">
-                    <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Drop a shade..." className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none" />
-                    <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-full"><Send size={20} /></button>
+                    <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Drop a shade..." className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-indigo-600 font-bold transition-all shadow-inner" />
+                    <button type="submit" disabled={!message.trim()} className="p-4 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-500 active:scale-90 transition-all disabled:opacity-30"><Send size={20} /></button>
                 </form>
             )}
 
@@ -504,12 +531,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         <div className="flex items-center gap-2">
                             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Deploy Artillery</p>
                             {boostsRemaining <= 2 && (
-                                <Badge variant="destructive" className="text-[8px] animate-pulse">
+                                <Badge variant="destructive" className="text-[8px] font-black animate-pulse">
                                     {boostsRemaining} LEFT
                                 </Badge>
                             )}
                         </div>
-                        <div className="flex items-center gap-1.5 bg-amber-500/10 px-2 py-1 rounded-lg">
+                        <div className="flex items-center gap-1.5 bg-amber-500/10 px-2 py-1 rounded-lg border border-amber-500/20">
                             <Zap size={10} className="text-amber-500" fill="currentColor" />
                             <span className="text-[10px] font-black text-amber-500">{wallet?.coins || 0}</span>
                         </div>
@@ -522,10 +549,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                 disabled={boostsRemaining <= 0}
                                 className={cn(
                                     "flex flex-col items-center gap-1 p-3 bg-white/5 border border-white/10 rounded-2xl transition-all active:scale-95 group",
-                                    boostsRemaining <= 0 ? "opacity-30 grayscale cursor-not-allowed" : "hover:bg-white/10"
+                                    boostsRemaining <= 0 ? "opacity-30 grayscale cursor-not-allowed" : "hover:bg-white/10 hover:border-amber-500/30"
                                 )}
                             >
-                                <span className="text-2xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
+                                <span className="text-2xl group-active:scale-150 transition-transform inline-block drop-shadow-[0_0_10px_rgba(245,158,11,0.3)]">{up.emoji}</span>
                                 <div className="text-center">
                                     <p className="text-[8px] font-black text-white uppercase">{up.label}</p>
                                     <div className="mt-1 flex items-center justify-center gap-1">
@@ -543,7 +570,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 <div className="flex flex-col gap-4 animate-in slide-in-from-bottom-4">
                     <div className="flex justify-between items-center px-2">
                         <p className="text-[10px] font-black text-pink-500 uppercase tracking-widest">Send Appreciation</p>
-                        <div className="flex items-center gap-1.5 bg-pink-500/10 px-2 py-1 rounded-lg">
+                        <div className="flex items-center gap-1.5 bg-pink-500/10 px-2 py-1 rounded-lg border border-pink-500/20">
                             <Zap size={10} className="text-pink-500" fill="currentColor" />
                             <span className="text-[10px] font-black text-pink-500">{wallet?.coins || 0}</span>
                         </div>
@@ -556,7 +583,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                     onClick={() => handleSendGift(gift, 'A')}
                                     className="flex-shrink-0 flex flex-col items-center gap-1 p-4 bg-white/5 border border-white/10 rounded-3xl hover:bg-pink-500/10 hover:border-pink-500/30 transition-all active:scale-90 group"
                                 >
-                                    <span className="text-3xl group-hover:scale-125 transition-transform">{gift.emoji}</span>
+                                    <span className="text-3xl group-hover:scale-125 transition-transform drop-shadow-[0_0_15px_rgba(236,72,153,0.3)]">{gift.emoji}</span>
                                     <p className="text-[8px] font-black text-white uppercase mt-1">{gift.label}</p>
                                     <div className="mt-1 flex items-center gap-1">
                                         <Zap size={8} className="text-amber-500" fill="currentColor" />
