@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -6,6 +7,7 @@
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
  * Implements Step 3: Cinematic Gift Animations & Support Leaderboard.
+ * Now expanded with Tournament-Tier Special Gifts (Throne & Elephant).
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -20,7 +22,7 @@ import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -48,7 +50,9 @@ const GIFTS = {
   mic: { id: 'mic', label: 'Mic', emoji: '🎤', cost: 25 },
   crown: { id: 'crown', label: 'Crown', emoji: '👑', cost: 50 },
   rocket: { id: 'rocket', label: 'Rocket', emoji: '🚀', cost: 100 },
-  dragon: { id: 'dragon', label: 'Dragon', emoji: '🐉', cost: 500 }
+  dragon: { id: 'dragon', label: 'Dragon', emoji: '🐉', cost: 500 },
+  throne: { id: 'throne', label: 'Arena Throne', emoji: '🏛️', cost: 1000 },
+  elephant: { id: 'elephant', label: 'Giant Elephant', emoji: '🐘', cost: 2000 }
 };
 
 const MAX_BOOSTS_PER_USER = 5;
@@ -395,6 +399,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
               transition={{ duration: 0.8, type: 'spring' }}
               className={cn(
                 "p-12 rounded-[4rem] shadow-[0_0_100px_rgba(0,0,0,0.5)] flex flex-col items-center text-center gap-6 border-8 border-white/20 relative overflow-hidden",
+                recentGift.giftType === 'elephant' ? "bg-gradient-to-br from-slate-700 via-slate-500 to-slate-800" :
+                recentGift.giftType === 'throne' ? "bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600 shadow-[0_0_100px_rgba(245,158,11,0.6)]" :
                 recentGift.giftType === 'dragon' ? "bg-gradient-to-br from-red-600 to-orange-600" : 
                 recentGift.giftType === 'rocket' ? "bg-gradient-to-br from-indigo-600 to-blue-600" : "bg-slate-900/90"
               )}
@@ -405,7 +411,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
               </div>
               <div className="z-10">
                 <h4 className="text-4xl md:text-5xl font-black text-white uppercase tracking-tighter italic leading-none mb-2">{recentGift.senderName}</h4>
-                <p className="text-xl font-black text-white/80 uppercase tracking-widest italic">SENT A {recentGift.giftType.toUpperCase()}!</p>
+                <p className="text-xl font-black text-white/80 uppercase tracking-widest italic">SENT A {(GIFTS as any)[recentGift.giftType]?.label.toUpperCase()}!</p>
               </div>
               <div className="bg-white/20 backdrop-blur-md px-8 py-3 rounded-2xl border border-white/30 z-10">
                 <p className="text-xs font-black text-white uppercase tracking-[0.4em]">Creator Reward Dispatched 💰</p>
@@ -603,21 +609,48 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         </div>
                     </div>
                     <ScrollArea className="w-full">
-                        <div className="flex gap-2 pb-2">
-                            {Object.values(GIFTS).map(gift => (
-                                <button 
-                                    key={gift.id} 
-                                    onClick={() => handleSendGift(gift, 'A')}
-                                    className="flex-shrink-0 flex flex-col items-center gap-1 p-4 bg-white/5 border border-white/10 rounded-3xl hover:bg-pink-500/10 hover:border-pink-500/30 transition-all active:scale-90 group"
-                                >
-                                    <span className="text-3xl group-hover:scale-125 transition-transform drop-shadow-[0_0_15px_rgba(236,72,153,0.3)]">{gift.emoji}</span>
-                                    <p className="text-[8px] font-black text-white uppercase mt-1">{gift.label}</p>
-                                    <div className="mt-1 flex items-center gap-1">
-                                        <Zap size={8} className="text-amber-500" fill="currentColor" />
-                                        <span className="text-[8px] font-black text-slate-400">{gift.cost}</span>
-                                    </div>
-                                </button>
-                            ))}
+                        <div className="flex flex-col gap-4 pb-2">
+                            {/* Standard Tier */}
+                            <div className="flex gap-2">
+                                {Object.values(GIFTS).slice(0, 5).map(gift => (
+                                    <button 
+                                        key={gift.id} 
+                                        onClick={() => handleSendGift(gift, 'A')}
+                                        className="flex-shrink-0 flex flex-col items-center gap-1 p-4 bg-white/5 border border-white/10 rounded-3xl hover:bg-pink-500/10 hover:border-pink-500/30 transition-all active:scale-90 group"
+                                    >
+                                        <span className="text-3xl group-hover:scale-125 transition-transform drop-shadow-[0_0_15px_rgba(236,72,153,0.3)]">{gift.emoji}</span>
+                                        <p className="text-[8px] font-black text-white uppercase mt-1">{gift.label}</p>
+                                        <div className="mt-1 flex items-center gap-1">
+                                            <Zap size={8} className="text-amber-500" fill="currentColor" />
+                                            <span className="text-[8px] font-black text-slate-400">{gift.cost}</span>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Tournament Tier */}
+                            <div className="p-4 bg-gradient-to-br from-amber-500/10 to-purple-600/10 rounded-3xl border-2 border-dashed border-amber-500/30">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Sparkles size={12} className="text-amber-500" />
+                                    <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Tournament Tier</span>
+                                </div>
+                                <div className="flex gap-3">
+                                    {Object.values(GIFTS).slice(5).map(gift => (
+                                        <button 
+                                            key={gift.id} 
+                                            onClick={() => handleSendGift(gift, 'A')}
+                                            className="flex-1 flex flex-col items-center gap-1 p-4 bg-slate-900 border-2 border-amber-500/50 rounded-[2rem] hover:bg-slate-800 transition-all active:scale-95 group shadow-xl"
+                                        >
+                                            <span className="text-5xl group-hover:scale-110 transition-transform drop-shadow-[0_0_20px_rgba(245,158,11,0.4)]">{gift.emoji}</span>
+                                            <p className="text-[9px] font-black text-amber-400 uppercase mt-2">{gift.label}</p>
+                                            <div className="mt-1 flex items-center gap-1">
+                                                <Zap size={10} className="text-amber-500" fill="currentColor" />
+                                                <span className="text-sm font-black text-white">{gift.cost}</span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                         <ScrollBar orientation="horizontal" />
                     </ScrollArea>

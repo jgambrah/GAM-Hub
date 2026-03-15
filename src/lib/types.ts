@@ -100,7 +100,7 @@ export type ArenaGift = {
   senderId: string;
   senderName: string;
   receiverId: string;
-  giftType: 'fire' | 'mic' | 'crown' | 'rocket' | 'dragon';
+  giftType: 'fire' | 'mic' | 'crown' | 'rocket' | 'dragon' | 'throne' | 'elephant';
   coinsSpent: number;
   createdAt: any;
 };
