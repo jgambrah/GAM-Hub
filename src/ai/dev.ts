@@ -20,3 +20,4 @@ import '@/ai/flows/generate-post-embedding.ts';
 import '@/ai/flows/generate-product-embedding.ts';
 import '@/ai/flows/update-user-embedding.ts';
 import '@/ai/flows/vibe-recommendation-flow.ts';
+import '@/ai/flows/arena-referee-flow.ts';

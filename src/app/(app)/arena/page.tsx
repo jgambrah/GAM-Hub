@@ -5,7 +5,7 @@ import React, { useState, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, limit, where, doc, getDoc, setDoc, serverTimestamp, increment } from 'firebase/firestore';
 import type { ArenaPost, Campus } from '@/lib/types';
-import { Swords, Trophy, Send, Loader2, Star, Flame, Smile, Youtube, ImagePlus, X, PlusCircle } from 'lucide-react';
+import { Swords, Trophy, Send, Loader2, Star, Flame, Smile, Youtube, ImagePlus, X, PlusCircle, Target, Zap } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -23,6 +23,7 @@ import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/hashtag-utils';
 import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
 import { validateVideo, generateFileHash } from '@/lib/video-utils';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const INITIAL_LIMIT = 100;
 const LOAD_MORE_BATCH = 50;
@@ -36,6 +37,7 @@ export default function ArenaPage() {
     const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
     const [content, setContent] = useState('');
     const [vibeType, setVibeType] = useState<'shade' | 'celebration'>('celebration');
+    const [targetCampus, setTargetCampus] = useState('all');
     const [showHallOfFame, setShowHallOfFame] = useState(false);
     
     const [showEmoji, setShowEmoji] = useState(false);
@@ -61,6 +63,7 @@ export default function ArenaPage() {
     const resetInputs = () => {
         setContent('');
         setVibeType('celebration');
+        setTargetCampus('all');
         setShowEmoji(false);
         setVideoUrl('');
         setFile(null);
@@ -85,6 +88,7 @@ export default function ArenaPage() {
             let postData: any = {
                 content,
                 vibeType,
+                targetCampus: targetCampus !== 'all' ? staticCampuses.find(c => c.id === targetCampus)?.acronym : 'National',
                 authorId: user.id,
                 authorName: user.name || "Campus Member",
                 authorAvatarUrl: user.avatarUrl || "",
@@ -102,8 +106,6 @@ export default function ArenaPage() {
                 const isVideo = file.type.startsWith('video');
                 if (isVideo) {
                     await validateVideo(file);
-                    
-                    // 🔍 DEDUPLICATION HANDSHAKE
                     const hash = await generateFileHash(file);
                     const hashRef = doc(firestore, 'video_hashes', hash);
                     const hashSnap = await getDoc(hashRef);
@@ -115,10 +117,7 @@ export default function ArenaPage() {
                         postData.imageUrl = existing.imageUrl;
                         postData.storageTier = existing.storageTier || 'hot';
                         postData.videoHash = hash;
-                        
-                        // Increment uploads count in the registry
                         await setDoc(hashRef, { uploads: increment(1) }, { merge: true });
-                        
                         toast({ title: "Viral Vibe Detected!", description: "Reusing existing high-quality version from the Yard." });
                     } else {
                         const filePath = `videos/hot/${user.id}/${Date.now()}_${file.name}`;
@@ -127,8 +126,6 @@ export default function ArenaPage() {
                         postData.mediaUrl = await getDownloadURL(fileRef);
                         postData.mediaType = 'video';
                         postData.videoHash = hash;
-                        
-                        // Create optimistic registry entry
                         await setDoc(hashRef, {
                             mediaUrl: postData.mediaUrl,
                             storagePath: filePath,
@@ -161,7 +158,6 @@ export default function ArenaPage() {
             const finalHashtags = Array.from(new Set([...manualTags, ...aiTags])).slice(0, 10);
             postData.tags = finalHashtags;
 
-            // 🚀 SEMANTIC INDEXING: Generate neural vector for this vibration
             const embedding = await generatePostEmbedding({ content, tags: finalHashtags });
             postData.embedding = embedding;
 
@@ -206,37 +202,64 @@ export default function ArenaPage() {
 
             {user && (
                 <div className="bg-card rounded-[2.5rem] p-6 mb-10 shadow-xl border border-border">
-                    <div className="flex gap-2 mb-4">
-                        <button onClick={() => setVibeType('celebration')} className={cn("px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2", vibeType === 'celebration' ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground')}><Star size={14}/> Vibe</button>
-                        <button onClick={() => setVibeType('shade')} className={cn("px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2", vibeType === 'shade' ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground')}><Flame size={14}/> Shade</button>
+                    <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
+                        <div className="flex gap-2">
+                            <button onClick={() => setVibeType('celebration')} className={cn("px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all", vibeType === 'celebration' ? 'bg-amber-100 text-amber-700 shadow-sm ring-2 ring-amber-500/20' : 'bg-muted text-muted-foreground')}><Star size={14} fill={vibeType === 'celebration' ? 'currentColor' : 'none'}/> Victory</button>
+                            <button onClick={() => setVibeType('shade')} className={cn("px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all", vibeType === 'shade' ? 'bg-red-100 text-red-700 shadow-sm ring-2 ring-red-500/20' : 'bg-muted text-muted-foreground')}><Flame size={14} fill={vibeType === 'shade' ? 'currentColor' : 'none'}/> Shade</button>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:inline">Target:</span>
+                            <Select onValueChange={setTargetCampus} value={targetCampus}>
+                                <SelectTrigger className="w-[180px] rounded-xl font-bold border-none bg-muted h-10">
+                                    <Target size={14} className="text-primary" />
+                                    <SelectValue placeholder="All Rivals" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl border-none shadow-2xl">
+                                    <SelectItem value="all">🌍 All Rivals</SelectItem>
+                                    {staticCampuses.filter(c => c.id !== user.campusId).map(c => (
+                                        <SelectItem key={c.id} value={c.id}>{c.acronym} Hub</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                     
                     <form onSubmit={handlePost} className="space-y-4">
-                        <div className="relative flex items-center gap-2 bg-muted p-1.5 rounded-[2rem] border border-border focus-within:bg-background transition-all">
+                        <div className="relative flex items-center gap-2 bg-muted p-1.5 rounded-[2rem] border border-border focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/20 transition-all">
                             <button type="button" onClick={() => setShowEmoji(!showEmoji)} className="p-2.5 text-muted-foreground hover:text-amber-500 rounded-full"><Smile size={18}/></button>
                             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" />
                             <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2.5 text-muted-foreground hover:text-blue-500 rounded-full"><ImagePlus size={18}/></button>
-                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="Broadcasting battle vibes... Deduplication Active 🧬" className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
-                            <Button type="submit" disabled={isLoading} className={cn("p-4 rounded-full shadow-lg h-auto", vibeType === 'shade' ? 'bg-red-600' : 'bg-green-600')}>
-                                {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20} />}
+                            <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder={vibeType === 'shade' ? "Dropping a national heat-seek... 🧨" : "Celebrating Yard success! 🏆"} className="flex-1 bg-transparent p-4 border-none outline-none font-medium text-sm" />
+                            <Button type="submit" disabled={isLoading} className={cn("p-4 rounded-full shadow-lg h-auto transition-all", vibeType === 'shade' ? 'bg-red-600 hover:bg-red-700' : 'bg-amber-500 hover:bg-amber-600')}>
+                                {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Zap size={20} fill="currentColor" />}
                             </Button>
                         </div>
-                        <p className="text-[9px] text-muted-foreground px-6 italic">Liaison AI semantic indexing & deduplication active. 🛡️✨</p>
+                        <div className="flex justify-between items-center px-6">
+                            <p className="text-[9px] text-muted-foreground italic">Liaison AI targeting & deduplication active. 🛡️✨</p>
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Yard Sync Live</span>
+                            </div>
+                        </div>
                     </form>
                 </div>
             )}
 
-            <div className="space-y-6 max-w-2xl mx-auto">
+            <div className="space-y-8 max-w-2xl mx-auto">
                 {isLoadingPosts && limitCount === INITIAL_LIMIT ? (
-                    <Skeleton className="h-48 w-full rounded-3xl" />
+                    <div className="space-y-6">
+                        <Skeleton className="h-64 w-full rounded-[2.5rem]" />
+                        <Skeleton className="h-64 w-full rounded-[2.5rem]" />
+                    </div>
                 ) : posts?.map(post => <ArenaPostCard key={post.id} post={post} />)}
 
                 {hasMore && (
-                    <div className="flex flex-col items-center pt-8">
+                    <div className="flex flex-col items-center pt-12 pb-20">
                         <Button 
                             onClick={() => setLimitCount(prev => prev + LOAD_MORE_BATCH)}
                             disabled={isLoadingPosts}
-                            className="bg-slate-900 text-white rounded-2xl px-10 h-14 font-black"
+                            className="bg-slate-900 text-white rounded-2xl px-12 h-16 font-black shadow-xl hover:scale-105 transition-all"
                         >
                             {isLoadingPosts ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" />}
                             Load More Battles
@@ -246,10 +269,10 @@ export default function ArenaPage() {
             </div>
 
             <Sheet open={showHallOfFame} onOpenChange={setShowHallOfFame}>
-                <SheetContent side="bottom" className="h-[80vh] rounded-t-[3.5rem] overflow-y-auto">
+                <SheetContent side="bottom" className="h-[80vh] rounded-t-[3.5rem] overflow-y-auto border-t-8 border-amber-500">
                     <SheetHeader className="mb-8">
                         <SheetTitle className="text-3xl font-black text-center italic flex items-center justify-center gap-3">
-                            <Trophy className="text-amber-500" size={32} /> THE ARCHIVES
+                            <Trophy className="text-amber-500" size={32} /> THE NATIONAL ARCHIVES
                         </SheetTitle>
                     </SheetHeader>
                     <HallOfFame />

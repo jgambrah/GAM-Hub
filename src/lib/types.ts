@@ -72,6 +72,7 @@ export type SocialPost = {
   authorAvatarUrl?: string;
   campusId: string;
   campusAcronym?: string;
+  targetCampus?: string;
   content: string;
   mediaType?: 'youtube' | 'tiktok' | 'image' | 'text' | 'video' | 'audio';
   mediaUrl?: string | null;
@@ -84,15 +85,23 @@ export type SocialPost = {
   createdAt: string | any;
   likes: number;
   commentCount: number;
+  comebackCount?: number;
   tags?: string[];
   aiTags?: string[]; 
   embedding?: number[]; 
   trendScore?: number; 
   productTags?: string[];
   isArenaEntry?: boolean;
+  vibeType?: 'shade' | 'celebration';
   isOfficial?: boolean;
   type?: 'regular' | 'src_official' | 'vetted_announcement' | 'election_winner' | 'shoutout';
+  status?: 'active' | 'blocked' | 'hidden';
+  moderationNote?: string;
+  authorColor?: string;
+  stats?: { likes: number; burns: number };
 };
+
+export type ArenaPost = SocialPost;
 
 export type Product = {
   id: string;

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -5,7 +6,7 @@ import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic, Music } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic, Music, Target, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
@@ -36,8 +37,8 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     const isBlocked = post.status === 'blocked';
     const isAuthor = user?.id === post.authorId;
     const canDelete = isAuthor || isAdmin;
+    const isShade = post.vibeType === 'shade';
 
-    // Use HLS playlist if available for adaptive streaming
     const videoSource = post.hlsUrl || post.mediaUrl;
     const youtubeId = useMemo(() => isBlocked ? null : getYouTubeId(post.mediaUrl || ''), [post.mediaUrl, isBlocked]);
 
@@ -96,7 +97,6 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
             if (Object.keys(finalUpdate).length > 0) {
                  await updateDoc(postRef, finalUpdate);
             }
-
         } catch (error) {
             console.error("Failed to update post stats:", error);
             setLocalStats({ ...post.stats, comebacks: post.comebackCount || 0 });
@@ -109,13 +109,10 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
     const handleDeletePost = async (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-
         if (!firestore || !post.id) return;
-
-        if (window.confirm("Are you sure you want to retract this vibration from The Arena?")) {
+        if (window.confirm("Retract this vibration from The Arena?")) {
             try {
-                const postRef = doc(firestore, 'campus_pulse', post.id);
-                await deleteDoc(postRef);
+                await deleteDoc(doc(firestore, 'campus_pulse', post.id));
                 toast({ title: "Vibe Retracted" });
             } catch (err: any) {
                 toast({ variant: 'destructive', title: "Action Blocked" });
@@ -123,52 +120,51 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
         }
     };
 
-    const onYoutubeError = (event: any) => {
-        if (event.data === 101 || event.data === 150) {
-            setIsRestricted(true);
-        }
-    };
-
-    const isShade = post.vibeType === 'shade';
-
     return (
         <div className={cn(
-            "relative bg-card rounded-[2.5rem] p-6 border-l-8 shadow-sm transition-all",
-            isBlocked ? "border-red-600 bg-red-50 dark:bg-red-950/10" : ""
-        )} style={{ borderLeftColor: isBlocked ? undefined : post.authorColor }}>
-            
+            "relative bg-card rounded-[3rem] p-8 border-l-8 shadow-2xl transition-all duration-500 overflow-hidden",
+            isBlocked ? "border-red-600 bg-red-50 dark:bg-red-950/10" : isShade ? "border-red-500 bg-gradient-to-br from-white to-red-50/30" : "border-amber-500 bg-gradient-to-br from-white to-amber-50/30"
+        )}>
+            {/* AMBIENT BACKGROUND GLOW */}
+            <div className={cn(
+                "absolute -top-20 -right-20 w-64 h-64 rounded-full blur-3xl opacity-5 transition-opacity duration-1000",
+                isShade ? "bg-red-500 group-hover:opacity-10" : "bg-amber-500 group-hover:opacity-10"
+            )} />
+
             {isBlocked && (
-                <div className="absolute top-0 right-0 p-4">
-                    <ShieldAlert className="text-red-600 animate-pulse" size={24} />
+                <div className="absolute top-6 right-6 p-2 bg-red-600 text-white rounded-xl shadow-lg z-20 animate-pulse">
+                    <ShieldAlert size={20} />
                 </div>
             )}
 
-            <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full border-2 border-white dark:border-card shadow-sm overflow-hidden" 
+            <div className="flex justify-between items-start mb-6 relative z-10">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl border-4 border-white dark:border-slate-800 shadow-xl overflow-hidden flex-shrink-0" 
                         style={{ backgroundColor: isBlocked ? "#dc2626" : post.authorColor }}>
                         {isBlocked ? (
                             <div className="w-full h-full flex items-center justify-center bg-red-600 text-white">
-                                <ShieldAlert size={20} />
+                                <ShieldAlert size={24} />
                             </div>
                         ) : (
-                            <Image src={post.authorAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${post.authorName}`} width={40} height={40} alt="avatar" className="object-cover w-full h-full"/>
+                            <Image src={post.authorAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${post.authorName}`} width={48} height={48} alt="avatar" className="object-cover w-full h-full"/>
                         )}
                     </div>
                     <div>
-                        <p className="text-sm font-black text-foreground leading-none flex items-center">
-                        {isBlocked ? "Liaison Moderator" : post.authorName} 
-                        {!isBlocked && post.authorId === 'xYAuFJclD2UiUwPAUb4vqEaaKct2' && <span className="ml-1 text-blue-500 font-bold text-[10px]">(Liaison)</span>}
-                        </p>
-                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1 flex items-center gap-2">
-                           <span className={cn("px-1.5 py-0.5 rounded text-white", isBlocked ? "bg-red-600" : "")} style={{backgroundColor: isBlocked ? undefined : post.authorColor}}>{isBlocked ? "SHIELD" : post.authorCampus}</span>
+                        <div className="flex items-center gap-2">
+                            <p className="text-base font-black text-foreground leading-none">
+                                {isBlocked ? "Liaison Moderator" : post.authorName} 
+                            </p>
+                            {isShade ? <Flame size={14} className="text-red-500 fill-current" /> : <Trophy size={14} className="text-amber-500" />}
+                        </div>
+                        <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1.5 flex items-center gap-3">
+                           <span className={cn("px-2 py-0.5 rounded-lg text-white font-black", isBlocked ? "bg-red-600" : "")} style={{backgroundColor: isBlocked ? undefined : post.authorColor}}>
+                               {isBlocked ? "SHIELD" : post.authorAcronym || post.authorCampus}
+                           </span>
                            {!isBlocked && post.targetCampus && (
-                               <>
-                                <Zap size={12} className="text-muted-foreground" />
-                                <span className="tracking-widest">
-                                    TARGET: {post.targetCampus}
-                                </span>
-                               </>
+                               <div className="flex items-center gap-1.5 text-slate-400">
+                                    <Target size={12} className="text-primary" />
+                                    <span className="font-black text-primary/80">TARGET: {post.targetCampus}</span>
+                               </div>
                            )}
                         </div>
                     </div>
@@ -179,70 +175,72 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                         <button 
                             type="button"
                             onClick={handleDeletePost}
-                            className="p-2.5 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-xl hover:scale-110 active:scale-95"
-                            title="Retract Vibe"
+                            className="p-3 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-2xl hover:scale-110 active:scale-95"
                         >
-                            <Trash2 size={16} />
+                            <Trash2 size={18} />
                         </button>
                     )}
                     {post.createdAt && (
-                        <p className="text-[10px] text-muted-foreground font-bold flex-shrink-0">
-                            {formatDistanceToNow(post.createdAt.toDate(), { addSuffix: true })}
+                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest bg-muted/30 px-3 py-1 rounded-full">
+                            {formatDistanceToNow(new Date(post.createdAt?.toDate?.() || post.createdAt), { addSuffix: true })}
                         </p>
                     )}
                 </div>
             </div>
             
             {isBlocked ? (
-                <div className="py-4 space-y-3">
-                    <p className="text-lg font-black text-red-600 italic">
-                        {post.content}
+                <div className="py-6 space-y-4 relative z-10">
+                    <p className="text-2xl font-black text-red-600 italic leading-tight">
+                        "{post.content}"
                     </p>
                     {post.moderationNote && (
-                        <p className="text-xs font-bold text-red-400 uppercase tracking-widest flex items-center gap-2">
-                            <Bot size={14} /> Reason: {post.moderationNote}
-                        </p>
+                        <div className="bg-red-50 p-4 rounded-2xl border-2 border-red-100 flex items-center gap-3">
+                            <Bot size={20} className="text-red-600" />
+                            <p className="text-xs font-black text-red-700 uppercase tracking-widest">Reason: {post.moderationNote}</p>
+                        </div>
                     )}
                 </div>
             ) : (
-                <>
-                    {post.content && <p className="text-lg font-bold text-foreground leading-tight">"{post.content}"</p>}
+                <div className="relative z-10 space-y-6">
+                    {post.content && (
+                        <p className={cn(
+                            "text-xl font-black leading-tight tracking-tight",
+                            isShade ? "text-slate-900" : "text-amber-900"
+                        )}>
+                            "{post.content}"
+                        </p>
+                    )}
                     
                     {/* 🎙️ SHOUTOUT HERO STAGE (ARENA MODE) */}
                     {post.mediaType === 'audio' && post.mediaUrl && (
-                        <div className="mt-4 p-8 bg-slate-900 rounded-[2.5rem] border-2 border-white/5 relative overflow-hidden flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-slate-800 transition-all group/audio">
-                            <div className="absolute inset-0 bg-gradient-to-br from-red-600/10 to-blue-600/10 opacity-50" />
-                            <div className="relative z-10 p-6 bg-white/5 backdrop-blur-md rounded-full border-2 border-white/10 group-hover/audio:scale-110 transition-transform duration-500">
-                                <Mic size={40} className="text-blue-400" />
+                        <div className="p-10 bg-slate-900 rounded-[3rem] border-4 border-white/5 relative overflow-hidden flex flex-col items-center justify-center gap-6 cursor-pointer hover:bg-slate-850 transition-all group/audio shadow-2xl">
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(220,38,38,0.1),transparent)] animate-pulse" />
+                            <div className="relative z-10 p-8 bg-white/5 backdrop-blur-xl rounded-full border-2 border-white/10 group-hover/audio:scale-110 transition-transform duration-700">
+                                <Mic size={48} className={isShade ? "text-red-500" : "text-amber-400"} />
                             </div>
                             <div className="relative z-10 w-full max-w-sm">
                                 <VoicePlayer url={post.mediaUrl} duration={post.duration} theme="dark" />
-                                <div className="mt-3 flex items-center justify-center gap-2">
-                                    <Music size={12} className="text-slate-500" />
-                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Arena Vocal Signal</span>
+                                <div className="mt-4 flex flex-col items-center gap-2">
+                                    <div className="flex gap-1">
+                                        {[1,2,3,4,5,6].map(i => (
+                                            <div key={i} className={cn("w-1 rounded-full animate-bounce", isShade ? "bg-red-500" : "bg-amber-500")} style={{ height: `${10 + Math.random() * 20}px`, animationDelay: `${i * 0.1}s` }} />
+                                        ))}
+                                    </div>
+                                    <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.4em]">Vocal Artillery Logged</span>
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {post.mediaUrl && post.mediaType !== 'audio' && (
-                        <div className="mt-4 rounded-2xl overflow-hidden bg-black border border-border group/media relative">
-                            {post.mediaType === 'image' && <Image src={post.mediaUrl} width={500} height={300} className="w-full h-auto object-cover" alt="Post media" />}
+                        <div className="rounded-[2.5rem] overflow-hidden bg-black border-4 border-white dark:border-slate-800 shadow-2xl relative group/media">
+                            {post.mediaType === 'image' && <Image src={post.mediaUrl} width={600} height={400} className="w-full h-auto object-cover" alt="Arena Visual" />}
                             
                             {(post.mediaType === 'video' || post.mediaType === 'native') && videoSource && (
-                                <div className="aspect-video bg-black">
+                                <div className="aspect-video">
                                     <ReactPlayer 
-                                        url={videoSource}
-                                        controls
-                                        width="100%"
-                                        height="100%"
-                                        playsinline
-                                        config={{
-                                            file: {
-                                                attributes: { playsInline: true, preload: 'auto' },
-                                                forceHLS: !!post.hlsUrl
-                                            }
-                                        }}
+                                        url={videoSource} controls width="100%" height="100%" playsinline
+                                        config={{ file: { attributes: { playsInline: true }, forceHLS: !!post.hlsUrl } }}
                                     />
                                 </div>
                             )}
@@ -250,17 +248,11 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                             {post.mediaType === 'youtube' && youtubeId && (
                                 <div className="relative w-full aspect-video">
                                     {isRestricted ? (
-                                        <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-6 text-center animate-in fade-in">
-                                            <AlertTriangle className="text-amber-500 mb-2" size={32} />
-                                            <h4 className="text-white font-black text-[10px] uppercase tracking-widest">Restricted Entry</h4>
-                                            <p className="text-slate-400 text-[8px] mt-1 mb-4">Embedding blocked by owner. Visit YouTube to see the full shade.</p>
-                                            <a 
-                                                href={post.mediaUrl} 
-                                                target="_blank" 
-                                                rel="noopener noreferrer"
-                                                className="bg-red-600 text-white px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2 hover:bg-red-700"
-                                            >
-                                                <Youtube size={12} fill="white" /> Open on YouTube
+                                        <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-8 text-center">
+                                            <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                                            <h4 className="text-white font-black text-xs uppercase tracking-[0.2em]">Restricted Signal</h4>
+                                            <a href={post.mediaUrl} target="_blank" rel="noopener noreferrer" className="mt-4 bg-red-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center gap-2">
+                                                <Youtube size={16} fill="white" /> Open on YouTube
                                             </a>
                                         </div>
                                     ) : (
@@ -268,35 +260,42 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                                             videoId={youtubeId}
                                             opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }}
                                             className="w-full h-full"
-                                            onError={onYoutubeError}
+                                            onError={() => setIsRestricted(true)}
                                         />
                                     )}
                                 </div>
                             )}
-                            {post.mediaType === 'tiktok' && <div className="bg-black flex justify-center"><TikTokEmbed url={post.mediaUrl} /></div>}
+                            {post.mediaType === 'tiktok' && <div className="bg-black flex justify-center py-4"><TikTokEmbed url={post.mediaUrl} /></div>}
                         </div>
                     )}
 
-                    <div className="flex gap-4 mt-6">
+                    <div className="flex flex-wrap gap-4 pt-4">
                         <button
                             onClick={() => handleAction(isShade ? 'burn' : 'like')}
                             disabled={isProcessing}
                             className={cn(
-                                "flex items-center gap-1.5 text-muted-foreground hover:text-red-500 transition-colors",
-                                isShade && userAction === 'burned' && 'text-red-500',
-                                !isShade && userAction === 'liked' && 'text-blue-500'
+                                "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-90 border-2",
+                                isShade 
+                                    ? (userAction === 'burned' ? "bg-red-600 text-white border-red-600 shadow-xl shadow-red-200" : "bg-red-50 border-red-100 text-red-600 hover:bg-red-100")
+                                    : (userAction === 'liked' ? "bg-amber-500 text-white border-amber-500 shadow-xl shadow-amber-200" : "bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100")
                             )}
                         >
                             {isShade ? <Flame size={16} className={cn(userAction === 'burned' && "fill-current")} /> : <ThumbsUp size={16} className={cn(userAction === 'liked' && "fill-current")} />}
-                            <span className="text-xs font-black">
-                                {isShade ? `${localStats?.burns || 0} Burns` : `${localStats?.likes || 0} Likes`}
-                            </span>
+                            <span>{isShade ? `${localStats?.burns || 0} Burns` : `${localStats?.likes || 0} Vibes`}</span>
                         </button>
-                        <button onClick={() => setShowComments(!showComebacks)} className="flex items-center gap-1.5 text-muted-foreground hover:text-blue-500 transition-colors">
-                            <MessageSquare size={16} /> <span className="text-xs font-black">{localStats.comebacks || 0} Comebacks</span>
+                        
+                        <button 
+                            onClick={() => setShowComments(!showComebacks)} 
+                            className={cn(
+                                "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all",
+                                showComebacks ? "bg-slate-900 text-white border-slate-900 shadow-xl" : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
+                            )}
+                        >
+                            <MessageSquare size={16} /> 
+                            <span>{localStats.comebacks || 0} Comebacks</span>
                         </button>
                     </div>
-                </>
+                </div>
             )}
 
             {showComebacks && user && (
