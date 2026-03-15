@@ -43,7 +43,8 @@ export type ArenaBattle = {
   participants: string[];
   participantInfo: Record<string, { name: string; avatarUrl: string; campusAcronym: string; primaryColor: string }>;
   status: 'live' | 'ended';
-  streamUrl: string;
+  streamUrl?: string; // Legacy
+  streamUrls: Record<string, string>; // Dual-stream support
   votes: Record<string, number>;
   viewerCount: number;
   createdAt: any;
