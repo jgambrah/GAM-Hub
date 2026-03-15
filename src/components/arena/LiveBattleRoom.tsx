@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import YouTube from 'react-youtube';
 import { getBattleVerdict } from '@/ai/flows/arena-referee-flow';
 import { Button } from '@/components/ui/button';
+import { motion, AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 
 const TikTokEmbed = dynamic(() => import('../social/tiktok-embed').then(mod => mod.TikTokEmbed), {
@@ -38,16 +39,22 @@ const getYouTubeId = (url: string) => {
 const REACTIONS: ('🔥' | '😂' | '😱' | '💯' | '👑')[] = ['🔥', '😂', '😱', '💯', '👑'];
 
 const POWER_UPS = [
-    { type: 'fire_boost', label: 'Fire Boost', emoji: '🔥', weight: 5, color: 'text-orange-500' },
+    { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, color: 'text-orange-500' },
     { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 10, color: 'text-blue-500' },
-    { type: 'crown_boost', label: 'Crown Boost', emoji: '👑', weight: 25, color: 'text-amber-500' },
+    { type: 'crown', label: 'Crown Boost', emoji: '👑', weight: 25, color: 'text-amber-500' },
 ];
+
+interface LocalBurst {
+    id: string;
+    emoji: string;
+    x: number;
+}
 
 /**
  * LiveBattleRoom Component
  * -----------------------
  * Real-time competitive stage for inter-uni showdowns.
- * Features dual-stream visualization, live voting, and AI Referee.
+ * Features dual-stream visualization, live voting, weighted power-ups, and AI Referee.
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore, auth } = useFirebase();
@@ -60,6 +67,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [verdictLoading, setVerdictLoading] = useState(false);
+  const [bursts, setBursts] = useState<LocalBurst[]>([]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -98,12 +106,32 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 3. TYPING INDICATOR LISTENER
-  const typingQuery = useMemoFirebase(() => 
-    firestore ? query(collection(firestore, 'arena_battles', battleId, 'typing')) : null
-  , [firestore, battleId]);
-  const { data: typingDocs } = useCollection<any>(typingQuery);
-  const typingUsers = typingDocs?.filter(d => d.id !== auth?.currentUser?.uid) || [];
+  // 3. REACTION LISTENER: Synchronized Emoji Bursts
+  useEffect(() => {
+    if (!firestore || !battleId) return;
+    const q = query(
+        collection(firestore, 'arena_battles', battleId, 'reactions'),
+        orderBy('createdAt', 'desc'),
+        limitToLast(5)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+        snap.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                const data = change.doc.data();
+                const newBurst = {
+                    id: change.doc.id,
+                    emoji: data.emoji,
+                    x: 20 + Math.random() * 60
+                };
+                setBursts(prev => [...prev, newBurst]);
+                setTimeout(() => {
+                    setBursts(prev => prev.filter(b => b.id !== newBurst.id));
+                }, 2000);
+            }
+        });
+    });
+    return () => unsub();
+  }, [firestore, battleId]);
 
   // 4. JUDGMENT PROTOCOL
   useEffect(() => {
@@ -255,6 +283,25 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
         
+        {/* REACTION LAYER */}
+        <div className="absolute inset-0 pointer-events-none z-[60]">
+            <AnimatePresence>
+                {bursts.map(b => (
+                    <motion.div
+                        key={b.id}
+                        initial={{ opacity: 0, y: 0, scale: 0.5 }}
+                        animate={{ opacity: [0, 1, 1, 0], y: -200, scale: [0.5, 1.5, 1.2, 1] }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 1.5, ease: "easeOut" }}
+                        className="absolute text-5xl select-none"
+                        style={{ left: `${b.x}%`, bottom: '150px' }}
+                    >
+                        {b.emoji}
+                    </motion.div>
+                ))}
+            </AnimatePresence>
+        </div>
+
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center">
           <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 active:scale-90 transition-all shadow-xl">
             <X size={24}/>
