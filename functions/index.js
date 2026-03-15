@@ -9,6 +9,7 @@ const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
+const axios = require("axios");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -90,14 +91,12 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
 
 /**
  * 🔥 ARENA RING: REAL-TIME SPIKE DETECTION
- * Triggers on every engagement event to detect "Hot" moments.
  */
 exports.detectHighlightSpike = onDocumentCreated("arena_battles/{battleId}/engagement_events/{eventId}", async (event) => {
     const db = admin.firestore();
     const battleId = event.params.battleId;
     const battleRef = db.collection("arena_battles").doc(battleId);
 
-    // Fetch the 20 most recent events for this specific showdown
     const recentEventsSnap = await battleRef.collection("engagement_events")
         .orderBy("timestamp", "desc")
         .limit(20)
@@ -109,7 +108,6 @@ exports.detectHighlightSpike = onDocumentCreated("arena_battles/{battleId}/engag
     const newest = events[0].timestamp.toMillis();
     const oldest = events[events.length - 1].timestamp.toMillis();
 
-    // LIAISON LOGIC: 15 interactions in < 30 seconds = SPIKE DETECTED
     const timeGapMs = newest - oldest;
     if (timeGapMs < 30000) {
         console.log(`🔥 SPIKE DETECTED in Battle ${battleId}: 15 events in ${Math.round(timeGapMs/1000)}s`);
@@ -123,47 +121,90 @@ exports.detectHighlightSpike = onDocumentCreated("arena_battles/{battleId}/engag
 });
 
 /**
- * 🔔 ARENA: BATTLE AUTO-PROMOTION
+ * 🎬 ARENA RING: VIDEO HIGHLIGHT CUTTER (FLUENT-FFMPEG)
+ * Triggers when a highlight record is created to cut the 10s viral clip.
  */
-exports.onBattleStarted = onDocumentUpdated("arena_battles/{battleId}", async (event) => {
-    const before = event.data.before.data();
-    const after = event.data.after.data();
-    
-    if (before.status === "waiting" && after.status === "live") {
-        const db = admin.firestore();
-        const p1 = after.participantInfo[after.creatorId];
-        const p2 = after.opponentB ? after.participantInfo[after.opponentB.userId] : null;
-        
-        if (!p1 || !p2) return null;
+exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId}", async (event) => {
+    const highlight = event.data.data();
+    const highlightId = event.params.highlightId;
+    const db = admin.firestore();
 
-        const title = "🔥 New Arena Battle!";
-        const message = `${p1.campusAcronym} vs ${p2.campusAcronym}: "${after.title}" is LIVE!`;
-        
-        const campusIds = [p1.campusId, p2.campusId].filter(id => !!id);
-        const usersSnap = await db.collection("users")
-            .where("campusId", "in", campusIds)
-            .limit(200)
-            .get();
+    if (highlight.processingStatus === "completed") return null;
 
-        const batch = db.batch();
-        usersSnap.forEach(u => {
-            const notifRef = db.collection("users").doc(u.id).collection("notifications").doc();
-            batch.set(notifRef, {
-                type: "battle_challenge",
-                title,
-                message,
-                link: "/arena",
-                read: false,
-                createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+    const sourceUrl = highlight.sourceUrl || highlight.clipUrl;
+    const startTime = highlight.startTime || 0;
+    const tempInput = path.join(os.tmpdir(), `input-${highlightId}.mp4`);
+    const tempOutput = path.join(os.tmpdir(), `output-${highlightId}.mp4`);
+
+    try {
+        console.log(`🎬 Cutting highlight for Battle ${highlight.battleId} starting at ${startTime}s`);
+        
+        // 1. Download source video to temporary environment
+        const response = await axios({
+            method: "GET",
+            url: sourceUrl,
+            responseType: "stream",
         });
-        return batch.commit();
+        
+        const writer = fs.createWriteStream(tempInput);
+        response.data.pipe(writer);
+        await new Promise((resolve, reject) => {
+            writer.on("finish", resolve);
+            writer.on("error", reject);
+        });
+
+        // 2. Perform the Multimedia Cut using FFmpeg
+        await new Promise((resolve, reject) => {
+            ffmpeg(tempInput)
+                .setStartTime(startTime)
+                .setDuration(10) // 10-second viral window
+                .output(tempOutput)
+                .on("end", resolve)
+                .on("error", reject)
+                .run();
+        });
+
+        // 3. Upload extracted clip to the Vault
+        const bucket = admin.storage().bucket();
+        const destination = `arena_highlights/${highlightId}.mp4`;
+        await bucket.upload(tempOutput, {
+            destination,
+            metadata: { contentType: "video/mp4", metadata: { battleId: highlight.battleId } },
+        });
+
+        const finalUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(destination)}?alt=media`;
+
+        // 4. Update the highlight and the Pulse feed
+        const batch = db.batch();
+        batch.update(db.collection("arena_highlights").doc(highlightId), {
+            clipUrl: finalUrl,
+            processingStatus: "completed",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        if (highlight.pulsePostId) {
+            batch.update(db.collection("campus_pulse").doc(highlight.pulsePostId), {
+                mediaUrl: finalUrl,
+                thumbnailUrl: finalUrl // Video can act as its own thumbnail
+            });
+        }
+
+        await batch.commit();
+        console.log(`✅ Highlight processed successfully: ${finalUrl}`);
+
+    } catch (err) {
+        console.error("❌ Highlight processing failed:", err);
+        await db.collection("arena_highlights").doc(highlightId).update({ processingStatus: "failed", error: err.message });
+    } finally {
+        // Cleanup temp files to prevent disk overflow
+        if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
+        if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput);
     }
     return null;
 });
 
 /**
- * 🛡️ ARENA RING: AUTO-END BATTLES & HIGHLIGHT GENERATION
+ * 🛡️ ARENA RING: AUTO-END BATTLES & HIGHLIGHT REGISTRATION
  */
 exports.endBattle = onSchedule("every 1 minutes", async (event) => {
   const db = admin.firestore();
@@ -185,8 +226,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     const winnerId = vA > vB ? data.opponentA.userId : (vB > vA ? data.opponentB.userId : null);
     const isDraw = vA === vB;
 
-    const batch = db.batch();
-    batch.update(doc.ref, { status: "ended", endedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await doc.ref.update({ status: "ended", endedAt: admin.firestore.FieldValue.serverTimestamp() });
 
     if (!isDraw && winnerId) {
         const winner = data.opponentA.userId === winnerId ? data.opponentA : data.opponentB;
@@ -195,7 +235,6 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
         
         const eventsSnap = await doc.ref.collection("engagement_events").orderBy("timestamp", "asc").get();
         let peakTimeOffset = 0;
-        let peakEnergy = 0;
 
         if (!eventsSnap.empty) {
             const events = eventsSnap.docs.map(d => ({ ...d.data(), time: d.data().timestamp.toMillis() }));
@@ -209,47 +248,41 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             });
 
             const sortedBuckets = Object.entries(buckets).sort((a, b) => b[1] - a[1]);
-            peakTimeOffset = parseInt(sortedBuckets[0][0]) * 10; 
-            peakEnergy = sortedBuckets[0][1];
+            peakTimeOffset = Math.max(0, parseInt(sortedBuckets[0][0]) * 10 - 2); // Buffer 2s before the spike
         }
 
+        const pulseRef = db.collection("campus_pulse").doc();
         const highlightRef = db.collection("arena_highlights").doc();
-        batch.set(highlightRef, {
+
+        await highlightRef.set({
             battleId: doc.id,
-            clipUrl: winner.videoUrl,
+            sourceUrl: winner.videoUrl,
+            pulsePostId: pulseRef.id,
             creatorId: data.creatorId,
             opponentId: loser.userId,
             winnerId: winnerId,
             startTime: peakTimeOffset,
-            endTime: peakTimeOffset + 10,
-            votesSpike: peakEnergy || winner.votes,
+            processingStatus: "pending",
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        const pulseRef = db.collection("campus_pulse").doc();
-        batch.set(pulseRef, {
+        await pulseRef.set({
             authorId: winnerId,
             authorName: winnerInfo.name,
             authorAvatarUrl: winnerInfo.avatarUrl,
             campusId: winnerInfo.campusId || "all",
             campusAcronym: winnerInfo.campusAcronym,
-            content: `🏆 Victory Archive: ${winnerInfo.name} dominated the Yard! Peak Intensity: ${peakEnergy || winner.votes}`,
+            content: `🏆 Victory Archive: ${winnerInfo.name} dominated the Yard! Check out the highlight.`,
             mediaType: "video",
-            mediaUrl: winner.videoUrl,
+            mediaUrl: winner.videoUrl, // Temporary, will be updated by processArenaHighlight
             type: "arena_highlight",
             isArenaEntry: true,
-            battleMetadata: {
-                battleId: doc.id,
-                winnerName: winnerInfo.name,
-                totalEnergy: peakEnergy || winner.votes
-            },
+            battleMetadata: { battleId: doc.id, winnerName: winnerInfo.name },
             likes: 0,
             commentCount: 0,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
     }
-
-    await batch.commit();
   }
   return null;
 });
@@ -287,7 +320,7 @@ exports.compressVideo = onObjectFinalized({
   const bucket = admin.storage().bucket(object.bucket);
   const filePath = object.name;
   if (!object.contentType || !object.contentType.startsWith("video/")) return null;
-  if (!filePath.startsWith("videos/hot/") && !filePath.startsWith("product_videos/")) return null;
+  if (!filePath.startsWith("videos/hot/") && !filePath.startsWith("product_videos/") && !filePath.startsWith("arena_highlights/")) return null;
   if (object.metadata && object.metadata.processed === "true") return null;
 
   const fileName = path.basename(filePath);
