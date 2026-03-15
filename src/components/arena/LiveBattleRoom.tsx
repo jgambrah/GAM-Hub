@@ -175,30 +175,39 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     } finally { setIsVoting(false); }
   };
 
+  /**
+   * handlePowerUp
+   * ------------
+   * Implements Step 2: Paid Audience Power-Ups.
+   * Orchestrates the coin-spending handshake and real-time score injection.
+   */
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
     
+    // Preliminary check to save a transaction if obviously short
     if (wallet.coins < powerup.cost) {
         toast({ variant: 'destructive', title: 'Insufficient Coins', description: 'Refill your Hub artillery to deploy this vibe.' });
         return;
     }
 
     try {
-        // 1. DEDUCT COINS: The National Handshake
+        // 1. DEDUCT COINS: The National Handshake (Atomic Transaction)
         await spendCoins(firestore, user.id, powerup.cost, 'powerup_used', {
             battleId,
             targetSide: target,
             powerupType: powerup.type
         });
 
-        // 2. INJECT VOTES: Atomic increment
+        // 2. INJECT VOTES: Update Battle Score (Atomic Update)
         const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
-        await updateDoc(doc(firestore, 'arena_battles', battleId), { 
+        const battleRef = doc(firestore, 'arena_battles', battleId);
+        
+        await updateDoc(battleRef, { 
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
             [`votes.${targetUserId}`]: increment(powerup.weight) 
         });
 
-        // 3. LOG BATTLE EVENT: For highlight detection
+        // 3. LOG POWER-UP: For Highlight Analytics
         await addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), {
             userId: user.id,
             userName: user.name,
@@ -209,7 +218,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             createdAt: serverTimestamp()
         });
 
+        // 4. LOG SPIKE: Trigger Engagement Engine
         logEngagementEvent('powerup', target, powerup.weight);
+        
         toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
 
     } catch (err: any) { 
@@ -358,7 +369,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             muted={!soundOn} 
                             width="100%" 
                             height="100%" 
-                            config={{ file: { attributes: { preload: "metadata" } } }}
+                            config={{ file: { attributes: { playsInline: true, preload: "metadata" } } }}
                         />
                     </div>
                     <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
@@ -368,7 +379,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             muted={!soundOn} 
                             width="100%" 
                             height="100%" 
-                            config={{ file: { attributes: { preload: "metadata" } } }}
+                            config={{ file: { attributes: { playsInline: true, preload: "metadata" } } }}
                         />
                     </div>
                 </div>
