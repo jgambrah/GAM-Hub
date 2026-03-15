@@ -84,6 +84,12 @@ export type CampusWar = {
   };
 };
 
+export type VoteShard = {
+  id: string;
+  votesA: number;
+  votesB: number;
+};
+
 export type SocialPost = {
   id: string;
   authorId: string;

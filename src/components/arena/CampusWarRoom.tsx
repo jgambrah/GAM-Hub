@@ -1,10 +1,11 @@
+
 'use client';
 
 /**
  * CampusWarRoom Component
  * -----------------------
  * National Hub Stage for University vs University Wars.
- * Orchestrates massive spectator loads using root-doc sync patterns.
+ * Orchestrates massive spectator loads using Distributed Counters (Sharding).
  * Implements "One Vote Per Student" integrity protocol.
  */
 
@@ -12,16 +13,15 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
-  increment, doc, getDoc, onSnapshot, setDoc
+  increment, doc, getDoc, onSnapshot, setDoc, writeBatch
 } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
-import type { CampusWar, BattleMessage } from '@/lib/types';
+import type { CampusWar, BattleMessage, VoteShard } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
   Loader2, MessageSquare, Trophy, Flame, Crown, Globe, ShieldCheck, Star, Bot, Scale, Mic, Video, Plus, CheckCircle2
 } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. SCALABLE SYNC: Listen to main war document for real-time scores
+  // 1. SCALABLE SYNC: Listen to the main war document
   const warRef = useMemoFirebase(() => {
     if (!firestore || !warId) return null;
     return doc(firestore, 'campus_wars', warId);
@@ -54,7 +54,24 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
   const { data: war, isLoading } = useDoc<CampusWar>(warRef);
 
-  // 2. VOTE AUDIT: Check if student has already contributed energy (One User = One Document)
+  // 2. DISTRIBUTED COUNTER SYNC: Aggregating Shards for the National Scoreboard
+  const shardsQuery = useMemoFirebase(() => {
+      if (!firestore || !warId) return null;
+      return query(collection(firestore, 'campus_wars', warId, 'vote_shards'));
+  }, [firestore, warId]);
+
+  const { data: shards } = useCollection<VoteShard>(shardsQuery);
+
+  // Calculate live scores from shards
+  const aggregatedScores = useMemo(() => {
+      if (!shards || shards.length === 0) return { A: war?.votesA || 0, B: war?.votesB || 0 };
+      return shards.reduce((acc, shard) => ({
+          A: acc.A + (shard.votesA || 0),
+          B: acc.B + (shard.votesB || 0)
+      }), { A: 0, B: 0 });
+  }, [shards, war]);
+
+  // 3. VOTE AUDIT: Check if student has already contributed energy (One User = One Document)
   useEffect(() => {
     if (!firestore || !user || !warId) return;
     const checkVote = async () => {
@@ -67,7 +84,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     checkVote();
   }, [firestore, user?.id, warId]);
 
-  // 3. LIVE CHAT STREAM
+  // 4. LIVE CHAT STREAM
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
       collection(firestore, "campus_wars", warId, "messages"),
@@ -92,33 +109,39 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   };
 
   /**
-   * handleVote - National Integrity Protocol
-   * --------------------------------------
-   * Uses a deterministic path to ensure one vote per user.
-   * Atomically increments the root tally for scalability.
+   * handleVote - Massive Scale Optimization Protocol
+   * ----------------------------------------------
+   * Uses Distributed Counters (Sharding) to prevent write contention.
+   * Logic: Record individual vote + Update random shard.
    */
   const handleVote = async (side: 'A' | 'B') => {
     if (!firestore || !user || isVoting || hasVoted || !war || war.status === 'ended') return;
     setIsVoting(true);
     
+    // Integrity path
     const voteRef = doc(firestore, 'campus_wars', warId, 'votes', user.id);
-    const warDocRef = doc(firestore, 'campus_wars', warId);
+    
+    // Shard path: Pick a random shard (0-9)
+    const shardId = Math.floor(Math.random() * 10).toString();
+    const shardRef = doc(firestore, 'campus_wars', warId, 'vote_shards', shardId);
 
     try {
+      const batch = writeBatch(firestore);
+
       // 1. Register the unique vote
-      // This document's existence prevents the user from voting again in this war.
-      await setDoc(voteRef, {
+      batch.set(voteRef, {
           campus: side === 'A' ? war.campusAId : war.campusBId,
           userId: user.id,
           userName: user.name,
           createdAt: serverTimestamp()
       });
 
-      // 2. Atomic increment on the national tally
-      // This allows thousands of students to update the score simultaneously.
-      await updateDoc(warDocRef, { 
+      // 2. Update the Distributed Counter Shard
+      batch.set(shardRef, { 
           [side === 'A' ? 'votesA' : 'votesB']: increment(1) 
-      });
+      }, { merge: true });
+
+      await batch.commit();
 
       setHasVoted(true);
       sendReaction('🗳️');
@@ -130,10 +153,16 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
   const handlePowerUp = async (up: typeof POWER_UPS[0], side: 'A' | 'B') => {
     if (!firestore || !user || !war || war.status === 'ended') return;
+    
+    const shardId = Math.floor(Math.random() * 10).toString();
+    const shardRef = doc(firestore, 'campus_wars', warId, 'vote_shards', shardId);
+
     try {
-        await updateDoc(doc(firestore, 'campus_wars', warId), { 
+        // Boosts also use the sharding mechanism for scalability
+        await updateDoc(shardRef, { 
             [side === 'A' ? 'votesA' : 'votesB']: increment(up.weight) 
         });
+
         addDoc(collection(firestore, 'campus_wars', warId, 'boosts'), {
             userId: user.id,
             type: up.type,
@@ -166,10 +195,10 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     );
   }
 
-  const totalVotes = (war.votesA || 0) + (war.votesB || 0);
-  const p1Pct = totalVotes > 0 ? ((war.votesA || 0) / totalVotes) * 100 : 50;
+  const { A: votesA, B: votesB } = aggregatedScores;
+  const totalVotes = (votesA || 0) + (votesB || 0);
+  const p1Pct = totalVotes > 0 ? ((votesA || 0) / totalVotes) * 100 : 50;
   const p2Pct = 100 - p1Pct;
-  const isEnded = war.status === 'ended';
 
   return (
     <div className="fixed inset-0 z-[8000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
@@ -221,7 +250,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
                     <h2 className="text-8xl md:text-[10rem] font-black italic tracking-tighter mb-4" style={{ color: war.campusAInfo?.primaryColor }}>
                         {war.campusAInfo?.acronym}
                     </h2>
-                    <p className="text-5xl font-black text-white tabular-nums">{(war.votesA || 0).toLocaleString()}</p>
+                    <p className="text-5xl font-black text-white tabular-nums">{(votesA || 0).toLocaleString()}</p>
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-4">Total Campus Energy</p>
                 </div>
 
@@ -236,7 +265,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
                     <h2 className="text-8xl md:text-[10rem] font-black italic tracking-tighter mb-4" style={{ color: war.campusBInfo?.primaryColor }}>
                         {war.campusBInfo?.acronym}
                     </h2>
-                    <p className="text-5xl font-black text-white tabular-nums">{(war.votesB || 0).toLocaleString()}</p>
+                    <p className="text-5xl font-black text-white tabular-nums">{(votesB || 0).toLocaleString()}</p>
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-4">Total Campus Energy</p>
                 </div>
             </div>
@@ -291,7 +320,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
                 <MessageSquare size={14} className="text-indigo-500" /> Global War Chat
             </h3>
         </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar">
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
             {messages?.map(m => (
                 <div key={m.id} className="animate-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-2 mb-1">

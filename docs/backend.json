@@ -110,7 +110,8 @@
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/campus_wars/{warId}": { "schema": "#/backend/entities/CampusWar", "description": "Large-scale University vs University wars." },
     "/campus_wars/{warId}/messages/{msgId}": { "description": "Live chat for campus wars." },
-    "/campus_wars/{warId}/votes/{userId}": { "description": "Unique student votes per war." },
+    "/campus_wars/{warId}/votes/{userId}": { "description": "Unique student votes per war (Integrity Protocol)." },
+    "/campus_wars/{warId}/vote_shards/{shardId}": { "description": "Distributed counters for massive scale voting." },
     "/campus_wars/{warId}/boosts/{boostId}": { "description": "Weighted audience boosts for wars." },
     "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." }
   }
