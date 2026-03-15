@@ -65,30 +65,23 @@ export type ArenaBattle = {
   endsAt: any;
 };
 
-export type BattleMessage = {
+export type CampusWar = {
   id: string;
-  userId: string;
-  userName: string;
-  text: string;
-  mediaUrl?: string;
-  mediaType?: 'youtube' | 'tiktok' | 'native';
+  title: string;
+  campusAId: string;
+  campusBId: string;
+  votesA: number;
+  votesB: number;
+  status: 'live' | 'ended';
+  viewerCount: number;
+  campusAInfo?: { name: string; acronym: string; primaryColor: string };
+  campusBInfo?: { name: string; acronym: string; primaryColor: string };
   createdAt: any;
-};
-
-export type BattleReaction = {
-  id: string;
-  emoji: string;
-  userId: string;
-  createdAt: any;
-};
-
-export type BattlePowerUp = {
-  id: string;
-  userId: string;
-  target: 'A' | 'B';
-  type: string;
-  weight: number;
-  createdAt: any;
+  endsAt: any;
+  aiVerdict?: {
+    verdict: string;
+    winner: string;
+  };
 };
 
 export type SocialPost = {

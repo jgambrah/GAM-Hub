@@ -81,45 +81,25 @@
         "viewerCount": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" },
         "endsAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "title", "status", "opponentA", "opponentB"]
+      }
     },
-    "BattleMessage": {
-      "title": "BattleMessage",
+    "CampusWar": {
+      "title": "CampusWar",
       "type": "object",
-      "description": "A chat message or video attack within a live battle.",
+      "description": "Large-scale inter-university competition.",
       "properties": {
         "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "text": { "type": "string" },
-        "mediaUrl": { "type": "string" },
-        "mediaType": { "type": "string", "enum": ["youtube", "tiktok", "native"] },
-        "createdAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "BattleReaction": {
-      "title": "BattleReaction",
-      "type": "object",
-      "description": "A live emoji reaction during a battle.",
-      "properties": {
-        "emoji": { "type": "string" },
-        "userId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "BattlePowerUp": {
-      "title": "BattlePowerUp",
-      "type": "object",
-      "description": "A weighted audience boost during a battle.",
-      "properties": {
-        "userId": { "type": "string" },
-        "target": { "type": "string", "enum": ["A", "B"] },
-        "type": { "type": "string" },
-        "weight": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "title": { "type": "string" },
+        "campusAId": { "type": "string" },
+        "campusBId": { "type": "string" },
+        "votesA": { "type": "number" },
+        "votesB": { "type": "number" },
+        "status": { "type": "string", "enum": ["live", "ended"] },
+        "viewerCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "endsAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "target", "type", "weight"]
+      "required": ["title", "campusAId", "campusBId", "status"]
     }
   },
   "auth": {
@@ -128,10 +108,9 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
-    "/arena_battles/{battleId}/messages/{msgId}": { "schema": "#/backend/entities/BattleMessage", "description": "Live chat and video attacks." },
-    "/arena_battles/{battleId}/user_votes/{userId}": { "description": "Audit trail for voting to prevent duplicates." },
-    "/arena_battles/{battleId}/reactions/{reactionId}": { "schema": "#/backend/entities/BattleReaction", "description": "Live emoji reactions." },
-    "/arena_battles/{battleId}/powerups/{powerupId}": { "schema": "#/backend/entities/BattlePowerUp", "description": "Weighted audience boosts." },
+    "/campus_wars/{warId}": { "schema": "#/backend/entities/CampusWar", "description": "Large-scale University vs University wars." },
+    "/campus_wars/{warId}/messages/{msgId}": { "description": "Live chat for campus wars." },
+    "/campus_wars/{warId}/boosts/{boostId}": { "description": "Weighted audience boosts for wars." },
     "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." }
   }
 }

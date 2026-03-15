@@ -4,8 +4,8 @@
 import React, { useState, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, limit, where } from 'firebase/firestore';
-import type { ArenaPost, ArenaBattle } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Plus, Flame, Sparkles } from 'lucide-react';
+import type { ArenaPost, ArenaBattle, CampusWar } from '@/lib/types';
+import { Swords, Trophy, Zap, Loader2, Plus, Flame, Sparkles, Globe } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -24,12 +24,15 @@ import { CreateBattleModal } from '@/components/arena/CreateBattleModal';
 import { LiveBattleCard } from '@/components/arena/LiveBattleCard';
 import { LiveBattleRoom } from '@/components/arena/LiveBattleRoom';
 import { ArenaChampions } from '@/components/arena/ArenaChampions';
+import { CampusWarCard } from '@/components/arena/CampusWarCard';
+import { CampusWarRoom } from '@/components/arena/CampusWarRoom';
+import { CreateWarModal } from '@/components/arena/CreateWarModal';
 
 const INITIAL_LIMIT = 50;
 
 export default function ArenaPage() {
     const { firestore } = useFirebase();
-    const { user, isTokenReady } = useAuth();
+    const { user, isTokenReady, isAdmin } = useAuth();
     const { toast } = useToast();
     
     const [isPosting, setIsPosting] = useState(false);
@@ -37,9 +40,11 @@ export default function ArenaPage() {
     const [vibeType, setVibeType] = useState<'shade' | 'celebration'>('celebration');
     const [targetCampus, setTargetCampus] = useState('all');
     
-    // BATTLE STATE
+    // MODAL STATES
     const [isBattleModalOpen, setIsBattleModalOpen] = useState(false);
+    const [isWarModalOpen, setIsWarModalOpen] = useState(false);
     const [activeBattleId, setActiveBattleId] = useState<string | null>(null);
+    const [activeWarId, setActiveWarId] = useState<string | null>(null);
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
@@ -50,7 +55,14 @@ export default function ArenaPage() {
     }, [firestore]);
     const { data: liveBattles, isLoading: isLoadingBattles } = useCollection<ArenaBattle>(battlesQuery);
 
-    // 📡 2. RETRIEVE BATTLE THREADS (Posts)
+    // 📡 2. RETRIEVE LIVE WARS (University vs University)
+    const warsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'campus_wars'), where('status', '==', 'live'), limit(2));
+    }, [firestore]);
+    const { data: liveWars, isLoading: isLoadingWars } = useCollection<CampusWar>(warsQuery);
+
+    // 📡 3. RETRIEVE BATTLE THREADS (Posts)
     const postsQuery = useMemoFirebase(() => {
         if (!firestore || !user || !isTokenReady) return null;
         return query(
@@ -98,10 +110,39 @@ export default function ArenaPage() {
         }
     };
 
+    const isSRC = user?.role === 'src' || isAdmin;
+
     return (
         <div className="p-4 bg-muted/50 min-h-screen pb-32">
             <ArenaLeaderboard />
             
+            {/* 🏛️ CAMPUS WAR SECTION: THE NATIONAL STAGE */}
+            {liveWars && liveWars.length > 0 && (
+                <section className="max-w-5xl mx-auto mb-16 animate-in fade-in duration-700">
+                    <div className="flex items-center justify-between mb-8 px-4">
+                        <div className="flex items-center gap-4">
+                            <div className="p-4 bg-indigo-600 text-white rounded-[1.5rem] shadow-2xl shadow-indigo-200">
+                                <Globe size={28} className="animate-spin-slow" />
+                            </div>
+                            <div>
+                                <h2 className="text-3xl font-black italic tracking-tighter text-foreground uppercase">Campus Wars</h2>
+                                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em] mt-1">National University Conflict</p>
+                            </div>
+                        </div>
+                        {isSRC && (
+                            <Button onClick={() => setIsWarModalOpen(true)} className="rounded-2xl bg-indigo-600 text-white font-black px-8 h-14 shadow-xl active:scale-95 transition-all">
+                                Declare War
+                            </Button>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 gap-8">
+                        {liveWars.map(war => (
+                            <CampusWarCard key={war.id} war={war} onClick={() => setActiveWarId(war.id)} />
+                        ))}
+                    </div>
+                </section>
+            )}
+
             {/* LIVE RING SECTION */}
             <section className="max-w-4xl mx-auto mb-12">
                 <div className="flex items-center justify-between mb-6 px-4">
@@ -194,8 +235,13 @@ export default function ArenaPage() {
 
             {/* BATTLE MODALS */}
             <CreateBattleModal open={isBattleModalOpen} onOpenChange={setIsBattleModalOpen} />
+            <CreateWarModal open={isWarModalOpen} onOpenChange={setIsWarModalOpen} />
+            
             {activeBattleId && (
                 <LiveBattleRoom battleId={activeBattleId} onClose={() => setActiveBattleId(null)} />
+            )}
+            {activeWarId && (
+                <CampusWarRoom warId={activeWarId} onClose={() => setActiveWarId(null)} />
             )}
         </div>
     )
