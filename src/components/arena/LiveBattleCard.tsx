@@ -1,9 +1,8 @@
-
 'use client';
 
 import React from 'react';
 import type { ArenaBattle } from '@/lib/types';
-import { Swords, Users, Trophy, Zap, ChevronRight, Clock, ShieldCheck } from 'lucide-react';
+import { Swords, Users, Trophy, Zap, ChevronRight, Clock, ShieldCheck, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 
