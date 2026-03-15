@@ -3,12 +3,13 @@
 /**
  * @fileOverview Arena Comebacks Component.
  * Restored multimedia response engine for asynchronous battle vibrations.
- * Includes handleFileChange logic and AI Referee integration.
+ * Includes handleFileChange logic, AI Referee integration, 
+ * anti-spam cooldowns, and content moderation guards.
  */
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, increment } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, increment, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -184,6 +185,35 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     e.preventDefault();
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
 
+    // 1. CONTENT MODERATION GUARD 🛡️
+    const bannedWords = ["slur1", "slur2"]; // Expand this list as needed
+    if (bannedWords.some(word => text.toLowerCase().includes(word))) {
+        toast({
+            variant: "destructive",
+            title: "Content blocked",
+            description: "Your comeback violates Arena rules. Keep it witty, not abusive."
+        });
+        return;
+    }
+
+    // 2. ANTI-SPAM COOLDOWN HANDSHAKE 🚫
+    const lastReplyRef = doc(firestore, "users", userProfile.id, "rateLimits", "arenaReply");
+    const lastSnap = await getDoc(lastReplyRef);
+
+    if (lastSnap.exists()) {
+        const lastTime = lastSnap.data().time?.toMillis?.() || 0;
+        const now = Date.now();
+
+        if (now - lastTime < 5000) {
+            toast({
+                variant: "destructive",
+                title: "Slow down!",
+                description: "Wait a few seconds before posting another comeback."
+            });
+            return;
+        }
+    }
+
     setIsPosting(true);
     setUploadProgress(0);
 
@@ -231,6 +261,10 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       await addDocumentNonBlocking(collection(firestore, 'campus_pulse', post.id, 'comebacks'), comebackData);
       await updateDocumentNonBlocking(doc(firestore, 'campus_pulse', post.id), { comebackCount: increment(1) });
       
+      // Update rate limit timestamp
+      await setDoc(lastReplyRef, { time: serverTimestamp() });
+
+      toast({ title: 'Comeback Vibe Shared!' });
       resetInputs();
     } catch(err) {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not post comeback.' });
