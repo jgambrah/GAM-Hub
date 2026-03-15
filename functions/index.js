@@ -20,8 +20,9 @@ setGlobalOptions({maxInstances: 10});
 /**
  * 🛡️ ARENA RING: AUTO-MATCHMAKER
  * When a student enters the waiting pool, look for a rival and pairing them.
+ * Triggered on pool entry for instant real-time matching.
  */
-exports.matchFighters = onDocumentCreated("arena_waiting_pool/{entryId}", async (event) => {
+exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", async (event) => {
   const db = admin.firestore();
   const newEntry = event.data.data();
   const entryId = event.params.entryId;
@@ -45,7 +46,7 @@ exports.matchFighters = onDocumentCreated("arena_waiting_pool/{entryId}", async 
     // 2. Pair Found: Initialize LIVE Battle
     const battleRef = db.collection("arena_battles").doc();
     const battleData = {
-      title: `Auto-Match: ${newEntry.campusAcronym} vs ${rival.campusAcronym}`,
+      title: newEntry.title || `Auto-Match: ${newEntry.campusAcronym} vs ${rival.campusAcronym}`,
       status: "live",
       creatorId: newEntry.userId,
       participants: [newEntry.userId, rival.userId],
@@ -180,6 +181,7 @@ exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
 
 /**
  * 🛡️ ARENA RING: PRUNE WAITING POOL
+ * Maintenance function to remove stale entries.
  */
 exports.pruneWaitingPool = onSchedule("every 5 minutes", async (event) => {
   const db = admin.firestore();
