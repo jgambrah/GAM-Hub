@@ -100,6 +100,17 @@
         "endsAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "campusAId", "campusBId", "status"]
+    },
+    "CampusLeaderboard": {
+      "title": "CampusLeaderboard",
+      "type": "object",
+      "description": "Aggregated inter-university war rankings.",
+      "properties": {
+        "wins": { "type": "number" },
+        "losses": { "type": "number" },
+        "totalVotes": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -113,6 +124,7 @@
     "/campus_wars/{warId}/votes/{userId}": { "description": "Unique student votes per war (Integrity Protocol)." },
     "/campus_wars/{warId}/vote_shards/{shardId}": { "description": "Distributed counters for massive scale voting." },
     "/campus_wars/{warId}/boosts/{boostId}": { "description": "Weighted audience boosts for wars." },
-    "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." }
+    "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." },
+    "/campus_leaderboard/{campusId}": { "schema": "#/backend/entities/CampusLeaderboard", "description": "National University rankings." }
   }
 }

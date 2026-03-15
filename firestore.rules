@@ -85,6 +85,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /campus_leaderboard/{campusId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /video_hashes/{hash} {
       allow read: if isSignedIn();
       allow write: if isSignedIn();

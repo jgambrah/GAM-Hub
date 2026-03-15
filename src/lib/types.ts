@@ -529,3 +529,10 @@ export type Review = {
   comment: string;
   createdAt: string;
 };
+
+export type CampusLeaderboard = {
+  wins: number;
+  losses: number;
+  totalVotes: number;
+  updatedAt: any;
+};

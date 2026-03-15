@@ -77,6 +77,67 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
 });
 
 /**
+ * 🏛️ CAMPUS WAR: AUTO-END WARS & NATIONAL LEADERBOARD SYNC
+ */
+exports.endWar = onSchedule("every 1 minutes", async (event) => {
+  const db = admin.firestore();
+  const now = new Date().toISOString();
+
+  const expiredWars = await db.collection("campus_wars")
+    .where("status", "==", "live")
+    .where("endsAt", "<=", now)
+    .get();
+
+  if (expiredWars.empty) return null;
+
+  const batch = db.batch();
+
+  for (const doc of expiredWars.docs) {
+    const war = doc.data();
+    const warId = doc.id;
+
+    // Aggregate Shards for final score
+    const shardsSnap = await db.collection("campus_wars").doc(warId).collection("vote_shards").get();
+    let votesA = 0;
+    let votesB = 0;
+    shardsSnap.forEach(s => {
+        const d = s.data();
+        votesA += d.votesA || 0;
+        votesB += d.votesB || 0;
+    });
+
+    const winnerId = votesA > votesB ? war.campusAId : (votesB > votesA ? war.campusBId : null);
+    const isDraw = votesA === votesB;
+
+    // 1. Close the War
+    batch.update(doc.ref, {
+        status: "ended",
+        votesA,
+        votesB,
+        closedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 2. Update National Leaderboard
+    const updateCampus = (campusId, isWinner, votes) => {
+        const ref = db.collection("campus_leaderboard").doc(campusId);
+        batch.set(ref, {
+            wins: admin.firestore.FieldValue.increment(isWinner ? 1 : 0),
+            losses: admin.firestore.FieldValue.increment(!isWinner && !isDraw ? 1 : 0),
+            totalVotes: admin.firestore.FieldValue.increment(votes),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+    };
+
+    updateCampus(war.campusAId, winnerId === war.campusAId, votesA);
+    updateCampus(war.campusBId, winnerId === war.campusBId, votesB);
+  }
+
+  await batch.commit();
+  console.log(`🏛️ Liaison Hub: Closed ${expiredWars.size} expired National Wars.`);
+  return null;
+});
+
+/**
  * 🎥 HLS & COMPRESSION ENGINE
  */
 exports.compressVideo = onObjectFinalized({

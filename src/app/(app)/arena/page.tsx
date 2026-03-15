@@ -27,6 +27,7 @@ import { ArenaChampions } from '@/components/arena/ArenaChampions';
 import { CampusWarCard } from '@/components/arena/CampusWarCard';
 import { CampusWarRoom } from '@/components/arena/CampusWarRoom';
 import { CreateWarModal } from '@/components/arena/CreateWarModal';
+import { CampusWarLeaderboard } from '@/components/arena/CampusWarLeaderboard';
 
 const INITIAL_LIMIT = 50;
 
@@ -110,12 +111,16 @@ export default function ArenaPage() {
         }
     };
 
-    const isSRC = user?.role === 'src' || isAdmin;
+    const isLiaison = user?.role === 'admin' || isAdmin;
+    const isSRC = user?.role === 'src' || isLiaison;
 
     return (
         <div className="p-4 bg-muted/50 min-h-screen pb-32">
             <ArenaLeaderboard />
             
+            {/* 🏛️ NATIONAL CAMPUS RANKINGS */}
+            <CampusWarLeaderboard />
+
             {/* 🏛️ CAMPUS WAR SECTION: THE NATIONAL STAGE */}
             {liveWars && liveWars.length > 0 && (
                 <section className="max-w-5xl mx-auto mb-16 animate-in fade-in duration-700">
