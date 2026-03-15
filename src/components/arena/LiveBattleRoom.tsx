@@ -1,15 +1,19 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { doc, onSnapshot, collection, query, orderBy, limitToLast, serverTimestamp, addDoc, updateDoc, increment, setDoc, getDoc } from 'firebase/firestore';
-import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  collection, query, orderBy, limitToLast, 
+  serverTimestamp, addDoc, updateDoc, 
+  increment, setDoc, doc 
+} from 'firebase/firestore';
+import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
-import type { ArenaBattle, BattleMessage, CounterAttack, BattleReaction, BattlePowerUp } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, BattlePowerUp } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX, Fuel
+  Loader2, MessageSquare, Trophy, Flame, Crown, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -44,32 +48,49 @@ const POWER_UPS = [
  * LiveBattleRoom Component
  * -----------------------
  * Real-time competitive stage for inter-uni showdowns.
- * Upgraded with Audience Power-Ups (Weighted Voting).
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
-  const { firestore } = useFirebase();
+  const { firestore, auth, storage } = useFirebase();
   const { user } = useAuth();
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
   
-  const [battle, setBattle] = useState<ArenaBattle | null>(null);
   const [inputMode, setInputMode] = useState<'chat' | 'artillery' | 'boost'>('chat');
   const [message, setMessage] = useState('');
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [verdictLoading, setVerdictLoading] = useState(false);
-  const [bursts, setBursts] = useState<{ id: string, emoji: string, x: number }[]>([]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. REAL-TIME BATTLE SYNC
-  useEffect(() => {
-    if (!firestore || !battleId) return;
-    const unsub = onSnapshot(doc(firestore, 'arena_battles', battleId), (snap) => {
-      if (snap.exists()) setBattle({ id: snap.id, ...snap.data() } as ArenaBattle);
-    });
-    return () => unsub();
+  // 1. REAL-TIME BATTLE SYNC (Using project standard useDoc)
+  const battleRef = useMemoFirebase(() => {
+    if (!firestore || !battleId) return null;
+    return doc(firestore, 'arena_battles', battleId);
   }, [firestore, battleId]);
+
+  const { data: rawBattle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
+
+  // 🧬 LEGACY RECONCILIATION LAYER: 
+  // Ensures older battle records without opponentA/B structure can still load.
+  const battle = useMemo(() => {
+    if (!rawBattle) return null;
+    
+    // If it's a new schema battle, return as is
+    if (rawBattle.opponentA && rawBattle.opponentB) return rawBattle;
+
+    // Reconciliation: Map legacy participants array to opponentA/B
+    const pIds = rawBattle.participants || [];
+    if (pIds.length >= 2) {
+        return {
+            ...rawBattle,
+            opponentA: { userId: pIds[0], videoUrl: '', votes: rawBattle.votes?.[pIds[0]] || 0 },
+            opponentB: { userId: pIds[1], videoUrl: '', votes: rawBattle.votes?.[pIds[1]] || 0 }
+        } as ArenaBattle;
+    }
+
+    return rawBattle;
+  }, [rawBattle]);
 
   // 2. LIVE COMEBACK STREAM
   const messagesQuery = useMemoFirebase(() => 
@@ -82,7 +103,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 3. JUDGMENT PROTOCOL
+  // 3. TYPING INDICATOR LISTENER
+  const typingQuery = useMemoFirebase(() => 
+    firestore ? query(collection(firestore, 'arena_battles', battleId, 'typing')) : null
+  , [firestore, battleId]);
+  const { data: typingDocs } = useCollection<any>(typingQuery);
+  const typingUsers = typingDocs?.filter(d => d.id !== auth?.currentUser?.uid) || [];
+
+  // 4. JUDGMENT PROTOCOL
   useEffect(() => {
     if (!battle || battle.status !== 'ended' || battle.aiVerdict || !user || !firestore) return;
 
@@ -114,12 +142,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         };
         runReferee();
     }
-  }, [battle?.status, battle?.aiVerdict, user?.id, firestore, battleId, messages]);
+  }, [battle?.status, battle?.aiVerdict, user?.id, firestore, battleId, messages, toast]);
 
-  // 4. VOTE AUDIT
+  // 5. VOTE AUDIT
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
-    getDoc(doc(firestore, 'arena_battles', battleId, 'user_votes', user.id)).then(snap => { 
+    const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
+    getDoc(voteRef).then(snap => { 
         if (snap.exists()) setHasVoted(true); 
     });
   }, [firestore, user, battleId]);
@@ -164,6 +193,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       });
       setHasVoted(true);
       toast({ title: "Vote Authenticated! 🗳️" });
+    } catch(err) {
+        toast({ variant: 'destructive', title: 'Vote Refused' });
     } finally { setIsVoting(false); }
   };
 
@@ -173,7 +204,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     if (!targetUserId) return;
 
     try {
-        const powerupData: Partial<BattlePowerUp> = {
+        const powerupData = {
             userId: user.id,
             target: target,
             type: powerup.type,
@@ -181,20 +212,17 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             createdAt: serverTimestamp()
         };
 
-        // 1. Log the Power-Up
         addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), powerupData);
 
-        // 2. Atomic Increment based on Weight
         await updateDoc(doc(firestore, 'arena_battles', battleId), { 
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
             [`votes.${targetUserId}`]: increment(powerup.weight) 
         });
 
-        // 3. Visual Feedback
         sendReaction(powerup.emoji);
         toast({ 
             title: `${powerup.label} Deployed!`, 
-            description: `Boosted ${target === 'A' ? p1.name : p2.name} by +${powerup.weight} Energy.` 
+            description: `Boosted by +${powerup.weight} Energy.` 
         });
     } catch (err) {
         toast({ variant: 'destructive', title: 'Power-Up Refused' });
@@ -205,13 +233,17 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  if (!battle || !battle.opponentA || !battle.opponentB) {
+  // 🛡️ LOADING HUD
+  if (isLoadingBattle || !battle || !battle.opponentA || !battle.opponentB) {
     return (
         <div className="fixed inset-0 z-[7000] bg-black flex flex-col items-center justify-center text-center gap-4">
             <Loader2 className="animate-spin text-red-600" size={48} />
-            <p className="text-white font-black text-xs uppercase tracking-[0.4em] opacity-50 animate-pulse">
-                Authenticating Battle Frequency...
-            </p>
+            <div className="space-y-2">
+                <p className="text-white font-black text-xs uppercase tracking-[0.4em] opacity-50 animate-pulse">
+                    Authenticating Battle Frequency...
+                </p>
+                <p className="text-slate-500 text-[8px] uppercase tracking-widest">Liaison National Hub Node Sync</p>
+            </div>
         </div>
     );
   }
@@ -234,7 +266,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         
         {/* HUD: TOP STATUS */}
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center">
-          <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 active:scale-90 transition-all">
+          <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 active:scale-90 transition-all shadow-xl">
             <X size={24}/>
           </button>
           <div className={cn(
@@ -245,7 +277,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           </div>
           <button 
             onClick={toggleSound}
-            className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 active:scale-90 transition-all"
+            className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 active:scale-90 transition-all shadow-xl"
           >
             {soundOn ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
@@ -253,8 +285,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
         {/* 🏆 VICTORY THEATER OVERLAY */}
         {isEnded && (
-            <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-3xl animate-in zoom-in duration-700">
-                <div className="max-w-xl w-full text-center space-y-8">
+            <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-3xl animate-in zoom-in duration-700 overflow-y-auto">
+                <div className="max-w-xl w-full text-center space-y-8 py-10">
                     <div className="flex justify-center">
                         <div className="p-8 bg-amber-500 rounded-full shadow-[0_0_100px_rgba(245,158,11,0.4)] animate-bounce">
                             <Trophy size={80} className="text-slate-950" />
@@ -301,11 +333,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                 </div>
                                 <p className="text-lg font-black italic text-indigo-50 leading-tight">"{aiVerdict.verdict}"</p>
                                 <div className="pt-4 border-t border-white/5">
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest italic">Advice: {aiVerdict.refereeAdvice}</p>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest italic leading-relaxed">Advice: {aiVerdict.refereeAdvice}</p>
                                 </div>
                             </div>
                         ) : (
-                            <p className="text-xs text-slate-500 italic text-center py-4">Awaiting Liaison Verdict...</p>
+                            <div className="text-center py-4">
+                                <p className="text-xs text-slate-500 italic">Awaiting National AI Verdict...</p>
+                            </div>
                         )}
                     </div>
 
@@ -413,16 +447,15 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       </div>
 
       {/* CHAT SIDEBAR */}
-      <div className="flex-1 bg-slate-900 flex flex-col shadow-2xl">
+      <div className="flex-1 bg-slate-900 flex flex-col shadow-2xl max-h-screen">
         <div className="p-6 border-b border-white/5 bg-slate-950/50 flex justify-between items-center flex-shrink-0">
           <div>
             <h3 className="text-white font-black italic tracking-tight uppercase truncate max-w-[180px]">{battle.title}</h3>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Comeback Hub</span>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setInputMode('chat')} className={cn("p-2 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white")}><MessageSquare size={18}/></button>
-            <button onClick={() => setInputMode('artillery')} className={cn("p-2 rounded-xl transition-all", inputMode === 'artillery' ? "bg-red-600 text-white" : "text-slate-500 hover:text-white")}><Swords size={18}/></button>
-            <button onClick={() => setInputMode('boost')} className={cn("p-2 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950" : "text-slate-500 hover:text-white")}><Zap size={18}/></button>
+            <button onClick={() => setInputMode('chat')} className={cn("p-2 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white shadow-sm")}><MessageSquare size={18}/></button>
+            <button onClick={() => setInputMode('boost')} className={cn("p-2 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950" : "text-slate-500 hover:text-white shadow-sm")}><Zap size={18}/></button>
           </div>
         </div>
 
@@ -480,13 +513,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             </div>
                         ))}
                     </div>
-                </div>
-            )}
-
-            {inputMode === 'artillery' && (
-                <div className="p-4 bg-red-600/10 border border-red-500/20 rounded-2xl text-center">
-                    <p className="text-[10px] font-black text-red-500 uppercase tracking-widest">Vibe Artillery Mode</p>
-                    <p className="text-xs text-slate-400 mt-2 italic">Video comebacks are synchronized in the main Ring feed.</p>
                 </div>
             )}
         </div>
