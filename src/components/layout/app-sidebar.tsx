@@ -1,4 +1,3 @@
-
 'use client';
 
 import { usePathname } from 'next/navigation';
@@ -6,7 +5,7 @@ import {
   FlameKindling, Flame, LayoutDashboard, ShoppingBag, Users, Building, Settings, UserCheck, 
   Link, CreditCard, MessagesSquare, ShieldAlert, Landmark, Banknote, Sparkles, MapPin, 
   Globe, BookOpen, PackageCheck, Wallet, History, Zap, Star, Gavel, Key, FileCheck, TrendingUp, Rss,
-  Megaphone, ChevronRight, Coins
+  Megaphone, ChevronRight, Coins, Plus
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
