@@ -61,6 +61,11 @@ service cloud.firestore {
         allow create: if isSignedIn();
       }
 
+      match /votes/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.auth.uid == userId;
+      }
+
       match /boosts/{boostId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
