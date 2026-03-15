@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
  * CreateBattleModal Component
  * --------------------------
  * The gateway to the Live Ring.
- * Refined with better validation feedback to ensure users know why the launch button is disabled.
+ * Refined with Optimistic UI (non-blocking launch) and better error diagnostics.
  */
 export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { firestore } = useFirebase();
@@ -65,58 +65,75 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
         });
       }
     } catch (e) {
-      console.error(e);
+      console.error("Liaison Search Error:", e);
       toast({ variant: 'destructive', title: "Search Error", description: "Could not connect to the citizen registry." });
     } finally {
       setSearching(false);
     }
   };
 
-  const handleLaunch = async () => {
+  const handleLaunch = () => {
     if (!firestore || !user || !opponent || !title || !streamUrl) return;
     setIsLoading(true);
 
-    const opponentCampus = campuses.find(c => c.id === opponent.campusId);
-    const myCampus = campuses.find(c => c.id === user.campusId);
-
-    const battleData = {
-      title: title.trim(),
-      streamUrl: streamUrl.trim(),
-      creatorId: user.id,
-      creatorName: user.name,
-      participants: [user.id, opponent.id],
-      participantInfo: {
-        [user.id]: {
-          name: user.name,
-          avatarUrl: user.avatarUrl,
-          campusAcronym: myCampus?.acronym || 'GH',
-          primaryColor: myCampus?.primaryColor || '#000'
-        },
-        [opponent.id]: {
-          name: opponent.name,
-          avatarUrl: opponent.avatarUrl,
-          campusAcronym: opponentCampus?.acronym || 'GH',
-          primaryColor: opponentCampus?.primaryColor || '#000'
-        }
-      },
-      status: 'live',
-      votes: {
-        [user.id]: 0,
-        [opponent.id]: 0
-      },
-      viewerCount: 1,
-      createdAt: serverTimestamp(),
-      endsAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 min duration
-    };
-
     try {
-      await addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
-      toast({ title: "Battle Live! ⚔️", description: "The Yard is now watching your frequency." });
+      const opponentCampus = campuses.find(c => c.id === opponent.campusId);
+      const myCampus = campuses.find(c => c.id === user.campusId);
+
+      // Prepare the high-fidelity battle record
+      const battleData = {
+        title: title.trim(),
+        streamUrl: streamUrl.trim(),
+        creatorId: user.id,
+        creatorName: user.name,
+        participants: [user.id, opponent.id],
+        participantInfo: {
+          [user.id]: {
+            name: user.name,
+            avatarUrl: user.avatarUrl || '',
+            campusAcronym: myCampus?.acronym || 'GH',
+            primaryColor: myCampus?.primaryColor || '#000'
+          },
+          [opponent.id]: {
+            name: opponent.name,
+            avatarUrl: opponent.avatarUrl || '',
+            campusAcronym: opponentCampus?.acronym || 'GH',
+            primaryColor: opponentCampus?.primaryColor || '#000'
+          }
+        },
+        status: 'live',
+        votes: {
+          [user.id]: 0,
+          [opponent.id]: 0
+        },
+        viewerCount: 1,
+        createdAt: serverTimestamp(),
+        // Duration: 30 minutes in the future
+        endsAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() 
+      };
+
+      // 🏎️ NON-BLOCKING MUTATION: Start the write and proceed immediately
+      addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
+      
+      toast({ 
+        title: "Battle Launch Initiated! ⚔️", 
+        description: "The ring is vibrating. Connecting your frequency now." 
+      });
+
+      // Optimistic closure
       onOpenChange(false);
-      // Reset state for next time
-      setTitle(''); setStreamUrl(''); setOpponentEmail(''); setOpponent(null);
-    } catch (err) {
-      toast({ variant: 'destructive', title: "Launch Failed" });
+      setTitle(''); 
+      setStreamUrl(''); 
+      setOpponentEmail(''); 
+      setOpponent(null);
+
+    } catch (err: any) {
+      console.error("Liaison Launch Exception:", err);
+      toast({ 
+        variant: 'destructive', 
+        title: "Launch Refused", 
+        description: err.message || "A technical error occurred while entering the arena." 
+      });
     } finally {
       setIsLoading(false);
     }
