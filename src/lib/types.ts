@@ -63,6 +63,8 @@ export type ArenaBattle = {
     winner: 'original' | 'comeback' | 'draw';
     refereeAdvice: string;
   };
+  isHot?: boolean;
+  lastSpikeAt?: any;
   createdAt: any;
   endsAt: any;
 };
@@ -85,6 +87,7 @@ export type ArenaHighlight = {
   endTime: number;
   votesSpike: number;
   winnerId: string;
+  category: 'savage_roast' | 'funniest_comeback' | 'crowd_favorite' | 'knockout_moment';
   createdAt: any;
 };
 
@@ -126,6 +129,7 @@ export type SocialPost = {
     battleId: string;
     winnerName: string;
     totalEnergy: number;
+    category?: ArenaHighlight['category'];
   };
 };
 
@@ -538,4 +542,39 @@ export type CampusLeaderboard = {
   losses: number;
   totalVotes: number;
   updatedAt: any;
+};
+
+export type ArenaWaitingPoolEntry = {
+  id: string;
+  userId: string;
+  userName: string;
+  avatarUrl: string;
+  campusAcronym: string;
+  campusId: string;
+  videoUrl: string;
+  title: string;
+  createdAt: any;
+};
+
+export type BattleMessage = {
+  id: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: any;
+};
+
+export type ArenaChallenger = {
+  id: string;
+  userId: string;
+  userName: string;
+  avatarUrl: string;
+  campusAcronym: string;
+  videoUrl: string;
+  createdAt: any;
+};
+
+export type VoteShard = {
+  votesA: number;
+  votesB: number;
 };

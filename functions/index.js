@@ -139,7 +139,6 @@ exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId
     try {
         console.log(`🎬 Cutting highlight for Battle ${highlight.battleId} starting at ${startTime}s`);
         
-        // 1. Download source video to temporary environment
         const response = await axios({
             method: "GET",
             url: sourceUrl,
@@ -153,18 +152,16 @@ exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId
             writer.on("error", reject);
         });
 
-        // 2. Perform the Multimedia Cut using FFmpeg
         await new Promise((resolve, reject) => {
             ffmpeg(tempInput)
                 .setStartTime(startTime)
-                .setDuration(10) // 10-second viral window
+                .setDuration(10) 
                 .output(tempOutput)
                 .on("end", resolve)
                 .on("error", reject)
                 .run();
         });
 
-        // 3. Upload extracted clip to the Vault
         const bucket = admin.storage().bucket();
         const destination = `arena_highlights/${highlightId}.mp4`;
         await bucket.upload(tempOutput, {
@@ -174,7 +171,6 @@ exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId
 
         const finalUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(destination)}?alt=media`;
 
-        // 4. Update the highlight and the Pulse feed
         const batch = db.batch();
         batch.update(db.collection("arena_highlights").doc(highlightId), {
             clipUrl: finalUrl,
@@ -185,7 +181,7 @@ exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId
         if (highlight.pulsePostId) {
             batch.update(db.collection("campus_pulse").doc(highlight.pulsePostId), {
                 mediaUrl: finalUrl,
-                thumbnailUrl: finalUrl // Video can act as its own thumbnail
+                thumbnailUrl: finalUrl 
             });
         }
 
@@ -196,7 +192,6 @@ exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId
         console.error("❌ Highlight processing failed:", err);
         await db.collection("arena_highlights").doc(highlightId).update({ processingStatus: "failed", error: err.message });
     } finally {
-        // Cleanup temp files to prevent disk overflow
         if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
         if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput);
     }
@@ -235,6 +230,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
         
         const eventsSnap = await doc.ref.collection("engagement_events").orderBy("timestamp", "asc").get();
         let peakTimeOffset = 0;
+        let totalEnergy = 0;
 
         if (!eventsSnap.empty) {
             const events = eventsSnap.docs.map(d => ({ ...d.data(), time: d.data().timestamp.toMillis() }));
@@ -245,10 +241,24 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             events.forEach(e => {
                 const bucketIdx = Math.floor((e.time - startTime) / bucketSize);
                 buckets[bucketIdx] = (buckets[bucketIdx] || 0) + (e.weight || 1);
+                totalEnergy += (e.weight || 1);
             });
 
             const sortedBuckets = Object.entries(buckets).sort((a, b) => b[1] - a[1]);
-            peakTimeOffset = Math.max(0, parseInt(sortedBuckets[0][0]) * 10 - 2); // Buffer 2s before the spike
+            peakTimeOffset = Math.max(0, parseInt(sortedBuckets[0][0]) * 10 - 2); 
+        }
+
+        // 🧠 HIGHLIGHT CATEGORIZATION LOGIC
+        let highlightCategory = "crowd_favorite";
+        const totalVotes = vA + vB;
+        const winMargin = Math.abs(vA - vB) / (totalVotes || 1);
+
+        if (winMargin > 0.6) {
+            highlightCategory = "knockout_moment";
+        } else if (totalEnergy > 50) {
+            highlightCategory = "savage_roast";
+        } else if (totalVotes > 100) {
+            highlightCategory = "crowd_favorite";
         }
 
         const pulseRef = db.collection("campus_pulse").doc();
@@ -262,6 +272,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             opponentId: loser.userId,
             winnerId: winnerId,
             startTime: peakTimeOffset,
+            category: highlightCategory,
             processingStatus: "pending",
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
@@ -272,12 +283,17 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             authorAvatarUrl: winnerInfo.avatarUrl,
             campusId: winnerInfo.campusId || "all",
             campusAcronym: winnerInfo.campusAcronym,
-            content: `🏆 Victory Archive: ${winnerInfo.name} dominated the Yard! Check out the highlight.`,
+            content: `🏆 Victory Archive: ${winnerInfo.name} dominated the Yard! Check out this highlight.`,
             mediaType: "video",
-            mediaUrl: winner.videoUrl, // Temporary, will be updated by processArenaHighlight
+            mediaUrl: winner.videoUrl, 
             type: "arena_highlight",
             isArenaEntry: true,
-            battleMetadata: { battleId: doc.id, winnerName: winnerInfo.name },
+            battleMetadata: { 
+                battleId: doc.id, 
+                winnerName: winnerInfo.name, 
+                totalEnergy,
+                category: highlightCategory
+            },
             likes: 0,
             commentCount: 0,
             createdAt: admin.firestore.FieldValue.serverTimestamp()

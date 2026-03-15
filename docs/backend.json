@@ -106,6 +106,7 @@
         "endTime": { "type": "number" },
         "votesSpike": { "type": "number" },
         "winnerId": { "type": "string" },
+        "category": { "type": "string", "enum": ["savage_roast", "funniest_comeback", "crowd_favorite", "knockout_moment"] },
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },

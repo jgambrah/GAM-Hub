@@ -6,7 +6,7 @@ import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic, Music, Target, Trophy, PlayCircle } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic, Music, Target, Trophy, PlayCircle, Crown, Smile, Swords } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
@@ -27,6 +27,16 @@ const getYouTubeId = (url: string) => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = url.match(regExp);
     return (match && match[2].length === 11) ? match[2] : null;
+}
+
+const getCategoryLabel = (category: string) => {
+    switch (category) {
+        case 'savage_roast': return { label: 'SAVAGE ROAST', icon: Flame, color: 'bg-red-600' };
+        case 'funniest_comeback': return { label: 'FUNNIEST COMEBACK', icon: Smile, color: 'bg-orange-500' };
+        case 'crowd_favorite': return { label: 'CROWD FAVORITE', icon: Star, color: 'bg-amber-500' };
+        case 'knockout_moment': return { label: 'KNOCKOUT MOMENT', icon: Zap, color: 'bg-indigo-600' };
+        default: return { label: 'BATTLE REPLAY', icon: Trophy, color: 'bg-slate-700' };
+    }
 }
 
 export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post: ArenaPost }) {
@@ -126,12 +136,13 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
         }
     };
 
+    const catInfo = isHighlight && post.battleMetadata?.category ? getCategoryLabel(post.battleMetadata.category) : null;
+
     return (
         <div className={cn(
             "relative bg-card rounded-[3rem] p-8 border-l-8 shadow-2xl transition-all duration-500 overflow-hidden",
             isBlocked ? "border-red-600 bg-red-50 dark:bg-red-950/10" : isHighlight ? "border-amber-500 bg-gradient-to-br from-slate-900 to-slate-950 text-white" : isShade ? "border-red-500 bg-gradient-to-br from-white to-red-50/30" : "border-amber-500 bg-gradient-to-br from-white to-amber-50/30"
         )}>
-            {/* AMBIENT BACKGROUND GLOW */}
             <div className={cn(
                 "absolute -top-20 -right-20 w-64 h-64 rounded-full blur-3xl opacity-5 transition-opacity duration-1000",
                 isHighlight ? "bg-amber-500 opacity-10" : isShade ? "bg-red-500 group-hover:opacity-10" : "bg-amber-500 group-hover:opacity-10"
@@ -144,10 +155,15 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
             )}
 
             {isHighlight && (
-                <div className="absolute top-6 right-6 z-20 animate-in zoom-in duration-500">
+                <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-2 animate-in zoom-in duration-500">
                     <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
                         <Trophy size={12} fill="currentColor" /> Winning Performance
                     </div>
+                    {catInfo && (
+                        <div className={cn(catInfo.color, "text-white px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1.5")}>
+                            <catInfo.icon size={10} fill="currentColor" /> {catInfo.label}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -309,7 +325,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                                 "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-90 border-2",
                                 isHighlight ? "bg-amber-500 text-slate-950 border-amber-500" : isShade 
                                     ? (userAction === 'burned' ? "bg-red-600 text-white border-red-600 shadow-xl shadow-red-200" : "bg-red-50 border-red-100 text-red-600 hover:bg-red-100")
-                                    : (userAction === 'liked' ? "bg-amber-500 text-white border-amber-500 shadow-xl shadow-amber-200" : "bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100")
+                                    : (userAction === 'liked' ? "bg-amber-500 text-white border-amber-500 shadow-xl shadow-amber-200" : "bg-amber-100 border-amber-100 text-amber-600 hover:bg-amber-100")
                             )}
                         >
                             {isShade ? <Flame size={16} className={cn(userAction === 'burned' && "fill-current")} /> : <ThumbsUp size={16} className={cn(userAction === 'liked' && "fill-current")} />}
