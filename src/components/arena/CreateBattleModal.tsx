@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState } from 'react';
@@ -216,7 +217,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           </div>
 
           {opponent ? (
-            <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border-2 border-emerald-100 dark:border-emerald-800 flex items-center justify-between animate-in zoom-in-95 duration-200">
+            <div className="p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border-2 border-emerald-100 dark:border-emerald-800 flex items-center justify-between animate-in zoom-in-95 duration-200">
               <div className="flex items-center gap-3">
                 <Avatar className="border-2 border-white shadow-sm h-10 w-10">
                   <AvatarImage src={opponent.avatarUrl} />

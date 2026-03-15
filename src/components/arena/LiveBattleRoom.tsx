@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import type { ArenaBattle, BattleMessage } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube
+  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube, CheckCircle2
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -271,7 +271,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
           <div className="flex items-center gap-2 mb-6 opacity-40">
              <div className="h-[1px] flex-1 bg-white/10" />
-             <span className="text-[8px] font-black text-white uppercase tracking-[0.4em]">Live Comebacks</span>
+             <span className="text-[8px] font-black text-white uppercase tracking-cut line-none">Live Comebacks</span>
              <div className="h-[1px] flex-1 bg-white/10" />
           </div>
 
