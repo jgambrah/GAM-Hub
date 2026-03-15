@@ -2,10 +2,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Plus, Flame, Sparkles, Globe, Search, Radar, X, Timer } from 'lucide-react';
+import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -31,12 +31,6 @@ import { CampusWarLeaderboard } from '@/components/arena/CampusWarLeaderboard';
 
 const INITIAL_LIMIT = 50;
 
-/**
- * ArenaPage Component
- * -------------------
- * National Inter-Uni Battleground.
- * Features the "Matching Desk" HUD for auto-match seekers.
- */
 export default function ArenaPage() {
     const { firestore } = useFirebase();
     const { user, isTokenReady, isAdmin, campus } = useAuth();
@@ -47,7 +41,6 @@ export default function ArenaPage() {
     const [vibeType, setVibeType] = useState<'shade' | 'celebration'>('celebration');
     const [targetCampus, setTargetCampus] = useState('all');
     
-    // MODAL & HUD STATES
     const [isBattleModalOpen, setIsBattleModalOpen] = useState(false);
     const [isWarModalOpen, setIsWarModalOpen] = useState(false);
     const [activeBattleId, setActiveBattleId] = useState<string | null>(null);
@@ -57,14 +50,12 @@ export default function ArenaPage() {
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
-    // 📡 1. RETRIEVE ACTIVE BATTLES (Waiting or Live)
     const battlesQuery = useMemoFirebase(() => {
         if (!firestore) return null;
-        return query(collection(firestore, 'arena_battles'), where('status', 'in', ['waiting', 'live']), limit(10));
+        return query(collection(firestore, 'arena_battles'), where('status', 'in', ['waiting', 'live']), limit(15));
     }, [firestore]);
     const { data: liveBattles, isLoading: isLoadingBattles } = useCollection<ArenaBattle>(battlesQuery);
 
-    // 📡 2. MATCHING DESK: Detect if current user is in the Waiting Pool
     const poolQuery = useMemoFirebase(() => {
         if (!firestore || !user?.id) return null;
         return query(collection(firestore, 'arena_waiting_pool'), where('userId', '==', user.id), limit(1));
@@ -72,11 +63,9 @@ export default function ArenaPage() {
     const { data: poolEntries } = useCollection<ArenaWaitingPoolEntry>(poolQuery);
     const isMatching = poolEntries && poolEntries.length > 0;
 
-    // 📡 3. MATCH HANDSHAKE: Auto-Open BattleRoom when matched
     useEffect(() => {
         if (!isMatching || !firestore || !user?.id) return;
 
-        // Listen for ANY live battle where the user is a participant
         const q = query(
             collection(firestore, 'arena_battles'), 
             where('status', '==', 'live'),
@@ -88,8 +77,6 @@ export default function ArenaPage() {
             if (!snap.empty) {
                 const battle = snap.docs[0];
                 const battleData = battle.data() as ArenaBattle;
-                
-                // Only trigger if battle was created RECENTLY (within last 30s)
                 const createdAt = battleData.createdAt?.toMillis?.() || 0;
                 if (Date.now() - createdAt < 30000) {
                     setMatchCountdown(3);
@@ -110,7 +97,6 @@ export default function ArenaPage() {
         return () => unsub();
     }, [isMatching, firestore, user?.id]);
 
-    // ⏱️ MATCHING TIMEOUT: If no auto-match in 30s, automatically graduate to public challenge
     useEffect(() => {
         let interval: any;
         if (isMatching && !matchCountdown) {
@@ -135,10 +121,7 @@ export default function ArenaPage() {
         setIsPosting(true);
         try {
             const entry = poolEntries[0];
-            // 1. Delete Pool Entry
             await deleteDocumentNonBlocking(doc(firestore, 'arena_waiting_pool', entry.id));
-            
-            // 2. Create Public Challenge
             const battleData: any = {
                 title: entry.title || "Open Auto-Match Challenge",
                 creatorId: user.id,
@@ -173,14 +156,12 @@ export default function ArenaPage() {
         }
     };
 
-    // 📡 4. RETRIEVE LIVE WARS (University vs University)
     const warsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(collection(firestore, 'campus_wars'), where('status', '==', 'live'), limit(2));
     }, [firestore]);
     const { data: liveWars, isLoading: isLoadingWars } = useCollection<CampusWar>(warsQuery);
 
-    // 📡 5. RETRIEVE BATTLE THREADS (Posts)
     const postsQuery = useMemoFirebase(() => {
         if (!firestore || !user || !isTokenReady) return null;
         return query(
@@ -242,7 +223,6 @@ export default function ArenaPage() {
     return (
         <div className="p-4 bg-muted/50 min-h-screen pb-32">
             
-            {/* ⏳ SMART MATCHING OVERLAY */}
             {isMatching && (
                 <div className="fixed inset-0 z-[9000] bg-slate-950/95 backdrop-blur-2xl flex items-center justify-center p-6 animate-in fade-in duration-500">
                     <div className="max-w-md w-full text-center space-y-10">
@@ -252,7 +232,7 @@ export default function ArenaPage() {
                                     <Swords size={80} className="text-white animate-bounce" />
                                 </div>
                                 <div>
-                                    <h2 className="text-5xl font-black italic text-white tracking-tighter uppercase italic">Rival Found!</h2>
+                                    <h2 className="text-5xl font-black italic text-white tracking-tighter uppercase">Rival Found!</h2>
                                     <p className="text-slate-400 font-bold uppercase tracking-[0.4em] mt-4">Deployment in {matchCountdown}...</p>
                                 </div>
                             </div>
@@ -305,7 +285,6 @@ export default function ArenaPage() {
             
             <CampusWarLeaderboard />
 
-            {/* 🏛️ CAMPUS WAR SECTION */}
             {liveWars && liveWars.length > 0 && (
                 <section className="max-w-5xl mx-auto mb-16 animate-in fade-in duration-700">
                     <div className="flex items-center justify-between mb-8 px-4">
@@ -332,7 +311,6 @@ export default function ArenaPage() {
                 </section>
             )}
 
-            {/* LIVE RING SECTION */}
             <section className="max-w-4xl mx-auto mb-12">
                 <div className="flex items-center justify-between mb-6 px-4">
                     <div className="flex items-center gap-3">
@@ -370,14 +348,6 @@ export default function ArenaPage() {
             </section>
 
             <ArenaChampions />
-
-            <div className="bg-slate-900 rounded-[3rem] p-8 mb-8 text-white relative overflow-hidden shadow-2xl mx-auto max-w-4xl">
-                <div className="absolute right-0 top-0 p-6 opacity-20"><Flame size={120} /></div>
-                <div className="relative z-10">
-                    <h1 className="text-3xl font-black italic tracking-tighter uppercase">Arena Threads</h1>
-                    <p className="text-sm text-slate-400 font-bold uppercase tracking-[0.2em]">National Inter-Uni Battleground</p>
-                </div>
-            </div>
 
             <div className="max-w-4xl mx-auto">
                 <ArenaRules />
@@ -421,7 +391,6 @@ export default function ArenaPage() {
                 <HallOfFame />
             </div>
 
-            {/* BATTLE MODALS */}
             <CreateBattleModal open={isBattleModalOpen} onOpenChange={setIsBattleModalOpen} />
             <CreateWarModal open={isWarModalOpen} onOpenChange={setIsWarModalOpen} />
             

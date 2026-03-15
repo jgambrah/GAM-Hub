@@ -50,7 +50,7 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
     const endsAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     const battleData = {
-      title: newEntry.title || `Auto-Match: ${newEntry.campusAcronym} vs ${rival.campusAcronym}`,
+      title: newEntry.title || `Showdown: ${newEntry.campusAcronym} vs ${rival.campusAcronym}`,
       status: "live",
       creatorId: newEntry.userId,
       participants: [newEntry.userId, rival.userId],
@@ -94,6 +94,49 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
 
     console.log(`⚔️ Arena: Paired ${newEntry.userName} and ${rival.userName} into live battle ${battleRef.id}.`);
   });
+});
+
+/**
+ * 🔔 ARENA: BATTLE AUTO-PROMOTION
+ * Notify relevant campus users when a battle goes LIVE.
+ */
+exports.onBattleStarted = onDocumentUpdated("arena_battles/{battleId}", async (event) => {
+    const before = event.data.before.data();
+    const after = event.data.after.data();
+    
+    // Only trigger when transitioning from waiting -> live
+    if (before.status === "waiting" && after.status === "live") {
+        const db = admin.firestore();
+        const p1 = after.participantInfo[after.creatorId];
+        const p2 = after.opponentB ? after.participantInfo[after.opponentB.userId] : null;
+        
+        if (!p1 || !p2) return null;
+
+        const title = "🔥 New Arena Battle!";
+        const message = `${p1.campusAcronym} vs ${p2.campusAcronym}: "${after.title}" is LIVE!`;
+        
+        // Find a subset of students to notify (To avoid massive fan-out costs)
+        const campusIds = [after.participantInfo[after.creatorId].campusId, p2.campusId].filter(id => !!id);
+        const usersSnap = await db.collection("users")
+            .where("campusId", "in", campusIds)
+            .limit(200)
+            .get();
+
+        const batch = db.batch();
+        usersSnap.forEach(u => {
+            const notifRef = db.collection("users").doc(u.id).collection("notifications").doc();
+            batch.set(notifRef, {
+                type: "system",
+                title,
+                message,
+                link: "/arena",
+                read: false,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+        return batch.commit();
+    }
+    return null;
 });
 
 /**
@@ -148,7 +191,6 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
   }
 
   await batch.commit();
-  console.log(`⚔️ Liaison Arena: Closed ${expiredBattles.size} expired showdowns and updated Leaderboard.`);
   return null;
 });
 
@@ -175,13 +217,11 @@ exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
   });
 
   await batch.commit();
-  console.log(`扫 ARENA: Cancelled ${staleChallenges.size} stale challenges.`);
   return null;
 });
 
 /**
  * 🛡️ ARENA RING: PRUNE & GRADUATE WAITING POOL
- * Logic: If no match after 30s, graduate to a public 'waiting' battle.
  */
 exports.pruneWaitingPool = onSchedule("every 1 minutes", async (event) => {
   const db = admin.firestore();
@@ -198,12 +238,9 @@ exports.pruneWaitingPool = onSchedule("every 1 minutes", async (event) => {
   
   staleEntries.forEach(doc => {
     const data = doc.data();
-    
-    // If older than 5 mins, just delete
     if (data.createdAt.toMillis() <= fiveMinutesAgo.toMillis()) {
         batch.delete(doc.ref);
     } else {
-        // Graduate to Public Challenge
         const battleRef = db.collection("arena_battles").doc();
         batch.set(battleRef, {
             title: data.title || "Open Auto-Match Challenge",
@@ -236,15 +273,13 @@ exports.pruneWaitingPool = onSchedule("every 1 minutes", async (event) => {
 });
 
 /**
- * 🛡️ ARENA RING: NOTIFICATION ON DIRECT CHALLENGE
+ * 🔔 ARENA RING: NOTIFICATION ON DIRECT CHALLENGE
  */
 exports.onBattleCreated = onDocumentCreated("arena_battles/{battleId}", async (event) => {
     const battle = event.data.data();
-    const battleId = event.params.battleId;
-    if (!battle.targetUserId) return null;
+    if (!battle.targetUserId || battle.status !== "waiting") return null;
 
     const db = admin.firestore();
-    
     const notifRef = db.collection("users").doc(battle.targetUserId).collection("notifications").doc();
     return notifRef.set({
         type: "battle_challenge",
@@ -298,6 +333,7 @@ exports.endWar = onSchedule("every 1 minutes", async (event) => {
     const updateCampus = (campusId, isWinner, votes) => {
         const ref = db.collection("campus_leaderboard").doc(campusId);
         batch.set(ref, {
+            id: campusId,
             wins: admin.firestore.FieldValue.increment(isWinner ? 1 : 0),
             losses: admin.firestore.FieldValue.increment(!isWinner && !isDraw ? 1 : 0),
             totalVotes: admin.firestore.FieldValue.increment(votes),

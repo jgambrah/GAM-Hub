@@ -5,7 +5,7 @@
  * LiveBattleRoom Component
  * -----------------------
  * Elite National Arena Stage.
- * Updated Flow: WAITING (Challenge Mode) -> LIVE (Showdown Mode) -> ENDED (Verdict Mode)
+ * Handshake Lifecycle: WAITING (Challenge Mode) -> LIVE (Showdown Mode) -> ENDED (Verdict Mode)
  * Includes Creator Selection logic and Direct Rivalry Acceptance.
  */
 
@@ -13,31 +13,23 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
-  increment, setDoc, doc, getDoc, onSnapshot, writeBatch
+  increment, doc, getDoc, onSnapshot, writeBatch
 } from 'firebase/firestore';
-import { useFirebase, useCollection, useMemoFirebase, useDoc, updateDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX, AlertTriangle, UserPlus, Trash2, ChevronRight, Target
+  Loader2, MessageSquare, Trophy, Flame, PlayCircle, ShieldCheck, Star, Bot, Scale, Volume2, VolumeX, AlertTriangle, UserPlus, CheckCircle2, Target
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import YouTube from 'react-youtube';
-import { getBattleVerdict } from '@/ai/flows/arena-referee-flow';
 import { Button } from '@/components/ui/button';
-import { motion, AnimatePresence } from 'framer-motion';
 import { JoinBattleModal } from './JoinBattleModal';
-import dynamic from 'next/dynamic';
-
-const TikTokEmbed = dynamic(() => import('../social/tiktok-embed').then(mod => mod.TikTokEmbed), {
-  ssr: false,
-  loading: () => <div className="h-60 w-[325px] bg-muted animate-pulse rounded-lg mx-auto" />
-});
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;
@@ -46,15 +38,11 @@ const getYouTubeId = (url: string) => {
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
-const REACTIONS: ('🔥' | '😂' | '😱' | '💯' | '👑')[] = ['🔥', '😂', '😱', '💯', '👑'];
-
 const POWER_UPS = [
-    { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, color: 'text-orange-500' },
-    { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 10, color: 'text-blue-500' },
-    { type: 'crown', label: 'Crown Boost', emoji: '👑', weight: 25, color: 'text-amber-500' },
+    { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5 },
+    { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 10 },
+    { type: 'crown', label: 'Crown Boost', emoji: '👑', weight: 25 },
 ];
-
-interface LocalBurst { id: string; emoji: string; x: number; }
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
@@ -62,20 +50,15 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
   
-  const [inputMode, setInputMode] = useState<'chat' | 'boost' | 'artillery'>('chat');
+  const [inputMode, setInputMode] = useState<'chat' | 'boost'>('chat');
   const [message, setMessage] = useState('');
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
-  const [bursts, setBursts] = useState<LocalBurst[]>([]);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [selectingOpponentId, setSelectingOpponentId] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
-  
-  const [prevVotes, setPrevVotes] = useState({ A: 0, B: 0 });
-  const [momentum, setMomentum] = useState<'A' | 'B' | 'neutral'>('neutral');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. SYNC BATTLE DATA
   const battleRef = useMemoFirebase(() => {
     if (!firestore || !battleId) return null;
     return doc(firestore, 'arena_battles', battleId);
@@ -83,26 +66,23 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
 
-  // 2. FETCH CHALLENGERS (Queue for Waiting state)
   const challengersQuery = useMemoFirebase(() => {
     if (!firestore || !battleId) return null;
     return query(collection(firestore, 'arena_battles', battleId, 'challengers'), orderBy('createdAt', 'desc'));
   }, [firestore, battleId]);
 
-  const { data: challengers, isLoading: isLoadingChallengers } = useCollection<ArenaChallenger>(challengersQuery);
+  const { data: challengers } = useCollection<ArenaChallenger>(challengersQuery);
 
-  // 3. LIVE CHAT STREAM
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
       collection(firestore, "arena_battles", battleId, "messages"),
       orderBy("createdAt", "asc"),
-      limitToLast(100)
+      limitToLast(50)
     ) : null
   , [firestore, battleId]);
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 4. VOTE AUDIT
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
     const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
@@ -111,30 +91,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     });
   }, [firestore, user?.id, battleId]);
 
-  // 5. MOMENTUM & HYPE LOGIC
-  useEffect(() => {
-    if (!battle || battle.status !== 'live') return;
-    const interval = setInterval(() => {
-        const votesA = battle.opponentA?.votes || 0;
-        const votesB = battle.opponentB?.votes || 0;
-        const deltaA = votesA - prevVotes.A;
-        const deltaB = votesB - prevVotes.B;
-        if (deltaA > deltaB + 5) setMomentum('A');
-        else if (deltaB > deltaA + 5) setMomentum('B');
-        else setMomentum('neutral');
-        setPrevVotes({ A: votesA, B: votesB });
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [battle, prevVotes]);
-
-  // 6. SELECTION LOGIC (Creator only)
   const handleSelectOpponent = async (challenger: ArenaChallenger) => {
     if (!firestore || !battle || !user || battle.creatorId !== user.id) return;
     setSelectingOpponentId(challenger.id);
 
     try {
         const batch = writeBatch(firestore);
-        
         const bRef = doc(firestore, 'arena_battles', battleId);
         batch.update(bRef, {
             status: 'live',
@@ -154,11 +116,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             createdAt: serverTimestamp(),
             endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() 
         });
-
         await batch.commit();
-        toast({ title: "Challenge Accepted!", description: "The battle is now LIVE in the Arena." });
+        toast({ title: "Battle Activated! ⚔️" });
     } catch (err) {
-        toast({ variant: 'destructive', title: 'Selection failed' });
+        toast({ variant: 'destructive', title: 'Activation failed' });
     } finally {
         setSelectingOpponentId(null);
     }
@@ -194,7 +155,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           [`votes.${targetUserId}`]: increment(1) 
       });
       setHasVoted(true);
-      toast({ title: "Vote Logged!" });
+      toast({ title: "Energy Logged!" });
     } catch(err) {
         toast({ variant: 'destructive', title: 'Action Refused' });
     } finally { setIsVoting(false); }
@@ -216,6 +177,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     } catch (err) { toast({ variant: 'destructive', title: 'Power-Up Refused' }); }
   };
 
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   if (isLoadingBattle || !battle) {
     return <div className="fixed inset-0 z-[7000] bg-black flex items-center justify-center"><Loader2 className="animate-spin text-red-600" size={48} /></div>;
   }
@@ -235,35 +200,29 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
-      
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
-        
-        {/* TOP HUD */}
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center">
           <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl"><X size={24}/></button>
           <div className={cn(
               "px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10",
               isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-500"
           )}>
-            {isWaiting ? "CHALLENGE OPEN" : isLive ? "LIVE SHOWDOWN" : "VERDICT LOGGED"}
+            {isWaiting ? "DEPLOYMENT OPEN" : isLive ? "LIVE SHOWDOWN" : "CONCLUDED"}
           </div>
           <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10">
             {soundOn ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
         </div>
 
-        {/* --- STAGE: WAITING (CHALLENGE MODE) --- */}
         {isWaiting && (
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar">
                 <div className="max-w-2xl w-full space-y-8 py-20">
-                    
-                    {/* Direct Challenge Banner */}
                     {battle.targetUserId && (
-                        <div className="bg-indigo-600 p-6 rounded-[2.5rem] flex items-center gap-4 shadow-2xl animate-in slide-in-from-top-4 duration-700">
+                        <div className="bg-indigo-600 p-6 rounded-[2.5rem] flex items-center gap-4 shadow-2xl animate-in slide-in-from-top-4">
                             <div className="p-3 bg-white/20 rounded-2xl"><Target size={24} className="text-white" /></div>
                             <div>
-                                <p className="text-[10px] font-black uppercase text-indigo-100 tracking-widest">Personal Call Out</p>
-                                <h4 className="text-lg font-black text-white">{battle.creatorName} challenged {battle.targetUserName}</h4>
+                                <p className="text-[10px] font-black uppercase text-indigo-100 tracking-widest">Personal Challenge</p>
+                                <h4 className="text-lg font-black text-white">{battle.creatorName} called out {battle.targetUserName}</h4>
                             </div>
                         </div>
                     )}
@@ -272,79 +231,55 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         <ReactPlayer url={previewVideoUrl || battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
                         <div className="absolute bottom-6 left-6 z-20 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
                             <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">
-                                {previewVideoUrl ? 'PREVIEWING CONTENDER' : p1?.campusAcronym}
+                                {previewVideoUrl ? 'CONTENDER PREVIEW' : p1?.campusAcronym}
                             </p>
-                            <p className="text-xs font-black">{previewVideoUrl ? 'Contender Clip' : p1?.name}</p>
+                            <p className="text-xs font-black">{previewVideoUrl ? 'Previewing rival...' : p1?.name}</p>
                         </div>
                         {previewVideoUrl && (
-                            <button 
-                                onClick={() => setPreviewVideoUrl(null)}
-                                className="absolute top-6 right-6 p-2 bg-red-600 text-white rounded-lg shadow-lg hover:bg-red-700 transition-colors"
-                            >
-                                <X size={16} />
-                            </button>
+                            <button onClick={() => setPreviewVideoUrl(null)} className="absolute top-6 right-6 p-2 bg-red-600 text-white rounded-lg"><X size={16} /></button>
                         )}
                     </div>
 
                     <div className="text-center space-y-4">
-                        <h2 className="text-3xl font-black italic tracking-tighter text-white uppercase">"{battle.title}"</h2>
-                        
+                        <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">"{battle.title}"</h2>
                         {isTarget ? (
-                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-amber-500 text-slate-950 px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl hover:scale-105 active:scale-95 transition-all">
-                                ACCEPT CHALLENGE <Swords className="ml-2" />
+                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-amber-500 text-slate-950 px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">
+                                ACCEPT CALL OUT <Swords className="ml-2" />
                             </Button>
                         ) : isCreator ? (
                             <div className="p-6 bg-white/5 border-2 border-dashed border-white/10 rounded-3xl animate-pulse">
-                                <p className="text-indigo-400 font-black uppercase text-xs tracking-widest">
-                                    {battle.targetUserId ? `Waiting for ${battle.targetUserName} to accept...` : 'Waiting for rivals to enter the ring...'}
-                                </p>
+                                <p className="text-indigo-400 font-black uppercase text-xs">Waiting for rival to accept...</p>
                             </div>
                         ) : (
-                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl hover:scale-105 active:scale-95 transition-all">
-                                {battle.targetUserId ? 'SNEAK INTO RING' : 'ENTER THE RING'} <UserPlus className="ml-2" />
+                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">
+                                JOIN CHALLENGE <UserPlus className="ml-2" />
                             </Button>
                         )}
                     </div>
 
-                    {/* CHALLENGERS LIST (Only visible to creator) */}
                     {isCreator && (
                         <div className="space-y-4 pt-10">
                             <h3 className="text-white font-black uppercase text-xs tracking-widest flex items-center gap-2">
-                                <Swords size={16} className="text-indigo-500" /> Contender Queue ({challengers?.length || 0})
+                                <Swords size={16} className="text-indigo-500" /> Rival Queue ({challengers?.length || 0})
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {challengers?.map(c => (
                                     <div key={c.id} className="p-4 bg-white/5 border border-white/10 rounded-3xl flex items-center justify-between group hover:bg-white/10 transition-all">
                                         <div className="flex items-center gap-3">
-                                            <Avatar className="border-2 border-white/20"><AvatarImage src={c.avatarUrl}/><AvatarFallback>{c.userName[0]}</AvatarFallback></Avatar>
+                                            <Avatar className="border-2 border-white/20"><AvatarImage src={c.avatarUrl}/></Avatar>
                                             <div>
                                                 <p className="text-sm font-black text-white">{c.userName}</p>
-                                                <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-tighter">{c.campusAcronym}</p>
+                                                <p className="text-[9px] font-bold text-indigo-400 uppercase">{c.campusAcronym}</p>
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
-                                            <Button 
-                                                size="sm" 
-                                                variant="ghost" 
-                                                className="text-[9px] font-black uppercase text-slate-400 hover:text-white"
-                                                onClick={() => setPreviewVideoUrl(c.videoUrl)}
-                                            >
-                                                Preview
-                                            </Button>
-                                            <Button 
-                                                size="sm"
-                                                disabled={!!selectingOpponentId}
-                                                onClick={() => handleSelectOpponent(c)}
-                                                className="rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase shadow-lg"
-                                            >
+                                            <Button size="sm" variant="ghost" className="text-[9px] font-black uppercase text-slate-400" onClick={() => setPreviewVideoUrl(c.videoUrl)}>Preview</Button>
+                                            <Button size="sm" disabled={!!selectingOpponentId} onClick={() => handleSelectOpponent(c)} className="rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase shadow-lg">
                                                 {selectingOpponentId === c.id ? <Loader2 className="animate-spin" /> : "FIGHT"}
                                             </Button>
                                         </div>
                                     </div>
                                 ))}
-                                {(!challengers || challengers.length === 0) && (
-                                    <div className="col-span-full py-10 text-center text-slate-500 italic text-xs">No one has dared to enter yet.</div>
-                                )}
                             </div>
                         </div>
                     )}
@@ -352,18 +287,17 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             </div>
         )}
 
-        {/* --- STAGE: LIVE (DUAL SHOWDOWN) --- */}
         {isLive && (
             <div className="flex-1 flex flex-col">
                 <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
                     <div className="bg-black/60 backdrop-blur-xl p-4 rounded-[2rem] border border-white/10 shadow-2xl flex items-center justify-between gap-8">
                         <div className="text-center flex-1">
-                            <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest">{p1?.campusAcronym}</p>
+                            <p className="text-[8px] font-black text-blue-400 uppercase">{p1?.campusAcronym}</p>
                             <p className="text-2xl font-black text-white tabular-nums">{battle.opponentA.votes || 0}</p>
                         </div>
                         <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white/20"><Swords size={18} className="text-white" /></div>
                         <div className="text-center flex-1">
-                            <p className="text-[8px] font-black text-amber-400 uppercase tracking-widest">{p2?.campusAcronym}</p>
+                            <p className="text-[8px] font-black text-amber-400 uppercase">{p2?.campusAcronym}</p>
                             <p className="text-2xl font-black text-white tabular-nums">{battle.opponentB?.votes || 0}</p>
                         </div>
                     </div>
@@ -400,11 +334,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             </div>
         )}
 
-        {/* --- STAGE: ENDED (VERDICT MODE) --- */}
         {isEnded && (
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-950">
                 <Trophy size={80} className="text-amber-500 mb-8 animate-bounce" />
-                <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter mb-10">Battle Concluded</h1>
+                <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter mb-10">Concluded</h1>
                 {battle.aiVerdict && (
                     <div className="max-w-xl p-10 bg-slate-900 border-4 border-amber-500/30 rounded-[3rem] text-center shadow-2xl">
                         <Bot size={32} className="text-amber-500 mx-auto mb-4" />
@@ -416,13 +349,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
       </div>
 
-      {/* CHAT & ACTIVITY SIDEBAR */}
       <div className="flex-1 bg-slate-900 flex flex-col shadow-2xl max-h-screen">
         <div className="p-6 border-b border-white/5 bg-slate-950/50 flex justify-between items-center">
-          <h3 className="text-white font-black italic tracking-tight uppercase truncate max-w-[180px]">{battle.title}</h3>
+          <h3 className="text-white font-black italic uppercase truncate max-w-[180px]">{battle.title}</h3>
           <div className="flex gap-2">
-            <button onClick={() => setInputMode('chat')} className={cn("p-2 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white")}><MessageSquare size={18}/></button>
-            <button onClick={() => setInputMode('boost')} className={cn("p-2 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950" : "text-slate-500 hover:text-white")}><Zap size={18}/></button>
+            <button onClick={() => setInputMode('chat')} className={cn("p-2 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500")}><MessageSquare size={18}/></button>
+            <button onClick={() => setInputMode('boost')} className={cn("p-2 rounded-xl transition-all", inputMode === 'boost' ? "bg-amber-500 text-slate-950" : "text-slate-500")}><Zap size={18}/></button>
           </div>
         </div>
 
@@ -430,9 +362,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           {messages?.map((m) => (
             <div key={m.id} className="animate-in slide-in-from-bottom-2">
               <p className="text-[9px] font-black uppercase text-slate-500 mb-1">{m.userName}</p>
-              <div className="bg-white/5 border border-white/5 p-3 rounded-2xl rounded-tl-none text-slate-300 text-sm font-medium">
-                {m.text}
-              </div>
+              <div className="bg-white/5 border border-white/5 p-3 rounded-2xl text-slate-300 text-sm">{m.text}</div>
             </div>
           ))}
           <div ref={scrollRef} />
@@ -441,32 +371,23 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         <div className="p-6 bg-slate-950 border-t border-white/5">
             {inputMode === 'chat' ? (
                 <form onSubmit={handleSendMessage} className="flex gap-2">
-                    <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Drop a shade..." className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all font-bold" />
-                    <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-full active:scale-90 transition-all"><Send size={20} /></button>
+                    <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Drop a shade..." className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none" />
+                    <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-full"><Send size={20} /></button>
                 </form>
             ) : (
-                <div className="space-y-4 animate-in slide-in-from-bottom-4">
-                    <div className="flex items-center justify-between px-2">
-                        <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">⚡ Energy Boosts</p>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                        {POWER_UPS.map(up => (
-                            <button key={up.type} onClick={() => handlePowerUp(up, 'A')} className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group">
-                                <span className="text-xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
-                                <p className="text-[8px] font-black text-white mt-1 uppercase">+{up.weight}</p>
-                            </button>
-                        ))}
-                    </div>
+                <div className="grid grid-cols-3 gap-2 animate-in slide-in-from-bottom-4">
+                    {POWER_UPS.map(up => (
+                        <button key={up.type} onClick={() => handlePowerUp(up, 'A')} className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group">
+                            <span className="text-xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
+                            <p className="text-[8px] font-black text-white mt-1 uppercase">+{up.weight}</p>
+                        </button>
+                    ))}
                 </div>
             )}
         </div>
       </div>
 
-      <JoinBattleModal 
-        battle={battle} 
-        isOpen={isJoinModalOpen} 
-        onClose={() => setIsJoinModalOpen(false)} 
-      />
+      <JoinBattleModal battle={battle} isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
     </div>
   );
 }
