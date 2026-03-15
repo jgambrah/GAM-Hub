@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import type { ArenaBattle, BattleMessage } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown
+  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -20,7 +20,7 @@ import { useToast } from '@/hooks/use-toast';
  * -----------------------
  * Real-time competitive theater for inter-uni battles.
  * Implements the "Live Comeback Messages" protocol and "Single-Vote Handshake".
- * Updated with Winner Detection and Automatic End-State handling.
+ * Uses external URLs as "Social Anchors" for high-scale video delivery.
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
@@ -31,9 +31,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [message, setMessage] = useState('');
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
+  const [playerError, setPlayerError] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. REAL-TIME BATTLE SYNC: Monitors global tallies and status
+  // 1. REAL-TIME BATTLE SYNC
   useEffect(() => {
     if (!firestore || !battleId) return;
     const unsub = onSnapshot(doc(firestore, 'arena_battles', battleId), (snap) => {
@@ -42,7 +43,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return () => unsub();
   }, [firestore, battleId]);
 
-  // 2. LIVE COMEBACK STREAM: Synchronized chatter from the Crowd
+  // 2. LIVE COMEBACK STREAM
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
       collection(firestore, "arena_battles", battleId, "messages"),
@@ -53,14 +54,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 3. VOTE AUDIT: Single-Vote Protocol check
+  // 3. VOTE AUDIT
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
     const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
     getDoc(voteRef).then(snap => { if (snap.exists()) setHasVoted(true); });
   }, [firestore, user, battleId]);
 
-  // 4. AUTO-SCROLL: Keep latest vibes visible
+  // 4. AUTO-SCROLL
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -138,7 +139,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
-      {/* LEFT: THE RING STAGE (STREAM) */}
+      {/* LEFT: THE RING STAGE (STREAM ANCHOR) */}
       <div className="flex-[2] relative bg-slate-950 flex flex-col">
         <div className="absolute top-6 left-6 z-20 flex items-center gap-4">
           <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white hover:bg-black/60 transition-all"><X size={24}/></button>
@@ -147,18 +148,40 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
               isEnded ? "bg-amber-500" : "bg-red-600 animate-pulse"
           )}>
             <div className={cn("w-1.5 h-1.5 rounded-full bg-white", !isEnded && "animate-ping")} />
-            {isEnded ? "BATTLE CONCLUDED" : "LIVE BATTLE"}
+            {isEnded ? "BATTLE CONCLUDED" : "LIVE RING"}
           </div>
         </div>
 
         <div className="flex-1 w-full bg-black relative">
-          <ReactPlayer 
-            url={battle.streamUrl} 
-            playing={!isEnded} 
-            muted={false} 
-            width="100%" height="100%" 
-            className="absolute inset-0"
-          />
+          {playerError ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center bg-slate-900">
+                <AlertCircle className="text-red-500 mb-4" size={64} />
+                <h2 className="text-2xl font-black text-white uppercase italic mb-2">Stream Signal Lost</h2>
+                <p className="text-slate-400 text-sm max-w-sm mb-8">
+                    The external Social Anchor (TikTok/YouTube) is currently unavailable or the link is private.
+                </p>
+                <a 
+                    href={battle.streamUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="bg-red-600 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-2 hover:bg-red-500 transition-all"
+                >
+                    <Youtube size={18} fill="white" /> Open External Stream
+                </a>
+            </div>
+          ) : (
+            <ReactPlayer 
+                url={battle.streamUrl} 
+                playing={!isEnded} 
+                muted={false} 
+                width="100%" height="100%" 
+                className="absolute inset-0"
+                onError={() => setPlayerError(true)}
+                config={{
+                    youtube: { playerVars: { showinfo: 0, modestbranding: 1 } }
+                }}
+            />
+          )}
           
           {/* THE HUD: LIVE VOTE STATUS */}
           <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-lg px-6 z-20">
@@ -221,7 +244,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                     ) : (
                         <div className="text-center py-4 bg-white/5 rounded-2xl border border-white/5 animate-in zoom-in-95">
                         <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-                            <CheckCircle size={14} /> Vote Authenticated
+                            <CheckCircle2 className="text-emerald-500" size={14} /> Vote Authenticated
                         </p>
                         </div>
                     )}
@@ -260,7 +283,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                   "text-[9px] font-black uppercase tracking-tighter mb-1",
                   isParticipant ? "text-amber-500 flex items-center gap-1" : "text-slate-500"
                 )}>
-                  {isParticipant && <Trophy size={10} />}
+                  {isParticipant && <Crown size={10} />}
                   {m.userName}
                 </p>
                 <div className={cn(
@@ -294,14 +317,5 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
       </div>
     </div>
-  );
-}
-
-function CheckCircle({ size }: { size: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-      <polyline points="22 4 12 14.01 9 11.01" />
-    </svg>
   );
 }

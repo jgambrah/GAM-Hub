@@ -10,10 +10,16 @@ import { useFirebase, addDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { collection, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
-import { Loader2, Swords, Zap, Search, X } from 'lucide-react';
+import { Loader2, Swords, Zap, Search, X, Info, Video } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { campuses } from '@/lib/data';
 
+/**
+ * CreateBattleModal Component
+ * --------------------------
+ * The gateway to the Live Ring.
+ * Explains the "Social Anchor" mechanism where external streams are synced with Yard HUDs.
+ */
 export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { firestore } = useFirebase();
   const { user } = useAuth();
@@ -106,12 +112,25 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
             </div>
             <div>
               <DialogTitle className="text-2xl font-black italic">Launch Live Battle</DialogTitle>
-              <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400">National inter-uni showdown</DialogDescription>
+              <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400">Sync your frequency with the national hub</DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="p-8 space-y-6 bg-background">
+        <div className="p-8 space-y-6 bg-background max-h-[60vh] overflow-y-auto no-scrollbar">
+          
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border-2 border-dashed border-blue-100 dark:border-blue-800 flex items-start gap-3">
+            <Info className="text-blue-600 shrink-0 mt-1" size={16} />
+            <div className="space-y-1">
+              <p className="text-[10px] font-black text-blue-800 dark:text-blue-300 uppercase tracking-widest">Social Anchor Instructions</p>
+              <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed font-medium italic">
+                1. Start a Live Stream on <b>TikTok</b> or <b>YouTube</b>.<br/>
+                2. Copy the public link.<br/>
+                3. Paste it below to anchor your video into the Arena HUD.
+              </p>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Battle Headline</Label>
             <Input 
@@ -123,13 +142,16 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           </div>
 
           <div className="space-y-2">
-            <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Stream Link (YouTube/TikTok)</Label>
-            <Input 
-              placeholder="https://..." 
-              value={streamUrl} 
-              onChange={e => setStreamUrl(e.target.value)} 
-              className="rounded-xl border-none bg-muted font-mono text-xs h-12"
-            />
+            <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Stream Link (Public Link)</Label>
+            <div className="relative">
+              <Input 
+                placeholder="TikTok or YouTube Link..." 
+                value={streamUrl} 
+                onChange={e => setStreamUrl(e.target.value)} 
+                className="rounded-xl border-none bg-muted font-mono text-xs h-12 pl-10"
+              />
+              <Video className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            </div>
           </div>
 
           <div className="space-y-2">
