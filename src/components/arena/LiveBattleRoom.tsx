@@ -5,8 +5,7 @@
  * LiveBattleRoom Component
  * -----------------------
  * Elite National Arena Stage.
- * Handshake Lifecycle: WAITING (Challenge Mode) -> LIVE (Showdown Mode) -> ENDED (Verdict Mode)
- * Enhanced with Engagement Spike Logging for Replay Highlights.
+ * Orchestrates Engagement Spike Logging for Replay Highlights.
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -21,7 +20,7 @@ import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, PlayCircle, ShieldCheck, Star, Bot, Scale, Volume2, VolumeX, AlertTriangle, UserPlus, CheckCircle2, Target
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -30,13 +29,6 @@ import { useToast } from '@/hooks/use-toast';
 import YouTube from 'react-youtube';
 import { Button } from '@/components/ui/button';
 import { JoinBattleModal } from './JoinBattleModal';
-
-const getYouTubeId = (url: string) => {
-    if (!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-}
 
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5 },
@@ -91,7 +83,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     });
   }, [firestore, user?.id, battleId]);
 
-  const logEngagementSpike = (type: 'vote' | 'powerup' | 'reaction', side: 'A' | 'B', weight: number = 1) => {
+  const logEngagementEvent = (type: 'vote' | 'powerup' | 'reaction', side: 'A' | 'B', weight: number = 1) => {
     if (!firestore || !battleId) return;
     addDoc(collection(firestore, 'arena_battles', battleId, 'engagement_events'), {
         type, side, weight, timestamp: serverTimestamp()
@@ -117,7 +109,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 name: challenger.userName,
                 avatarUrl: challenger.avatarUrl,
                 campusAcronym: challenger.campusAcronym,
-                primaryColor: '#3b82f6' 
+                primaryColor: '#ef4444' 
             },
             [`votes.${challenger.userId}`]: 0,
             createdAt: serverTimestamp(),
@@ -162,7 +154,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           [`votes.${targetUserId}`]: increment(1) 
       });
       
-      logEngagementSpike('vote', target, 1);
+      logEngagementEvent('vote', target, 1);
       
       setHasVoted(true);
       toast({ title: "Energy Logged!" });
@@ -173,27 +165,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live') return;
-    const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
-    if (!targetUserId) return;
-
     try {
-        addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), {
-            userId: user.id, target, type: powerup.type, weight: powerup.weight, createdAt: serverTimestamp()
-        });
         await updateDoc(doc(firestore, 'arena_battles', battleId), { 
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
-            [`votes.${targetUserId}`]: increment(powerup.weight) 
+            [`votes.${target === 'A' ? battle.opponentA.userId : battle.opponentB?.userId}`]: increment(powerup.weight) 
         });
-        
-        logEngagementSpike('powerup', target, powerup.weight);
-        
+        logEngagementEvent('powerup', target, powerup.weight);
     } catch (err) { toast({ variant: 'destructive', title: 'Power-Up Refused' }); }
-  };
-
-  const sendReactionSignal = (emoji: string) => {
-      // Log as reaction for highlight engine
-      logEngagementSpike('reaction', 'A', 1);
-      toast({ title: `Reacted with ${emoji}` });
   };
 
   useEffect(() => {
@@ -345,7 +323,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             </div>
                         ) : (
                             <div className="text-center py-5 bg-white/5 rounded-2xl border border-white/5">
-                                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2"><CheckCircle2 size={14} /> Vote Authenticated</p>
+                                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2"><CheckCircle2 size={14} /> Energy Contributed</p>
                             </div>
                         )}
                     </div>
@@ -396,7 +374,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             ) : (
                 <div className="grid grid-cols-3 gap-2 animate-in slide-in-from-bottom-4">
                     {POWER_UPS.map(up => (
-                        <button key={up.type} onClick={() => { handlePowerUp(up, 'A'); sendReactionSignal(up.emoji); }} className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group">
+                        <button key={up.type} onClick={() => { handlePowerUp(up, 'A'); }} className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group">
                             <span className="text-xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
                             <p className="text-[8px] font-black text-white mt-1 uppercase">+{up.weight}</p>
                         </button>

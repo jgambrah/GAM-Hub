@@ -88,6 +88,7 @@ export type ArenaHighlight = {
   votesSpike: number;
   winnerId: string;
   category: 'savage_roast' | 'funniest_comeback' | 'crowd_favorite' | 'knockout_moment';
+  processingStatus?: 'pending' | 'completed' | 'failed';
   createdAt: any;
 };
 
@@ -539,6 +540,7 @@ export type Review = {
 };
 
 export type CampusLeaderboard = {
+  id: string;
   wins: number;
   losses: number;
   totalVotes: number;

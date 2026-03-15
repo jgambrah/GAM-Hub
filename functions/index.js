@@ -122,7 +122,6 @@ exports.detectHighlightSpike = onDocumentCreated("arena_battles/{battleId}/engag
 
 /**
  * 🎬 ARENA RING: VIDEO HIGHLIGHT CUTTER (FLUENT-FFMPEG)
- * Triggers when a highlight record is created to cut the 10s viral clip.
  */
 exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId}", async (event) => {
     const highlight = event.data.data();
@@ -131,7 +130,7 @@ exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId
 
     if (highlight.processingStatus === "completed") return null;
 
-    const sourceUrl = highlight.sourceUrl || highlight.clipUrl;
+    const sourceUrl = highlight.sourceUrl;
     const startTime = highlight.startTime || 0;
     const tempInput = path.join(os.tmpdir(), `input-${highlightId}.mp4`);
     const tempOutput = path.join(os.tmpdir(), `output-${highlightId}.mp4`);
@@ -257,7 +256,6 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             peakTimeOffset = Math.max(0, parseInt(sortedBuckets[0][0]) * 10 - 2); 
         }
 
-        // 🧠 HIGHLIGHT CATEGORIZATION LOGIC
         let highlightCategory = "crowd_favorite";
         const totalVotes = vA + vB;
         const winMargin = Math.abs(vA - vB) / (totalVotes || 1);
@@ -266,8 +264,6 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             highlightCategory = "knockout_moment";
         } else if (totalEnergy > 50) {
             highlightCategory = "savage_roast";
-        } else if (totalVotes > 100) {
-            highlightCategory = "crowd_favorite";
         }
 
         const pulseRef = db.collection("campus_pulse").doc();
@@ -307,6 +303,16 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             commentCount: 0,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
+
+        // 🏛️ CAMPUS WARS: Update University Leaderboard
+        if (winnerInfo.campusId) {
+            const campusRef = db.collection("campus_leaderboard").doc(winnerInfo.campusId);
+            await campusRef.set({
+                wins: admin.firestore.FieldValue.increment(1),
+                totalVotes: admin.firestore.FieldValue.increment(vA > vB ? vA : vB),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
     }
   }
   return null;
@@ -333,59 +339,4 @@ exports.pruneWaitingPool = onSchedule("every 1 minutes", async (event) => {
   const batch = db.batch();
   stale.forEach(doc => batch.delete(doc.ref));
   return batch.commit();
-});
-
-/**
- * 🎥 MEDIA OPTIMIZATION
- */
-exports.compressVideo = onObjectFinalized({
-  cpu: 2, memory: "2GiB", timeoutSeconds: 300,
-}, async (event) => {
-  const object = event.data;
-  const bucket = admin.storage().bucket(object.bucket);
-  const filePath = object.name;
-  if (!object.contentType || !object.contentType.startsWith("video/")) return null;
-  if (!filePath.startsWith("videos/hot/") && !filePath.startsWith("product_videos/") && !filePath.startsWith("arena_highlights/")) return null;
-  if (object.metadata && object.metadata.processed === "true") return null;
-
-  const fileName = path.basename(filePath);
-  const fileHash = object.metadata?.hash || fileName.split(".")[0];
-  const tempFilePath = path.join(os.tmpdir(), fileName);
-  const targetFilePath = path.join(os.tmpdir(), `compressed-${fileName}`);
-
-  try {
-    await bucket.file(filePath).download({destination: tempFilePath});
-    await new Promise((resolve, reject) => {
-      ffmpeg(tempFilePath).size("720x?").videoBitrate("800k").videoCodec("libx264").format("mp4").on("end", resolve).on("error", reject).save(targetFilePath);
-    });
-    await bucket.upload(targetFilePath, {
-      destination: filePath,
-      metadata: { contentType: "video/mp4", metadata: { processed: "true", hash: fileHash } },
-    });
-    const db = admin.firestore();
-    const finalUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(filePath)}?alt=media`;
-    const hashRef = db.collection("video_hashes").doc(fileHash);
-    await hashRef.set({ mediaUrl: finalUrl, processed: true, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-    fs.unlinkSync(tempFilePath); fs.unlinkSync(targetFilePath);
-  } catch (err) { console.error("Compression failed:", err); }
-  return null;
-});
-
-/**
- * 🔔 NOTIFICATION TRIGGERS
- */
-exports.onNotificationCreated = onDocumentCreated("users/{userId}/notifications/{notifId}", async (event) => {
-  const notif = event.data.data();
-  const db = admin.firestore();
-  const userSnap = await db.collection("users").doc(event.params.userId).get();
-  const token = userSnap.data()?.fcmToken;
-  if (!token) return null;
-  try {
-    await admin.messaging().send({
-      notification: { title: notif.title, body: notif.message },
-      data: { link: notif.link || "", type: notif.type },
-      token: token
-    });
-  } catch (err) { console.error("FCM Error:", err); }
-  return null;
 });

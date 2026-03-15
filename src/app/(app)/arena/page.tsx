@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown } from 'lucide-react';
+import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -17,7 +17,6 @@ import HallOfFame from '@/components/social/HallOfFame';
 import { ArenaRules } from '@/components/arena/ArenaRules';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
 import { extractHashtags } from '@/lib/hashtag-utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CreateBattleModal } from '@/components/arena/CreateBattleModal';
@@ -51,12 +50,14 @@ export default function ArenaPage() {
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
+    // 1. LIVE BATTLES
     const battlesQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(collection(firestore, 'arena_battles'), where('status', 'in', ['waiting', 'live']), limit(15));
     }, [firestore]);
     const { data: liveBattles, isLoading: isLoadingBattles } = useCollection<ArenaBattle>(battlesQuery);
 
+    // 2. AUTO-MATCH POOL
     const poolQuery = useMemoFirebase(() => {
         if (!firestore || !user?.id) return null;
         return query(collection(firestore, 'arena_waiting_pool'), where('userId', '==', user.id), limit(1));
@@ -157,12 +158,14 @@ export default function ArenaPage() {
         }
     };
 
+    // 3. CAMPUS WARS
     const warsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(collection(firestore, 'campus_wars'), where('status', '==', 'live'), limit(2));
     }, [firestore]);
     const { data: liveWars, isLoading: isLoadingWars } = useCollection<CampusWar>(warsQuery);
 
+    // 4. HIGHLIGHTS & VIBES
     const postsQuery = useMemoFirebase(() => {
         if (!firestore || !user || !isTokenReady) return null;
         return query(
@@ -204,8 +207,6 @@ export default function ArenaPage() {
             };
 
             const manualTags = extractHashtags(content);
-            const embedding = await generatePostEmbedding({ content, tags: manualTags });
-            postData.embedding = embedding;
             postData.tags = manualTags;
 
             await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
@@ -282,8 +283,6 @@ export default function ArenaPage() {
                 </div>
             )}
 
-            <ArenaLeaderboard />
-            
             <CampusWarLeaderboard />
 
             {liveWars && liveWars.length > 0 && (
@@ -353,36 +352,6 @@ export default function ArenaPage() {
 
             <div className="max-w-4xl mx-auto">
                 <ArenaRules />
-
-                {user && (
-                    <div className="bg-card rounded-[2.5rem] p-6 mb-10 shadow-xl border border-border">
-                        <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-                            <div className="flex gap-2">
-                                <button onClick={() => setVibeType('celebration')} className={cn("px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all", vibeType === 'celebration' ? 'bg-amber-100 text-amber-700 shadow-sm ring-2 ring-amber-500/20' : 'bg-muted text-muted-foreground')}> Victory</button>
-                                <button onClick={() => setVibeType('shade')} className={cn("px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all", vibeType === 'shade' ? 'bg-red-100 text-red-700 shadow-sm ring-2 ring-red-500/20' : 'bg-muted text-muted-foreground')}> Shade</button>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Select onValueChange={setTargetCampus} value={targetCampus}>
-                                    <SelectTrigger className="w-[180px] rounded-xl font-bold border-none bg-muted h-10 text-[10px]">
-                                        <SelectValue placeholder="All Rivals" />
-                                    </SelectTrigger>
-                                    <SelectContent className="rounded-xl border-none shadow-2xl">
-                                        <SelectItem value="all">🌍 All Rivals</SelectItem>
-                                        {staticCampuses.filter(c => c.id !== user.campusId).map(c => (
-                                            <SelectItem key={c.id} value={c.id}>{c.acronym} Hub</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-                        <form onSubmit={handlePost} className="flex gap-2">
-                            <Input value={content} onChange={e => setContent(e.target.value)} placeholder="Dropping some national heat..." className="rounded-2xl border-none bg-muted font-bold" />
-                            <Button disabled={isPosting} className="rounded-2xl bg-slate-900 text-white h-12 px-8">
-                                {isPosting ? <Loader2 className="animate-spin" /> : <Zap size={18} />}
-                            </Button>
-                        </form>
-                    </div>
-                )}
 
                 <div className="space-y-8 max-w-2xl mx-auto">
                     {isLoadingPosts ? (

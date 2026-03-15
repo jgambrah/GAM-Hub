@@ -37,7 +37,7 @@
         "momoNumber": { "type": "string" },
         "momoName": { "type": "string" },
         "lead_credits": { "type": "number" },
-        "isVerified": { "boolean": "boolean" },
+        "isVerified": { "type": "boolean" },
         "idVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "approved"] }
       },
       "required": ["id", "email", "role"]
@@ -137,8 +137,9 @@
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/arena_battles/{battleId}/engagement_events/{eventId}": { "schema": "#/backend/entities/EngagementEvent", "description": "Spike detection logs." },
     "/arena_highlights/{highlightId}": { "schema": "#/backend/entities/ArenaHighlight", "description": "Viral battle archive." },
-    "/arena_waiting_pool/{entryId}": { "schema": "#/backend/entities/ArenaWaitingPoolEntry", "description": "Staging queue for auto-match pairings." },
+    "/arena_waiting_pool/{entryId}": { "description": "Staging queue for auto-match pairings." },
     "/campus_wars/{warId}": { "schema": "#/backend/entities/CampusWar", "description": "Large-scale University vs University wars." },
-    "/campus_leaderboard/{campusId}": { "description": "National University rankings." }
+    "/campus_leaderboard/{campusId}": { "description": "National University rankings." },
+    "/arena_leaderboard/{userId}": { "description": "Individual warrior rankings and highlight counts." }
   }
 }
