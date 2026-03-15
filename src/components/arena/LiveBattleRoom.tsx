@@ -56,7 +56,7 @@ const POWER_UPS = [
 interface LocalBurst { id: string; emoji: string; x: number; }
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
-  const { firestore, storage } = useFirebase();
+  const { firestore } = useFirebase();
   const { user } = useAuth();
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
@@ -65,13 +65,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [message, setMessage] = useState('');
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
-  const [verdictLoading, setVerdictLoading] = useState(false);
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [selectingOpponentId, setSelectingOpponentId] = useState<string | null>(null);
   
   const [prevVotes, setPrevVotes] = useState({ A: 0, B: 0 });
-  const [momentum, setHype] = useState<'A' | 'B' | 'neutral'>('neutral');
+  const [momentum, setMomentum] = useState<'A' | 'B' | 'neutral'>('neutral');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 1. SYNC BATTLE DATA
@@ -118,9 +117,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         const votesB = battle.opponentB?.votes || 0;
         const deltaA = votesA - prevVotes.A;
         const deltaB = votesB - prevVotes.B;
-        if (deltaA > deltaB + 5) setHype('A');
-        else if (deltaB > deltaA + 5) setHype('B');
-        else setHype('neutral');
+        if (deltaA > deltaB + 5) setMomentum('A');
+        else if (deltaB > deltaA + 5) setMomentum('B');
+        else setMomentum('neutral');
         setPrevVotes({ A: votesA, B: votesB });
     }, 10000);
     return () => clearInterval(interval);
@@ -135,8 +134,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         const batch = writeBatch(firestore);
         
         // Update battle to LIVE with Opponent B details
-        const battleRef = doc(firestore, 'arena_battles', battleId);
-        batch.update(battleRef, {
+        const bRef = doc(firestore, 'arena_battles', battleId);
+        batch.update(bRef, {
             status: 'live',
             opponentB: {
                 userId: challenger.userId,

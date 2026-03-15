@@ -6,10 +6,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useFirebase, addDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase';
+import { useFirebase, setDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { collection, serverTimestamp, doc } from 'firebase/firestore';
+import { serverTimestamp, doc } from 'firebase/firestore';
 import { Loader2, Swords, Video, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
