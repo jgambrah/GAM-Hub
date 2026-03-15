@@ -57,7 +57,7 @@ interface LocalBurst {
  * Features dual-stream visualization, live voting, weighted power-ups, and AI Referee.
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
-  const { firestore, auth } = useFirebase();
+  const { firestore } = useFirebase();
   const { user } = useAuth();
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
@@ -68,6 +68,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [hasVoted, setHasVoted] = useState(false);
   const [verdictLoading, setVerdictLoading] = useState(false);
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
+  const [lastPowerUpTime, setLastPowerUpTime] = useState(0);
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -149,7 +150,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         snap.docChanges().forEach((change) => {
             if (change.type === 'added') {
                 const data = change.doc.data();
-                // Only show for others or if it's very recent
                 const isRecent = data.createdAt ? (Date.now() - (data.createdAt?.toMillis?.() || Date.now()) < 5000) : true;
                 if (isRecent) {
                     const powerup = POWER_UPS.find(p => p.type === data.type);
@@ -160,7 +160,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         description: `+${data.weight} Energy to ${targetName} Hub.`,
                     });
 
-                    // Extra large burst for power-ups
                     const newBurst = {
                         id: change.doc.id,
                         emoji: powerup?.emoji || '⚡',
@@ -261,8 +260,18 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status === 'ended') return;
+    
+    // 🛡️ ANTI-SPAM PROTOCOL: 5 Second Cooldown
+    const now = Date.now();
+    if (now - lastPowerUpTime < 5000) {
+        toast({ variant: 'destructive', title: 'Slow down!', description: 'Please wait a few seconds before boosting again.' });
+        return;
+    }
+
     const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
     if (!targetUserId) return;
+
+    setLastPowerUpTime(now);
 
     try {
         addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), {
