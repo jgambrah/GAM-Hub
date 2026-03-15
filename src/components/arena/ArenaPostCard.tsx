@@ -6,7 +6,11 @@ import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic, Music, Target, Trophy, PlayCircle, Crown, Smile, Swords } from 'lucide-react';
+import { 
+    Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, 
+    AlertTriangle, Mic, Music, Target, Trophy, PlayCircle, Crown, Smile, Swords, 
+    Share2, Copy, Send as SendIcon
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
@@ -47,7 +51,8 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
     const [userAction, setUserAction] = React.useState<'liked' | 'burned' | null>(null);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [showComebacks, setShowComments] = useState(false);
-    const [isRestricted, setIsRestricted] = useState(false);
+    const [isRestricted, setIsRestricted] = React.useState(false);
+    const [showShareMenu, setShowShareMenu] = useState(false);
 
     const isBlocked = post.status === 'blocked';
     const isAuthor = user?.id === post.authorId;
@@ -134,6 +139,23 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                 toast({ variant: 'destructive', title: "Action Blocked" });
             }
         }
+    };
+
+    const handleShare = (platform: 'whatsapp' | 'copy' | 'native') => {
+        const shareUrl = `${window.location.origin}/pulse?postId=${post.id}`;
+        const shareText = isHighlight 
+            ? `🔥 Arena Highlight: ${post.authorName} killed it in the Yard! Check this out:` 
+            : `Vibe check in the Yard!`;
+
+        if (platform === 'whatsapp') {
+            window.open(`https://wa.me/?text=${encodeURIComponent(shareText + " " + shareUrl)}`, '_blank');
+        } else if (platform === 'copy') {
+            navigator.clipboard.writeText(shareUrl);
+            toast({ title: "Link Copied!", description: "Vibe link added to your clipboard." });
+        } else if (platform === 'native' && navigator.share) {
+            navigator.share({ title: 'GAM Hub Vibe', text: shareText, url: shareUrl });
+        }
+        setShowShareMenu(false);
     };
 
     const catInfo = isHighlight && post.battleMetadata?.category ? getCategoryLabel(post.battleMetadata.category) : null;
@@ -342,6 +364,34 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                             <MessageSquare size={16} /> 
                             <span>{localStats.comebacks || 0} Comebacks</span>
                         </button>
+
+                        <div className="relative">
+                            <button 
+                                onClick={() => setShowShareMenu(!showShareMenu)}
+                                className={cn(
+                                    "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all active:scale-90",
+                                    isHighlight ? "bg-white/10 text-white border-white/20 hover:bg-white/20" : "bg-slate-900 text-white border-slate-900 shadow-xl"
+                                )}
+                            >
+                                <Share2 size={16} /> Viral Share
+                            </button>
+
+                            {showShareMenu && (
+                                <div className="absolute bottom-full mb-4 left-0 w-48 bg-card border-2 border-border rounded-3xl shadow-2xl p-2 z-[100] animate-in slide-in-from-bottom-2">
+                                    <button onClick={() => handleShare('whatsapp')} className="w-full flex items-center gap-3 p-3 hover:bg-muted rounded-2xl text-xs font-black uppercase transition-all">
+                                        <div className="p-2 bg-green-500 text-white rounded-lg"><SendIcon size={14} /></div> WhatsApp
+                                    </button>
+                                    <button onClick={() => handleShare('copy')} className="w-full flex items-center gap-3 p-3 hover:bg-muted rounded-2xl text-xs font-black uppercase transition-all">
+                                        <div className="p-2 bg-blue-500 text-white rounded-lg"><Copy size={14} /></div> Copy Link
+                                    </button>
+                                    {navigator.share && (
+                                        <button onClick={() => handleShare('native')} className="w-full flex items-center gap-3 p-3 hover:bg-muted rounded-2xl text-xs font-black uppercase transition-all">
+                                            <div className="p-2 bg-indigo-500 text-white rounded-lg"><Share2 size={14} /></div> More...
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

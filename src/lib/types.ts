@@ -340,6 +340,7 @@ export type ArenaLeaderboard = {
   wins: number;
   losses: number;
   votes_received: number;
+  highlightCount: number;
   updatedAt: any;
 };
 

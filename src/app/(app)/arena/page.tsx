@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X } from 'lucide-react';
+import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +24,7 @@ import { CreateBattleModal } from '@/components/arena/CreateBattleModal';
 import { LiveBattleCard } from '@/components/arena/LiveBattleCard';
 import { LiveBattleRoom } from '@/components/arena/LiveBattleRoom';
 import { ArenaChampions } from '@/components/arena/ArenaChampions';
+import { ArenaLegends } from '@/components/arena/ArenaLegends';
 import { CampusWarCard } from '@/components/arena/CampusWarCard';
 import { CampusWarRoom } from '@/components/arena/CampusWarRoom';
 import { CreateWarModal } from '@/components/arena/CreateWarModal';
@@ -347,6 +348,7 @@ export default function ArenaPage() {
                 </div>
             </section>
 
+            <ArenaLegends />
             <ArenaChampions />
 
             <div className="max-w-4xl mx-auto">

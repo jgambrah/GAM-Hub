@@ -185,6 +185,15 @@ exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId
             });
         }
 
+        // 🎖️ ARENA LEGENDS: Increment highlight count for the winner
+        if (highlight.winnerId) {
+            const legendRef = db.collection("arena_leaderboard").doc(highlight.winnerId);
+            batch.set(legendRef, { 
+                highlightCount: admin.firestore.FieldValue.increment(1),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
+
         await batch.commit();
         console.log(`✅ Highlight processed successfully: ${finalUrl}`);
 
