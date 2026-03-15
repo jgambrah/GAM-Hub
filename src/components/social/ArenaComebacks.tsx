@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
@@ -14,10 +13,15 @@ import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import Image from 'next/image';
-import { TikTokEmbed } from './tiktok-embed';
 import { cn } from '@/lib/utils';
 import YouTube from 'react-youtube';
 import { getBattleVerdict } from '@/ai/flows/arena-referee-flow';
+import dynamic from 'next/dynamic';
+
+const TikTokEmbed = dynamic(() => import('./tiktok-embed').then(mod => mod.TikTokEmbed), {
+  ssr: false,
+  loading: () => <div className="h-60 w-[325px] bg-muted animate-pulse rounded-lg mx-auto" />
+});
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;

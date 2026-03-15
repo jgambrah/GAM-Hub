@@ -1,4 +1,3 @@
-
 'use client';
 
 import Image from 'next/image';
@@ -10,7 +9,6 @@ import {
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
   ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music
 } from 'lucide-react';
-import { TikTokEmbed } from './tiktok-embed';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import {
@@ -33,6 +31,12 @@ import { recordEngagement } from '@/lib/trending-service';
 import { renderWithHashtags } from '@/lib/hashtag-utils';
 import VibeShopOverlay from './VibeShopOverlay';
 import VoicePlayer from './VoicePlayer';
+import dynamic from 'next/dynamic';
+
+const TikTokEmbed = dynamic(() => import('./tiktok-embed').then(mod => mod.TikTokEmbed), {
+  ssr: false,
+  loading: () => <div className="h-[500px] w-[325px] bg-muted animate-pulse rounded-lg mx-auto" />
+});
 
 function MediaTypeIcon({ mediaType, size = 10 }: { mediaType: SocialPost['mediaType']; size?: number }) {
   if (mediaType === 'youtube') return <Youtube size={size} className="text-red-500" />;

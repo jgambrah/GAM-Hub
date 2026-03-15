@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -11,11 +10,16 @@ import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
 import Image from 'next/image';
-import { TikTokEmbed } from '../social/tiktok-embed';
 import { useToast } from '@/hooks/use-toast';
 import YouTube from 'react-youtube';
 import ReactPlayer from 'react-player';
 import VoicePlayer from '../social/VoicePlayer';
+import dynamic from 'next/dynamic';
+
+const TikTokEmbed = dynamic(() => import('../social/tiktok-embed').then(mod => mod.TikTokEmbed), {
+  ssr: false,
+  loading: () => <div className="h-[500px] w-[325px] bg-muted animate-pulse rounded-lg mx-auto" />
+});
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;
