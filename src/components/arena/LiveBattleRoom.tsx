@@ -6,7 +6,7 @@
  * -----------------------
  * Elite National Arena Stage.
  * Updated Flow: WAITING (Challenge Mode) -> LIVE (Showdown Mode) -> ENDED (Verdict Mode)
- * Includes Creator Selection logic to pick rivals from the challenger queue.
+ * Includes Creator Selection logic and Direct Rivalry Acceptance.
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -21,7 +21,7 @@ import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX, AlertTriangle, UserPlus, Trash2, ChevronRight
+  Loader2, MessageSquare, Trophy, Flame, Crown, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX, AlertTriangle, UserPlus, Trash2, ChevronRight, Target
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -135,7 +135,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     try {
         const batch = writeBatch(firestore);
         
-        // Update battle to LIVE with Opponent B details
         const bRef = doc(firestore, 'arena_battles', battleId);
         batch.update(bRef, {
             status: 'live',
@@ -153,7 +152,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             },
             [`votes.${challenger.userId}`]: 0,
             createdAt: serverTimestamp(),
-            endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 min showdown
+            endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() 
         });
 
         await batch.commit();
@@ -222,6 +221,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   }
 
   const isCreator = user?.id === battle.creatorId;
+  const isTarget = user?.id === battle.targetUserId;
   const isWaiting = battle.status === 'waiting';
   const isLive = battle.status === 'live';
   const isEnded = battle.status === 'ended';
@@ -256,6 +256,18 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         {isWaiting && (
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar">
                 <div className="max-w-2xl w-full space-y-8 py-20">
+                    
+                    {/* Direct Challenge Banner */}
+                    {battle.targetUserId && (
+                        <div className="bg-indigo-600 p-6 rounded-[2.5rem] flex items-center gap-4 shadow-2xl animate-in slide-in-from-top-4 duration-700">
+                            <div className="p-3 bg-white/20 rounded-2xl"><Target size={24} className="text-white" /></div>
+                            <div>
+                                <p className="text-[10px] font-black uppercase text-indigo-100 tracking-widest">Personal Call Out</p>
+                                <h4 className="text-lg font-black text-white">{battle.creatorName} challenged {battle.targetUserName}</h4>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black">
                         <ReactPlayer url={previewVideoUrl || battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
                         <div className="absolute bottom-6 left-6 z-20 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
@@ -276,13 +288,20 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
                     <div className="text-center space-y-4">
                         <h2 className="text-3xl font-black italic tracking-tighter text-white uppercase">"{battle.title}"</h2>
-                        {isCreator ? (
+                        
+                        {isTarget ? (
+                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-amber-500 text-slate-950 px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl hover:scale-105 active:scale-95 transition-all">
+                                ACCEPT CHALLENGE <Swords className="ml-2" />
+                            </Button>
+                        ) : isCreator ? (
                             <div className="p-6 bg-white/5 border-2 border-dashed border-white/10 rounded-3xl animate-pulse">
-                                <p className="text-indigo-400 font-black uppercase text-xs tracking-widest">Waiting for rivals to enter the ring...</p>
+                                <p className="text-indigo-400 font-black uppercase text-xs tracking-widest">
+                                    {battle.targetUserId ? `Waiting for ${battle.targetUserName} to accept...` : 'Waiting for rivals to enter the ring...'}
+                                </p>
                             </div>
                         ) : (
                             <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl hover:scale-105 active:scale-95 transition-all">
-                                ACCEPT CHALLENGE <UserPlus className="ml-2" />
+                                {battle.targetUserId ? 'SNEAK INTO RING' : 'ENTER THE RING'} <UserPlus className="ml-2" />
                             </Button>
                         )}
                     </div>
@@ -300,7 +319,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                             <Avatar className="border-2 border-white/20"><AvatarImage src={c.avatarUrl}/><AvatarFallback>{c.userName[0]}</AvatarFallback></Avatar>
                                             <div>
                                                 <p className="text-sm font-black text-white">{c.userName}</p>
-                                                <p className="text-[9px] font-bold text-indigo-400 uppercase">{c.campusAcronym}</p>
+                                                <p className="text-[9px] font-bold text-indigo-400 uppercase tracking-tighter">{c.campusAcronym}</p>
                                             </div>
                                         </div>
                                         <div className="flex gap-2">

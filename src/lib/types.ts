@@ -40,6 +40,8 @@ export type ArenaBattle = {
   title: string;
   creatorId: string;
   creatorName: string;
+  targetUserId?: string;
+  targetUserName?: string;
   participants: string[];
   opponentA: {
     userId: string;
@@ -325,7 +327,7 @@ export type Notification = {
     | 'like' | 'comment' | 'share' | 'follow' | 'voice_reply' 
     | 'message' | 'voice_message' | 'group_message'
     | 'order' | 'price_drop' | 'vendor_reply' | 'product_recommendation'
-    | 'event' | 'hostel_update' | 'department_news' | 'war' | 'system';
+    | 'event' | 'hostel_update' | 'department_news' | 'war' | 'system' | 'battle_challenge';
   title: string;
   message: string;
   link?: string;

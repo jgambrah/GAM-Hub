@@ -104,6 +104,27 @@ exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
 });
 
 /**
+ * 🛡️ ARENA RING: NOTIFICATION ON DIRECT CHALLENGE
+ */
+exports.onBattleCreated = onDocumentCreated("arena_battles/{battleId}", async (event) => {
+    const battle = event.data.data();
+    const battleId = event.params.battleId;
+    if (!battle.targetUserId) return null;
+
+    const db = admin.firestore();
+    
+    const notifRef = db.collection("users").doc(battle.targetUserId).collection("notifications").doc();
+    return notifRef.set({
+        type: "battle_challenge",
+        title: "🔥 You were challenged!",
+        message: `${battle.creatorName} wants to battle you: "${battle.title}"`,
+        link: "/arena",
+        read: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+});
+
+/**
  * 🏛️ CAMPUS WAR: AUTO-END WARS & NATIONAL LEADERBOARD SYNC
  */
 exports.endWar = onSchedule("every 1 minutes", async (event) => {
