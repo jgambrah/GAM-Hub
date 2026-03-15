@@ -1,19 +1,16 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert } from 'lucide-react';
+import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { campuses as staticCampuses } from '@/lib/data';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import ArenaLeaderboard from '@/components/social/ArenaLeaderboard';
-import HallOfFame from '@/components/social/HallOfFame';
 import { ArenaRules } from '@/components/arena/ArenaRules';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -28,6 +25,7 @@ import { CampusWarCard } from '@/components/arena/CampusWarCard';
 import { CampusWarRoom } from '@/components/arena/CampusWarRoom';
 import { CreateWarModal } from '@/components/arena/CreateWarModal';
 import { CampusWarLeaderboard } from '@/components/arena/CampusWarLeaderboard';
+import HallOfFame from '@/components/social/HallOfFame';
 
 const INITIAL_LIMIT = 50;
 
@@ -344,6 +342,77 @@ export default function ArenaPage() {
                             <p className="text-[10px] italic mt-2">Launch a challenge to start a live battle.</p>
                         </div>
                     )}
+                </div>
+            </section>
+
+            <section className="max-w-2xl mx-auto mb-16 px-4">
+                <div className="bg-slate-950 p-8 rounded-[3rem] border-4 border-slate-900 shadow-2xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12">
+                        <Flame size={120} />
+                    </div>
+                    <div className="relative z-10 space-y-6">
+                        <div className="flex gap-2 p-1.5 bg-white/5 rounded-2xl border border-white/10 w-fit">
+                            <button 
+                                onClick={() => setVibeType('celebration')}
+                                className={cn(
+                                    "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all",
+                                    vibeType === 'celebration' ? "bg-amber-500 text-slate-950 shadow-lg" : "text-slate-400 hover:text-white"
+                                )}
+                            >
+                                Vibe
+                            </button>
+                            <button 
+                                onClick={() => setVibeType('shade')}
+                                className={cn(
+                                    "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all",
+                                    vibeType === 'shade' ? "bg-red-600 text-white shadow-lg" : "text-slate-400 hover:text-white"
+                                )}
+                            >
+                                Shade
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <textarea 
+                                value={content}
+                                onChange={(e) => setContent(e.target.value)}
+                                placeholder="Broadcasting battle vibes... Deduplication Active 🧬"
+                                className="w-full bg-white/5 border-2 border-white/10 p-6 rounded-[2rem] outline-none focus:border-indigo-500 transition-all font-bold text-lg text-white resize-none h-32 no-scrollbar"
+                            />
+                            
+                            <div className="flex flex-col sm:flex-row items-center gap-4">
+                                <div className="flex-1 w-full">
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2 mb-2 block">Target Rival Campus</label>
+                                    <Select value={targetCampus} onValueChange={setTargetCampus}>
+                                        <SelectTrigger className="bg-white/5 border-white/10 text-white h-14 rounded-2xl font-bold">
+                                            <Target className="mr-2 text-red-500" size={16} />
+                                            <SelectValue placeholder="Target Campus" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-slate-900 text-white border-white/10 rounded-2xl">
+                                            <SelectItem value="all">All Rivals (National)</SelectItem>
+                                            {staticCampuses.map(c => (
+                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <Button 
+                                    onClick={handlePost}
+                                    disabled={isPosting || !content.trim()}
+                                    className="w-full sm:w-auto px-10 h-14 bg-indigo-600 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:bg-indigo-500 active:scale-95 transition-all self-end"
+                                >
+                                    {isPosting ? <Loader2 className="animate-spin" /> : <><Send size={16} className="mr-2" /> Broadcast Vibe</>}
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div className="pt-6 border-t border-white/5 flex items-center gap-3">
+                            <ShieldCheck size={14} className="text-indigo-500" />
+                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">
+                                Liaison AI semantic indexing & deduplication active. 🛡️✨
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </section>
 
