@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -6,18 +7,19 @@
  */
 
 import React, { useState } from 'react';
-import { useFirebase, updateDocumentNonBlocking, useDoc, useMemoFirebase } from '@/firebase';
+import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
-import { doc, increment, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { usePaystackPayment } from 'react-paystack';
 import { 
     Zap, ShoppingCart, Loader2, Coins, 
-    ArrowUpRight, ShieldCheck, Star, Crown, Gift 
+    ShieldCheck, Star, Crown, Gift 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import type { HubWallet } from '@/lib/types';
+import { addCoins } from '@/lib/monetization';
 
 const COIN_PACKAGES = [
   { id: 'starter', label: 'Starter Kit', coins: 50, priceGHS: 5, icon: Zap, color: 'from-blue-500 to-indigo-600' },
@@ -27,9 +29,8 @@ const COIN_PACKAGES = [
 ];
 
 export function CoinShop() {
-  const { firestore, auth } = useFirebase();
+  const { firestore } = useFirebase();
   const { user } = useAuth();
-  const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
   const walletRef = useMemoFirebase(() => {
@@ -110,20 +111,17 @@ function CoinPackageCard({ pkg, user, firestore, isProcessing, onStart, onEnd }:
     const handleSuccess = async (ref: any) => {
         if (!firestore || !user?.id) return;
         
-        const walletRef = doc(firestore, 'wallets', user.id);
         try {
-            await setDoc(walletRef, {
-                coins: increment(pkg.coins),
-                totalPurchased: increment(pkg.coins),
-                updatedAt: serverTimestamp()
-            }, { merge: true });
+            // 🚀 LIAISON PROTOCOL: Standardized Coin Handshake
+            addCoins(firestore, user.id, pkg.coins);
 
             toast({
                 title: "Refill Successful!",
                 description: `${pkg.coins} Hub Coins added to your artillery. ⚡`,
             });
         } catch (e) {
-            console.error(e);
+            console.error("Coin Refill Failed:", e);
+            toast({ variant: 'destructive', title: 'Refill Failed', description: 'Could not update your balance.' });
         } finally {
             onEnd();
         }
