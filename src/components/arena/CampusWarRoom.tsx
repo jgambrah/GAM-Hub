@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -55,7 +54,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
   const { data: war, isLoading } = useDoc<CampusWar>(warRef);
 
-  // 2. VOTE AUDIT: Check if student has already contributed energy
+  // 2. VOTE AUDIT: Check if student has already contributed energy (One User = One Document)
   useEffect(() => {
     if (!firestore || !user || !warId) return;
     const checkVote = async () => {
@@ -92,12 +91,22 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     });
   };
 
+  /**
+   * handleVote - National Integrity Protocol
+   * --------------------------------------
+   * Uses a deterministic path to ensure one vote per user.
+   * Atomically increments the root tally for scalability.
+   */
   const handleVote = async (side: 'A' | 'B') => {
     if (!firestore || !user || isVoting || hasVoted || !war || war.status === 'ended') return;
     setIsVoting(true);
+    
+    const voteRef = doc(firestore, 'campus_wars', warId, 'votes', user.id);
+    const warDocRef = doc(firestore, 'campus_wars', warId);
+
     try {
-      // 1. Register the unique vote (Deterministic Path)
-      const voteRef = doc(firestore, 'campus_wars', warId, 'votes', user.id);
+      // 1. Register the unique vote
+      // This document's existence prevents the user from voting again in this war.
       await setDoc(voteRef, {
           campus: side === 'A' ? war.campusAId : war.campusBId,
           userId: user.id,
@@ -106,7 +115,8 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       });
 
       // 2. Atomic increment on the national tally
-      await updateDoc(doc(firestore, 'campus_wars', warId), { 
+      // This allows thousands of students to update the score simultaneously.
+      await updateDoc(warDocRef, { 
           [side === 'A' ? 'votesA' : 'votesB']: increment(1) 
       });
 
@@ -114,7 +124,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       sendReaction('🗳️');
       toast({ title: "National Energy Contributed! ⚡" });
     } catch(err) {
-        toast({ variant: 'destructive', title: 'Action Refused' });
+        toast({ variant: 'destructive', title: 'Action Refused', description: 'One citizen, one vote.' });
     } finally { setIsVoting(false); }
   };
 
