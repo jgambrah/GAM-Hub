@@ -130,11 +130,63 @@ exports.endWar = onSchedule("every 1 minutes", async (event) => {
 
     updateCampus(war.campusAId, winnerId === war.campusAId, votesA);
     updateCampus(war.campusBId, winnerId === war.campusBId, votesB);
+
+    // 3. Notify Result to involved campuses
+    const resultTitle = "🏆 Campus War Result!";
+    const resultMsg = isDraw 
+        ? `The War between ${war.campusAInfo.acronym} and ${war.campusBInfo.acronym} ended in a DRAW! 🤝`
+        : `${winnerId === war.campusAId ? war.campusAInfo.acronym : war.campusBInfo.acronym} has emerged VICTORIOUS in the national arena! 👑`;
+
+    const usersSnap = await db.collection("users")
+        .where("campusId", "in", [war.campusAId, war.campusBId])
+        .limit(200)
+        .get();
+
+    usersSnap.forEach(u => {
+        batch.set(db.collection("users").doc(u.id).collection("notifications").doc(), {
+            type: "war",
+            title: resultTitle,
+            message: resultMsg,
+            link: "/arena",
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    });
   }
 
   await batch.commit();
   console.log(`🏛️ Liaison Hub: Closed ${expiredWars.size} expired National Wars.`);
   return null;
+});
+
+/**
+ * 🏛️ CAMPUS WAR: NOTIFICATION ON CREATION
+ */
+exports.onWarCreated = onDocumentCreated("campus_wars/{warId}", async (event) => {
+    const war = event.data.data();
+    const db = admin.firestore();
+    
+    // Fetch students from both factions
+    const usersSnap = await db.collection("users")
+        .where("campusId", "in", [war.campusAId, war.campusBId])
+        .limit(300) // Prototype limit
+        .get();
+
+    const batch = db.batch();
+    
+    usersSnap.forEach(u => {
+        const notifRef = db.collection("users").doc(u.id).collection("notifications").doc();
+        batch.set(notifRef, {
+            type: "war",
+            title: "🔥 Campus War Declared!",
+            message: `${war.campusAInfo.acronym} vs ${war.campusBInfo.acronym}. Defend your Yard!`,
+            link: "/arena",
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    });
+    
+    return batch.commit();
 });
 
 /**

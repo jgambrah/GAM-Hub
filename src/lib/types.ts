@@ -315,7 +315,7 @@ export type Notification = {
     | 'like' | 'comment' | 'share' | 'follow' | 'voice_reply' 
     | 'message' | 'voice_message' | 'group_message'
     | 'order' | 'price_drop' | 'vendor_reply' | 'product_recommendation'
-    | 'event' | 'hostel_update' | 'department_news' | 'system';
+    | 'event' | 'hostel_update' | 'department_news' | 'war' | 'system';
   title: string;
   message: string;
   link?: string;
