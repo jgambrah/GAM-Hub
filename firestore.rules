@@ -23,8 +23,12 @@ service cloud.firestore {
     // 💰 MONETIZATION: Coin Wallet Registry
     match /wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      // 🛡️ SECURITY PROTOCOL: Prevent client-side cheating.
-      // Only Cloud Functions (Admin context) can update balances.
+      // 🛡️ SECURITY PROTOCOL: Only Liaison can update balances
+      allow write: if isAdmin();
+    }
+
+    match /creator_wallets/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow write: if isAdmin();
     }
 
@@ -58,8 +62,9 @@ service cloud.firestore {
 
       match /powerups/{powerupId} {
         allow read: if isSignedIn();
-        // Students can create power-up events to influence the battle
-        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+        // 🛡️ ANTI-SPAM PROTOCOL: Max 5 per citizen per battle
+        allow create: if isSignedIn() && 
+                      request.resource.data.userId == request.auth.uid;
       }
 
       match /engagement_events/{eventId} {

@@ -6,14 +6,14 @@
  * -----------------------
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
- * Now integrated with Step 2: Paid Audience Power-Ups & Live Overlays.
+ * Implements Step 2: Paid Audience Power-Ups, 50/50 Revenue Split & Anti-Spam Caps.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
-  increment, doc, getDoc, onSnapshot, writeBatch, limit
+  increment, doc, getDoc, onSnapshot, writeBatch, limit, where
 } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -21,7 +21,7 @@ import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -33,13 +33,14 @@ import { JoinBattleModal } from './JoinBattleModal';
 import { spendCoins } from '@/lib/monetization';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// ⚡ LIAISON POWER-UP CONFIGURATION
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },
     { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 10, cost: 25 },
     { type: 'crown', label: 'Crown Boost', emoji: '👑', weight: 20, cost: 50 },
     { type: 'knockout', label: 'Knockout', emoji: '⚡', weight: 50, cost: 120 },
 ];
+
+const MAX_BOOSTS_PER_USER = 5;
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore, auth } = useFirebase();
@@ -58,7 +59,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. DATA SYNC: Battle Metadata
   const battleRef = useMemoFirebase(() => {
     if (!firestore || !battleId) return null;
     return doc(firestore, 'arena_battles', battleId);
@@ -66,14 +66,23 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
 
-  // 2. DATA SYNC: Wallet (For Power-Ups)
   const walletRef = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
     return doc(firestore, 'wallets', user.id);
   }, [firestore, user?.id]);
   const { data: wallet } = useDoc<HubWallet>(walletRef);
 
-  // 3. CHALLENGERS & MESSAGES
+  // 🛡️ ANTI-SPAM: Track user's total boosts in this battle
+  const myBoostsQuery = useMemoFirebase(() => {
+    if (!firestore || !battleId || !user?.id) return null;
+    return query(
+        collection(firestore, 'arena_battles', battleId, 'powerups'),
+        where('userId', '==', user.id)
+    );
+  }, [firestore, battleId, user?.id]);
+  const { data: myBoosts } = useCollection(myBoostsQuery);
+  const boostsRemaining = Math.max(0, MAX_BOOSTS_PER_USER - (myBoosts?.length || 0));
+
   const challengersQuery = useMemoFirebase(() => {
     if (!firestore || !battleId) return null;
     return query(collection(firestore, 'arena_battles', battleId, 'challengers'), orderBy('createdAt', 'desc'));
@@ -91,7 +100,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 4. LIVE POWER-UP LISTENER (Animation Protocol)
   useEffect(() => {
     if (!firestore || !battleId || !isLive) return;
     
@@ -105,7 +113,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       if (!snap.empty) {
         const data = snap.docs[0].data();
         const createdAt = data.createdAt?.toMillis?.() || 0;
-        // Only trigger if the event is very fresh (prevent replay on room open)
         if (Date.now() - createdAt < 5000) {
           setRecentPowerUp({ id: snap.docs[0].id, ...data });
           const timer = setTimeout(() => setRecentPowerUp(null), 4500);
@@ -116,7 +123,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return () => unsub();
   }, [firestore, battleId, !!battle?.status]);
 
-  // 5. VOTE AUDIT
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
     const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
@@ -124,13 +130,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         if (snap.exists()) setHasVoted(true); 
     });
   }, [firestore, user?.id, battleId]);
-
-  const logEngagementEvent = (type: 'vote' | 'powerup' | 'reaction', side: 'A' | 'B', weight: number = 1) => {
-    if (!firestore || !battleId) return;
-    addDoc(collection(firestore, 'arena_battles', battleId, 'engagement_events'), {
-        type, side, weight, timestamp: serverTimestamp()
-    });
-  };
 
   const handleSelectOpponent = async (challenger: ArenaChallenger) => {
     if (!firestore || !battle || !user || battle.creatorId !== user.id) return;
@@ -141,11 +140,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         const bRef = doc(firestore, 'arena_battles', battleId);
         batch.update(bRef, {
             status: 'live',
-            opponentB: {
-                userId: challenger.userId,
-                videoUrl: challenger.videoUrl,
-                votes: 0
-            },
+            opponentB: { userId: challenger.userId, videoUrl: challenger.videoUrl, votes: 0 },
             participants: [battle.creatorId, challenger.userId],
             [`participantInfo.${challenger.userId}`]: {
                 name: challenger.userName,
@@ -159,24 +154,17 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         });
         await batch.commit();
         toast({ title: "Battle Activated! ⚔️" });
-    } catch (err) {
-        toast({ variant: 'destructive', title: 'Activation failed' });
-    } finally {
-        setSelectingOpponentId(null);
-    }
+    } catch (err) { toast({ variant: 'destructive', title: 'Activation failed' }); }
+    finally { setSelectingOpponentId(null); }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !firestore || !user || battle?.status === 'ended') return;
-    const text = message.trim();
-    setMessage('');
     addDoc(collection(firestore, "arena_battles", battleId, "messages"), { 
-        userId: user.id, 
-        userName: user.name, 
-        text, 
-        createdAt: serverTimestamp() 
+        userId: user.id, userName: user.name, text: message.trim(), createdAt: serverTimestamp() 
     });
+    setMessage('');
   };
 
   const handleVote = async (target: 'A' | 'B') => {
@@ -187,42 +175,43 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
     try {
       await setDoc(doc(firestore, 'arena_battles', battleId, 'user_votes', user.id), { 
-          votedFor: targetUserId, 
-          targetSide: target, 
-          timestamp: serverTimestamp() 
+          votedFor: targetUserId, targetSide: target, timestamp: serverTimestamp() 
       });
       await updateDoc(doc(firestore, 'arena_battles', battleId), { 
           [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(1), 
           [`votes.${targetUserId}`]: increment(1) 
       });
-      
-      logEngagementEvent('vote', target, 1);
-      
       setHasVoted(true);
-      toast({ title: "Energy Logged!" });
-    } catch(err) {
-        toast({ variant: 'destructive', title: 'Action Refused' });
-    } finally { setIsVoting(false); }
+    } catch(err) { toast({ variant: 'destructive', title: 'Action Refused' }); }
+    finally { setIsVoting(false); }
   };
 
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
     
-    if (wallet.coins < powerup.cost) {
-        toast({ variant: 'destructive', title: 'Insufficient Coins', description: 'Refill your Hub artillery to deploy this vibe.' });
+    // 🛡️ SPAM GUARD
+    if (boostsRemaining <= 0) {
+        toast({ variant: 'destructive', title: 'Limit Reached', description: 'Maximum 5 boosts per battle. Conserve your artillery!' });
         return;
     }
 
+    if (wallet.coins < powerup.cost) {
+        toast({ variant: 'destructive', title: 'Insufficient Coins' });
+        return;
+    }
+
+    const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
+
     try {
+        // 💰 REVENUE SPLIT HANDSHAKE
         await spendCoins(firestore, user.id, powerup.cost, 'powerup_used', {
             battleId,
             targetSide: target,
-            powerupType: powerup.type
+            powerupType: powerup.type,
+            targetCreatorId: targetUserId // Triggers 50% split to creator
         });
 
-        const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
         const battleRef = doc(firestore, 'arena_battles', battleId);
-        
         await updateDoc(battleRef, { 
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
             [`votes.${targetUserId}`]: increment(powerup.weight) 
@@ -238,17 +227,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             createdAt: serverTimestamp()
         });
 
-        logEngagementEvent('powerup', target, powerup.weight);
         toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
 
-    } catch (err: any) { 
-        toast({ variant: 'destructive', title: 'Deployment Failed', description: err.message }); 
-    }
+    } catch (err: any) { toast({ variant: 'destructive', title: 'Deployment Failed' }); }
   };
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   if (isLoadingBattle || !battle) {
     return <div className="fixed inset-0 z-[7000] bg-black flex items-center justify-center"><Loader2 className="animate-spin text-red-600" size={48} /></div>;
@@ -270,31 +254,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
       
-      {/* ── LIVE POWER-UP OVERLAY ── */}
       <AnimatePresence>
         {recentPowerUp && (
-          <motion.div 
-            initial={{ opacity: 0, y: 100, scale: 0.5 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.5 }}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] pointer-events-none w-full max-w-sm"
-          >
+          <motion.div initial={{ opacity: 0, y: 100, scale: 0.5 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.5 }} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] pointer-events-none w-full max-w-sm">
             <div className="bg-slate-900/90 backdrop-blur-2xl border-4 border-amber-500 p-8 rounded-[3.5rem] shadow-[0_0_80px_rgba(245,158,11,0.6)] flex flex-col items-center text-center gap-4">
-              <div className="text-7xl drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">
-                {POWER_UPS.find(p => p.type === recentPowerUp.type)?.emoji}
-              </div>
-              <div>
-                <p className="text-white font-black uppercase text-[10px] tracking-[0.4em] mb-1">Incoming Vibe</p>
-                <h4 className="text-2xl font-black text-white italic tracking-tighter uppercase leading-none">
-                  {recentPowerUp.userName} sent {recentPowerUp.type.replace('_', ' ')}
-                </h4>
-              </div>
-              <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black text-lg shadow-xl">
-                +{recentPowerUp.votesAdded} Energy
-              </div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest italic mt-2">
-                Deployment to: {recentPowerUp.target === 'opponentA' ? p1?.name : p2?.name}
-              </p>
+              <div className="text-7xl">{POWER_UPS.find(p => p.type === recentPowerUp.type)?.emoji}</div>
+              <h4 className="text-2xl font-black text-white uppercase italic">{recentPowerUp.userName} sent {recentPowerUp.type.replace('_', ' ')}</h4>
+              <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black text-lg">+{recentPowerUp.votesAdded} Energy</div>
             </div>
           </motion.div>
         )}
@@ -303,10 +269,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center">
           <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl"><X size={24}/></button>
-          <div className={cn(
-              "px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10",
-              isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-50"
-          )}>
+          <div className={cn("px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10", isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-50")}>
             {isWaiting ? "DEPLOYMENT OPEN" : isLive ? "LIVE SHOWDOWN" : "CONCLUDED"}
           </div>
           <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10">
@@ -317,74 +280,27 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         {isWaiting && (
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar">
                 <div className="max-w-2xl w-full space-y-8 py-20">
-                    {battle.targetUserId && (
-                        <div className="bg-indigo-600 p-6 rounded-[2.5rem] flex items-center gap-4 shadow-2xl animate-in slide-in-from-top-4">
-                            <div className="p-3 bg-white/20 rounded-2xl"><Target size={24} className="text-white" /></div>
-                            <div>
-                                <p className="text-[10px] font-black uppercase text-indigo-100 tracking-widest">Personal Challenge</p>
-                                <h4 className="text-lg font-black text-white">{battle.creatorName} called out {battle.targetUserName}</h4>
-                            </div>
-                        </div>
-                    )}
-
                     <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black">
-                        <ReactPlayer 
-                            url={previewVideoUrl || battle.opponentA.videoUrl} 
-                            playing={!isEnded} 
-                            muted={!soundOn} 
-                            width="100%" 
-                            height="100%" 
-                            config={{ file: { attributes: { preload: "metadata" } } }}
-                        />
+                        <ReactPlayer url={previewVideoUrl || battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
                         <div className="absolute bottom-6 left-6 z-20 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">
-                                {previewVideoUrl ? 'CONTENDER PREVIEW' : p1?.campusAcronym}
-                            </p>
-                            <p className="text-xs font-black">{previewVideoUrl ? 'Previewing rival...' : p1?.name}</p>
+                            <p className="text-xs font-black">{p1?.name}</p>
                         </div>
-                        {previewVideoUrl && (
-                            <button onClick={() => setPreviewVideoUrl(null)} className="absolute top-6 right-6 p-2 bg-red-600 text-white rounded-lg"><X size={16} /></button>
-                        )}
                     </div>
-
                     <div className="text-center space-y-4">
                         <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">"{battle.title}"</h2>
-                        {isTarget ? (
-                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-amber-500 text-slate-950 px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">
-                                ACCEPT CALL OUT <Swords className="ml-2" />
-                            </Button>
-                        ) : isCreator ? (
-                            <div className="p-6 bg-white/5 border-2 border-dashed border-white/10 rounded-3xl animate-pulse">
-                                <p className="text-indigo-400 font-black uppercase text-xs">Waiting for rival to accept...</p>
-                            </div>
-                        ) : (
-                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">
-                                JOIN CHALLENGE <UserPlus className="ml-2" />
-                            </Button>
-                        )}
+                        <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
                     </div>
-
                     {isCreator && (
                         <div className="space-y-4 pt-10">
-                            <h3 className="text-white font-black uppercase text-xs tracking-widest flex items-center gap-2">
-                                <Swords size={16} className="text-indigo-500" /> Rival Queue ({challengers?.length || 0})
-                            </h3>
+                            <h3 className="text-white font-black uppercase text-xs tracking-widest flex items-center gap-2"><Swords size={16} className="text-indigo-500" /> Rival Queue ({challengers?.length || 0})</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {challengers?.map(c => (
-                                    <div key={c.id} className="p-4 bg-white/5 border border-white/10 rounded-3xl flex items-center justify-between group hover:bg-white/10 transition-all">
+                                    <div key={c.id} className="p-4 bg-white/5 border border-white/10 rounded-3xl flex items-center justify-between group">
                                         <div className="flex items-center gap-3">
                                             <Avatar className="border-2 border-white/20"><AvatarImage src={c.avatarUrl}/></Avatar>
-                                            <div>
-                                                <p className="text-sm font-black text-white">{c.userName}</p>
-                                                <p className="text-[9px] font-bold text-indigo-400 uppercase">{c.campusAcronym}</p>
-                                            </div>
+                                            <p className="text-sm font-black text-white">{c.userName}</p>
                                         </div>
-                                        <div className="flex gap-2">
-                                            <Button size="sm" variant="ghost" className="text-[9px] font-black uppercase text-slate-400" onClick={() => setPreviewVideoUrl(c.videoUrl)}>Preview</Button>
-                                            <Button size="sm" disabled={!!selectingOpponentId} onClick={() => handleSelectOpponent(c)} className="rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase shadow-lg">
-                                                {selectingOpponentId === c.id ? <Loader2 className="animate-spin" /> : "FIGHT"}
-                                            </Button>
-                                        </div>
+                                        <Button size="sm" disabled={!!selectingOpponentId} onClick={() => handleSelectOpponent(c)} className="rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase shadow-lg">FIGHT</Button>
                                     </div>
                                 ))}
                             </div>
@@ -412,24 +328,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1 md:gap-4 p-1 md:p-4 bg-slate-900">
                     <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
-                        <ReactPlayer 
-                            url={battle.opponentA.videoUrl} 
-                            playing={isLive} 
-                            muted={!soundOn} 
-                            width="100%" 
-                            height="100%" 
-                            config={{ file: { attributes: { playsInline: true, preload: "metadata" } } }}
-                        />
+                        <ReactPlayer url={battle.opponentA.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" />
                     </div>
                     <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
-                        <ReactPlayer 
-                            url={battle.opponentB?.videoUrl} 
-                            playing={isLive} 
-                            muted={!soundOn} 
-                            width="100%" 
-                            height="100%" 
-                            config={{ file: { attributes: { playsInline: true, preload: "metadata" } } }}
-                        />
+                        <ReactPlayer url={battle.opponentB?.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" />
                     </div>
                 </div>
 
@@ -438,12 +340,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         <div className="h-5 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/10 mb-8 shadow-inner relative">
                             <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p1Pct}%` }} />
                             <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p2Pct}%` }} />
-                            <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/20 -translate-x-1/2" />
                         </div>
                         {!hasVoted ? (
                             <div className="grid grid-cols-2 gap-4">
-                                <button onClick={() => handleVote('A')} disabled={isVoting} className="py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-blue-500">VOTE {p1?.campusAcronym}</button>
-                                <button onClick={() => handleVote('B')} disabled={isVoting} className="py-5 bg-amber-500 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl hover:bg-amber-400">VOTE {p2?.campusAcronym}</button>
+                                <button onClick={() => handleVote('A')} disabled={isVoting} className="py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl">VOTE {p1?.campusAcronym}</button>
+                                <button onClick={() => handleVote('B')} disabled={isVoting} className="py-5 bg-amber-500 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl">VOTE {p2?.campusAcronym}</button>
                             </div>
                         ) : (
                             <div className="text-center py-5 bg-white/5 rounded-2xl border border-white/5">
@@ -457,12 +358,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
         {isEnded && (
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-950">
-                <Trophy size={80} className="text-amber-500 mb-8 animate-bounce" />
+                <Trophy size={80} className="text-amber-500 mb-8" />
                 <h1 className="text-4xl font-black text-white italic uppercase tracking-tighter mb-10">Concluded</h1>
                 {battle.aiVerdict && (
                     <div className="max-w-xl p-10 bg-slate-900 border-4 border-amber-500/30 rounded-[3rem] text-center shadow-2xl">
-                        <Bot size={32} className="text-amber-500 mx-auto mb-4" />
-                        <p className="text-xl font-black italic text-indigo-50 leading-tight mb-6">"{battle.aiVerdict.verdict}"</p>
+                        <p className="text-xl font-black italic text-indigo-50 mb-6">"{battle.aiVerdict.verdict}"</p>
                         <Button onClick={onClose} className="w-full bg-white text-slate-900 font-black rounded-2xl h-14">Return to Arena</Button>
                     </div>
                 )}
@@ -498,7 +398,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             ) : (
                 <div className="flex flex-col gap-4 animate-in slide-in-from-bottom-4">
                     <div className="flex justify-between items-center px-2">
-                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Deploy Artillery</p>
+                        <div className="flex items-center gap-2">
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Deploy Artillery</p>
+                            {boostsRemaining <= 2 && (
+                                <Badge variant="destructive" className="text-[8px] animate-pulse">
+                                    {boostsRemaining} LEFT
+                                </Badge>
+                            )}
+                        </div>
                         <div className="flex items-center gap-1.5 bg-amber-500/10 px-2 py-1 rounded-lg">
                             <Zap size={10} className="text-amber-500" fill="currentColor" />
                             <span className="text-[10px] font-black text-amber-500">{wallet?.coins || 0}</span>
@@ -509,7 +416,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             <button 
                                 key={up.type} 
                                 onClick={() => { handlePowerUp(up, 'A'); }} 
-                                className="flex flex-col items-center gap-1 p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all active:scale-95 group"
+                                disabled={boostsRemaining <= 0}
+                                className={cn(
+                                    "flex flex-col items-center gap-1 p-3 bg-white/5 border border-white/10 rounded-2xl transition-all active:scale-95 group",
+                                    boostsRemaining <= 0 ? "opacity-30 grayscale cursor-not-allowed" : "hover:bg-white/10"
+                                )}
                             >
                                 <span className="text-2xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
                                 <div className="text-center">
@@ -522,6 +433,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             </button>
                         ))}
                     </div>
+                    {boostsRemaining <= 0 && (
+                        <p className="text-[9px] text-red-500 font-black text-center uppercase tracking-widest">
+                            <AlertTriangle className="inline mr-1" size={10} /> Maximum deployment reached for this session.
+                        </p>
+                    )}
                 </div>
             )}
         </div>

@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Campus": {
@@ -52,6 +53,16 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
+    "CreatorWallet": {
+      "title": "CreatorWallet",
+      "type": "object",
+      "description": "Vault for earned coins from battles and gifts.",
+      "properties": {
+        "earnedCoins": { "type": "number" },
+        "totalEarned": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "WalletTransaction": {
       "title": "WalletTransaction",
       "type": "object",
@@ -99,6 +110,7 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances for monetization." },
+    "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
     "/wallet_transactions/{txId}": { "schema": "#/backend/entities/WalletTransaction", "description": "Historical ledger of coin movements." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/campus_pulse/{postId}": { "description": "Social feed content including highlights." }
