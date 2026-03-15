@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp, getDoc, setDoc, increment } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
 import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target, Smile, ImagePlus, Youtube, PlusCircle, Star } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
@@ -31,6 +31,7 @@ import { CreateWarModal } from '@/components/arena/CreateWarModal';
 import { CampusWarLeaderboard } from '@/components/arena/CampusWarLeaderboard';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import HallOfFame from '@/components/social/HallOfFame';
+import ArenaLeaderboard from '@/components/social/ArenaLeaderboard';
 
 const INITIAL_LIMIT = 50;
 const LOAD_MORE_BATCH = 25;
@@ -41,6 +42,7 @@ export default function ArenaPage() {
     const { toast } = useToast();
     
     const [isPosting, setIsPosting] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
     const [content, setContent] = useState('');
     const [vibeType, setVibeType] = useState<'shade' | 'celebration'>('celebration');
@@ -198,12 +200,17 @@ export default function ArenaPage() {
 
     const resetInputs = () => {
         setContent(''); setVibeType('celebration'); setTargetCampus('all'); setVideoUrl(''); setFile(null); setPreviewUrl(null);
+        setUploadProgress(0);
         if(fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
         if (selectedFile) {
+            if (selectedFile.size > 10 * 1024 * 1024) {
+                toast({ variant: "destructive", title: "File too large", description: "Maximum upload size is 10MB" });
+                return;
+            }
             setFile(selectedFile);
             setPreviewUrl(URL.createObjectURL(selectedFile));
         }
@@ -214,6 +221,7 @@ export default function ArenaPage() {
         if (!user || (!content.trim() && !file && !videoUrl.trim())) return;
 
         setIsPosting(true);
+        setUploadProgress(0);
         try {
             let postData: any = {
                 content,
@@ -252,7 +260,15 @@ export default function ArenaPage() {
                     } else {
                         const filePath = `videos/hot/${user.id}/${Date.now()}_${file.name}`;
                         const fileRef = ref(storage, filePath);
-                        await uploadBytes(fileRef, file, { customMetadata: { hash } });
+                        
+                        const uploadTask = uploadBytesResumable(fileRef, file, { customMetadata: { hash } });
+                        await new Promise((resolve, reject) => {
+                            uploadTask.on("state_changed", 
+                                (snap) => setUploadProgress((snap.bytesTransferred / snap.totalBytes) * 100),
+                                reject, () => resolve(null)
+                            );
+                        });
+
                         postData.mediaUrl = await getDownloadURL(fileRef);
                         postData.mediaType = 'video';
                         postData.videoHash = hash;
@@ -261,7 +277,13 @@ export default function ArenaPage() {
                 } else {
                     const filePath = `arena_media/${user.id}/${Date.now()}_${file.name}`;
                     const fileRef = ref(storage, filePath);
-                    await uploadBytes(fileRef, file);
+                    const uploadTask = uploadBytesResumable(fileRef, file);
+                    await new Promise((resolve, reject) => {
+                        uploadTask.on("state_changed", 
+                            (snap) => setUploadProgress((snap.bytesTransferred / snap.totalBytes) * 100),
+                            reject, () => resolve(null)
+                        );
+                    });
                     postData.mediaUrl = await getDownloadURL(fileRef);
                     postData.mediaType = 'image';
                 }
@@ -365,6 +387,7 @@ export default function ArenaPage() {
                 </div>
             )}
 
+            <ArenaLeaderboard />
             <CampusWarLeaderboard />
 
             {liveWars && liveWars.length > 0 && (
@@ -477,6 +500,18 @@ export default function ArenaPage() {
                                 <div className="relative aspect-video rounded-[2rem] overflow-hidden border-4 border-muted shadow-inner bg-black animate-in zoom-in">
                                     {file?.type.startsWith('image') ? <img src={previewUrl} className="w-full h-full object-cover" alt="" /> : <video src={previewUrl} className="w-full h-full object-cover" muted />}
                                     <button type="button" onClick={() => { setFile(null); setPreviewUrl(null); }} className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full"><X size={16} /></button>
+                                </div>
+                            )}
+
+                            {isPosting && uploadProgress > 0 && (
+                                <div className="px-4 space-y-1">
+                                    <div className="flex justify-between text-[8px] font-black uppercase text-blue-500 tracking-widest">
+                                        <span>Deploying Artillery...</span>
+                                        <span>{Math.round(uploadProgress)}%</span>
+                                    </div>
+                                    <div className="h-1 w-full bg-blue-100 rounded-full overflow-hidden">
+                                        <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                                    </div>
                                 </div>
                             )}
 

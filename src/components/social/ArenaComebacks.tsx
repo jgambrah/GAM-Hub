@@ -9,7 +9,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc, increment } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { campuses } from '@/lib/data';
@@ -134,6 +134,7 @@ function ComebackItem({ c, onReply }: { c: ArenaComeback, onReply: (name: string
 export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const [text, setText] = useState('');
   const [isPosting, setIsPosting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isRefereeing, setIsRefereeing] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
@@ -157,15 +158,26 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
 
   const resetInputs = () => {
     setText(''); setVideoUrl(''); setShowUrlInput(false); setShowEmojiPicker(false); setFile(null); setPreviewUrl(null);
+    setUploadProgress(0);
     if(fileInputRef.current) fileInputRef.current.value = '';
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      setPreviewUrl(URL.createObjectURL(selectedFile));
+    if (!selectedFile) return;
+
+    // Size guard (10MB max) to protect Yard resources
+    if (selectedFile.size > 10 * 1024 * 1024) {
+        toast({
+            variant: "destructive",
+            title: "File too large",
+            description: "Maximum upload size is 10MB"
+        });
+        return;
     }
+
+    setFile(selectedFile);
+    setPreviewUrl(URL.createObjectURL(selectedFile));
   };
 
   const handleReply = async (e: React.FormEvent) => {
@@ -173,6 +185,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
 
     setIsPosting(true);
+    setUploadProgress(0);
 
     const userCampusInfo = campuses.find(c => c.id === userProfile.campusId);
     const authorColor = userCampusInfo?.primaryColor || "#0f172a";
@@ -192,7 +205,22 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       if (file) {
         const filePath = `arena_media/${post.id}/${Date.now()}_${file.name}`;
         const fileRef = ref(storage, filePath);
-        await uploadBytes(fileRef, file);
+        
+        // 🛰️ RESUMABLE UPLOAD HANDSHAKE
+        const uploadTask = uploadBytesResumable(fileRef, file);
+
+        await new Promise((resolve, reject) => {
+            uploadTask.on(
+                "state_changed",
+                (snapshot) => {
+                    const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                    setUploadProgress(progress);
+                },
+                reject,
+                () => resolve(null)
+            );
+        });
+
         comebackData.mediaUrl = await getDownloadURL(fileRef);
         comebackData.mediaType = file.type.startsWith('image') ? 'image' : 'video';
       } else if (videoUrl.trim()) {
@@ -298,6 +326,18 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
             <div className="relative w-48 h-32 rounded-[2rem] overflow-hidden border-4 border-card shadow-2xl group animate-in zoom-in duration-300">
                 {file?.type.startsWith('image') ? <Image src={previewUrl} layout="fill" className="object-cover" alt="" /> : <video src={previewUrl} className="w-full h-full object-cover" />}
                 <button type="button" onClick={resetInputs} className="absolute top-3 right-3 bg-black/60 text-white p-2 rounded-full hover:bg-black transition-colors shadow-lg"><X size={14} /></button>
+            </div>
+        )}
+
+        {isPosting && uploadProgress > 0 && (
+            <div className="px-4 space-y-1">
+                <div className="flex justify-between text-[8px] font-black uppercase text-blue-500 tracking-widest">
+                    <span>Syncing Artillery...</span>
+                    <span>{Math.round(uploadProgress)}%</span>
+                </div>
+                <div className="h-1 w-full bg-blue-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                </div>
             </div>
         )}
 
