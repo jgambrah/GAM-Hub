@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -6,6 +5,7 @@
  * -----------------------
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
+ * Now integrated with future monetized Power-Ups.
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -17,10 +17,10 @@ import {
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
-import type { ArenaBattle, BattleMessage, ArenaChallenger } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -31,9 +31,9 @@ import { Button } from '@/components/ui/button';
 import { JoinBattleModal } from './JoinBattleModal';
 
 const POWER_UPS = [
-    { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5 },
-    { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 10 },
-    { type: 'crown', label: 'Crown Boost', emoji: '👑', weight: 25 },
+    { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },
+    { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 25, cost: 50 },
+    { type: 'crown', label: 'National Crown', emoji: '👑', weight: 100, cost: 200 },
 ];
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
@@ -51,12 +51,20 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // 1. DATA SYNC: Battle Metadata
   const battleRef = useMemoFirebase(() => {
     if (!firestore || !battleId) return null;
     return doc(firestore, 'arena_battles', battleId);
   }, [firestore, battleId]);
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
+
+  // 2. DATA SYNC: Wallet (For Power-Ups)
+  const walletRef = useMemoFirebase(() => {
+    if (!firestore || !user?.id) return null;
+    return doc(firestore, 'wallets', user.id);
+  }, [firestore, user?.id]);
+  const { data: wallet } = useDoc<HubWallet>(walletRef);
 
   const challengersQuery = useMemoFirebase(() => {
     if (!firestore || !battleId) return null;
@@ -164,13 +172,22 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   };
 
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
-    if (!firestore || !user || !battle || battle.status !== 'live') return;
+    if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
+    
+    if (wallet.coins < powerup.cost) {
+        toast({ variant: 'destructive', title: 'Insufficient Coins', description: 'Visit the wallet to refill your artillery.' });
+        return;
+    }
+
     try {
+        // Step 2 Logic: This will eventually call spendCoins via a secure function
+        // For now, we simulate the engagement impact
         await updateDoc(doc(firestore, 'arena_battles', battleId), { 
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
             [`votes.${target === 'A' ? battle.opponentA.userId : battle.opponentB?.userId}`]: increment(powerup.weight) 
         });
         logEngagementEvent('powerup', target, powerup.weight);
+        toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
     } catch (err) { toast({ variant: 'destructive', title: 'Power-Up Refused' }); }
   };
 
@@ -372,13 +389,30 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                     <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-full"><Send size={20} /></button>
                 </form>
             ) : (
-                <div className="grid grid-cols-3 gap-2 animate-in slide-in-from-bottom-4">
-                    {POWER_UPS.map(up => (
-                        <button key={up.type} onClick={() => { handlePowerUp(up, 'A'); }} className="p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group">
-                            <span className="text-xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
-                            <p className="text-[8px] font-black text-white mt-1 uppercase">+{up.weight}</p>
-                        </button>
-                    ))}
+                <div className="flex flex-col gap-4 animate-in slide-in-from-bottom-4">
+                    <div className="flex justify-between items-center px-2">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Deploy Artillery</p>
+                        <div className="flex items-center gap-1.5 bg-amber-500/10 px-2 py-1 rounded-lg">
+                            <Zap size={10} className="text-amber-500" fill="currentColor" />
+                            <span className="text-[10px] font-black text-amber-500">{wallet?.coins || 0}</span>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                        {POWER_UPS.map(up => (
+                            <button 
+                                key={up.type} 
+                                onClick={() => { handlePowerUp(up, 'A'); }} 
+                                className="flex flex-col items-center gap-1 p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all active:scale-95 group"
+                            >
+                                <span className="text-2xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
+                                <p className="text-[8px] font-black text-white uppercase">{up.label}</p>
+                                <div className="mt-1 flex items-center gap-1">
+                                    <Zap size={8} className="text-amber-500" fill="currentColor" />
+                                    <span className="text-[8px] font-black text-slate-400">{up.cost}</span>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
         </div>

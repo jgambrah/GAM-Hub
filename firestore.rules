@@ -22,7 +22,9 @@ service cloud.firestore {
     // 💰 MONETIZATION: Coin Wallet Registry
     match /wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // 🛡️ SECURITY PROTOCOL: Prevent client-side cheating.
+      // Only Cloud Functions (Admin context) can update balances.
+      allow write: if isAdmin();
     }
 
     // 💰 MONETIZATION: Transaction History
@@ -30,10 +32,10 @@ service cloud.firestore {
       // Logic: Allow list/get if the user owns the record OR if they are an admin
       allow read: if isSignedIn() && (
         isAdmin() || 
-        (exists(resource.data) && resource.data.userId == request.auth.uid) ||
-        (request.query.limit <= 100 && request.query.filters.userId == request.auth.uid)
+        (resource.data.userId == request.auth.uid)
       );
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // Transactions are typically created via server-side logic, but we allow admin/function write
+      allow create: if isAdmin();
     }
 
     match /arena_waiting_pool/{entryId} {
