@@ -101,7 +101,16 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 4. MOMENTUM & HYPE LOGIC
+  // 4. VOTE AUDIT
+  useEffect(() => {
+    if (!firestore || !user || !battleId) return;
+    const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
+    getDoc(voteRef).then(snap => { 
+        if (snap.exists()) setHasVoted(true); 
+    });
+  }, [firestore, user?.id, battleId]);
+
+  // 5. MOMENTUM & HYPE LOGIC
   useEffect(() => {
     if (!battle || battle.status !== 'live') return;
     const interval = setInterval(() => {
@@ -117,7 +126,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return () => clearInterval(interval);
   }, [battle, prevVotes]);
 
-  // 5. SELECTION LOGIC (Creator only)
+  // 6. SELECTION LOGIC (Creator only)
   const handleSelectOpponent = async (challenger: ArenaChallenger) => {
     if (!firestore || !battle || !user || battle.creatorId !== user.id) return;
     setSelectingOpponentId(challenger.id);
@@ -125,7 +134,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     try {
         const batch = writeBatch(firestore);
         
-        // 1. Update battle to LIVE with Opponent B details
+        // Update battle to LIVE with Opponent B details
         const battleRef = doc(firestore, 'arena_battles', battleId);
         batch.update(battleRef, {
             status: 'live',
@@ -139,15 +148,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 name: challenger.userName,
                 avatarUrl: challenger.avatarUrl,
                 campusAcronym: challenger.campusAcronym,
-                primaryColor: '#3b82f6' // Default or fetch from campus data
+                primaryColor: '#3b82f6' 
             },
             [`votes.${challenger.userId}`]: 0,
             createdAt: serverTimestamp(),
             endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 min showdown
         });
 
-        // 2. Optional: Clean up challengers list? Or keep for record.
-        
         await batch.commit();
         toast({ title: "Challenge Accepted!", description: "The battle is now LIVE in the Arena." });
     } catch (err) {
@@ -166,15 +173,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         userId: user.id, 
         userName: user.name, 
         text, 
-        createdAt: serverTimestamp() 
-    });
-  };
-
-  const sendReaction = (emoji: string) => {
-    if (!firestore || !user || battle?.status === 'ended') return;
-    addDoc(collection(firestore, 'arena_battles', battleId, 'reactions'), { 
-        emoji, 
-        userId: user.id, 
         createdAt: serverTimestamp() 
     });
   };
@@ -215,7 +213,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
             [`votes.${targetUserId}`]: increment(powerup.weight) 
         });
-        sendReaction(powerup.emoji);
     } catch (err) { toast({ variant: 'destructive', title: 'Power-Up Refused' }); }
   };
 
