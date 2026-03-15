@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -17,6 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
 import type { HubWallet } from '@/lib/types';
 
 const COIN_PACKAGES = [
@@ -38,36 +38,6 @@ export function CoinShop() {
   }, [firestore, user?.id]);
 
   const { data: wallet, isLoading: isLoadingWallet } = useDoc<HubWallet>(walletRef);
-
-  const handlePurchase = (pkg: typeof COIN_PACKAGES[0]) => {
-    if (!auth.currentUser || !user) {
-        toast({ variant: 'destructive', title: 'Session Expired', description: 'Please log in to refill your tank.' });
-        return;
-    }
-
-    setIsProcessing(pkg.id);
-
-    const config = {
-        reference: `COIN_${user.id}_${Date.now()}`,
-        email: user.email,
-        amount: pkg.priceGHS * 100, // GHS to Pesewas
-        publicKey: process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY as string,
-        metadata: {
-            custom_fields: [
-                { display_name: "Type", variable_name: "type", value: "coin_purchase" },
-                { display_name: "Coins", variable_name: "coins", value: pkg.coins.toString() }
-            ]
-        }
-    };
-
-    const initializePayment = (config: any) => {
-        // Since we are in a prototype environment, we use usePaystackPayment hook pattern
-        // This is a placeholder for the actual hook call which must be at top level
-    };
-
-    // For the prototype, we'll use a local instance of the payment handler
-    // In a real app, this would be triggered by the button
-  };
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700">
