@@ -14,7 +14,10 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { campuses } from '@/lib/data';
-import { Send, Zap, Loader2, Smile, ImagePlus, X, Youtube, Bot, ShieldCheck, AlertTriangle, Scale } from 'lucide-react';
+import { 
+    Send, Zap, Loader2, Smile, ImagePlus, X, Youtube, Bot, 
+    ShieldCheck, AlertTriangle, Scale, ShieldAlert 
+} from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
