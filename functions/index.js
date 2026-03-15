@@ -307,10 +307,9 @@ exports.pruneNotifications = onSchedule("every 24 hours", async (event) => {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  // Archive or delete notifications older than 30 days
   const expiredSnap = await db.collectionGroup("notifications")
     .where("createdAt", "<", thirtyDaysAgo)
-    .limit(500) // Process in chunks to prevent timeout
+    .limit(500)
     .get();
 
   if (expiredSnap.empty) return null;
@@ -320,6 +319,30 @@ exports.pruneNotifications = onSchedule("every 24 hours", async (event) => {
   await batch.commit();
   
   console.log(`🧹 Liaison: Pruned ${expiredSnap.size} stale notifications from the Yard.`);
+  return null;
+});
+
+/**
+ * 🛡️ ARENA RING: AUTO-END BATTLES
+ */
+exports.endBattle = onSchedule("every 1 minutes", async (event) => {
+  const db = admin.firestore();
+  const now = new Date().toISOString();
+
+  const expiredBattles = await db.collection("arena_battles")
+    .where("status", "==", "live")
+    .where("endsAt", "<=", now)
+    .get();
+
+  if (expiredBattles.empty) return null;
+
+  const batch = db.batch();
+  expiredBattles.forEach(doc => {
+    batch.update(doc.ref, { status: "ended", endedAt: admin.firestore.FieldValue.serverTimestamp() });
+  });
+
+  await batch.commit();
+  console.log(`⚔️ Liaison Arena: Closed ${expiredBattles.size} expired showdowns.`);
   return null;
 });
 

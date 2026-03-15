@@ -1,14 +1,14 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { doc, onSnapshot, collection, query, orderBy, limitToLast, serverTimestamp, addDoc, updateDoc, increment, setDoc, getDoc } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import type { ArenaBattle, BattleMessage } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame
+  Loader2, MessageSquare, Trophy, Flame, Crown
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
  * -----------------------
  * Real-time competitive theater for inter-uni battles.
  * Implements the "Live Comeback Messages" protocol and "Single-Vote Handshake".
+ * Updated with Winner Detection and Automatic End-State handling.
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
@@ -64,13 +65,27 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // 🏆 WINNER DETECTION LOGIC
+  const winnerInfo = useMemo(() => {
+    if (!battle || battle.status !== 'ended' || !battle.votes) return null;
+    const entries = Object.entries(battle.votes);
+    if (entries.length === 0) return null;
+    
+    const sorted = [...entries].sort((a, b) => b[1] - a[1]);
+    const winnerId = sorted[0][0];
+    return {
+        id: winnerId,
+        info: battle.participantInfo[winnerId],
+        isDraw: sorted.length > 1 && sorted[0][1] === sorted[1][1]
+    };
+  }, [battle]);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !firestore || !user) return;
+    if (!message.trim() || !firestore || !user || battle?.status === 'ended') return;
     const text = message.trim();
     setMessage('');
     
-    // 🚀 LIAISON BROADCAST: High-velocity message sync
     addDoc(collection(firestore, 'arena_battles', battleId, 'messages'), {
       userId: user.id,
       userName: user.name,
@@ -80,18 +95,16 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   };
 
   const handleVote = async (participantId: string) => {
-    if (!firestore || !user || hasVoted || isVoting) return;
+    if (!firestore || !user || hasVoted || isVoting || battle?.status === 'ended') return;
     setIsVoting(true);
     
     try {
-      // 🛡️ SECURE HANDSHAKE: Log the individual vote for audit
       const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
       await setDoc(voteRef, { 
         votedFor: participantId,
         timestamp: serverTimestamp() 
       });
 
-      // 📈 ATOMIC TALLY: Update the global counter
       const battleRef = doc(firestore, 'arena_battles', battleId);
       await updateDoc(battleRef, {
         [`votes.${participantId}`]: increment(1)
@@ -121,22 +134,27 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const p1Pct = totalVotes > 0 ? (battle.votes[p1Id] / totalVotes) * 100 : 50;
   const p2Pct = 100 - p1Pct;
 
+  const isEnded = battle.status === 'ended';
+
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
       {/* LEFT: THE RING STAGE (STREAM) */}
       <div className="flex-[2] relative bg-slate-950 flex flex-col">
         <div className="absolute top-6 left-6 z-20 flex items-center gap-4">
           <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white hover:bg-black/60 transition-all"><X size={24}/></button>
-          <div className="bg-red-600 px-4 py-1.5 rounded-xl text-[10px] font-black text-white uppercase tracking-[0.2em] shadow-2xl animate-pulse flex items-center gap-2">
-            <div className="w-1.5 h-1.5 bg-white rounded-full animate-ping" />
-            LIVE BATTLE
+          <div className={cn(
+              "px-4 py-1.5 rounded-xl text-[10px] font-black text-white uppercase tracking-[0.2em] shadow-2xl flex items-center gap-2",
+              isEnded ? "bg-amber-500" : "bg-red-600 animate-pulse"
+          )}>
+            <div className={cn("w-1.5 h-1.5 rounded-full bg-white", !isEnded && "animate-ping")} />
+            {isEnded ? "BATTLE CONCLUDED" : "LIVE BATTLE"}
           </div>
         </div>
 
         <div className="flex-1 w-full bg-black relative">
           <ReactPlayer 
             url={battle.streamUrl} 
-            playing={true} 
+            playing={!isEnded} 
             muted={false} 
             width="100%" height="100%" 
             className="absolute inset-0"
@@ -145,50 +163,69 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           {/* THE HUD: LIVE VOTE STATUS */}
           <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-lg px-6 z-20">
             <div className="bg-slate-950/60 backdrop-blur-xl p-8 rounded-[3rem] border border-white/10 shadow-[0_30px_100px_rgba(0,0,0,0.8)]">
-              <div className="flex justify-between items-end mb-6 px-2">
-                <div className="text-left group">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-blue-400 transition-colors">{p1.campusAcronym}</p>
-                  <p className="text-3xl font-black text-white tabular-nums">{battle.votes[p1Id] || 0}</p>
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <Swords size={24} className="text-red-500 animate-bounce" />
-                  <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.3em]">Energy</p>
-                </div>
-                <div className="text-right group">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-amber-400 transition-colors">{p2.campusAcronym}</p>
-                  <p className="text-3xl font-black text-white tabular-nums">{battle.votes[p2Id] || 0}</p>
-                </div>
-              </div>
-
-              {/* DYNAMIC ENERGY BAR */}
-              <div className="h-4 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/5 mb-8 shadow-inner">
-                <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(37,99,235,0.5)]" style={{ width: `${p1Pct}%` }} />
-                <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(245,158,11,0.5)]" style={{ width: `${p2Pct}%` }} />
-              </div>
               
-              {!hasVoted ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => handleVote(p1Id)} 
-                    disabled={isVoting}
-                    className="py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all disabled:opacity-50"
-                  >
-                    VOTE {p1.campusAcronym}
-                  </button>
-                  <button 
-                    onClick={() => handleVote(p2Id)} 
-                    disabled={isVoting}
-                    className="py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all disabled:opacity-50"
-                  >
-                    VOTE {p2.campusAcronym}
-                  </button>
+              {isEnded && winnerInfo ? (
+                <div className="text-center py-4 animate-in zoom-in duration-500">
+                    <div className="flex justify-center mb-4">
+                        <div className="p-4 bg-amber-500 rounded-full shadow-[0_0_30px_rgba(245,158,11,0.5)]">
+                            <Trophy size={48} className="text-slate-950" />
+                        </div>
+                    </div>
+                    <h2 className="text-3xl font-black italic text-amber-500 tracking-tighter uppercase mb-1">
+                        {winnerInfo.isDraw ? "Mutual Incineration" : `${winnerInfo.info.campusAcronym} VICTORIOUS`}
+                    </h2>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
+                        {winnerInfo.isDraw ? "The Yard is split" : `Salute to ${winnerInfo.info.name}`}
+                    </p>
                 </div>
               ) : (
-                <div className="text-center py-4 bg-white/5 rounded-2xl border border-white/5 animate-in zoom-in-95">
-                   <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-                     <CheckCircle size={14} /> Vote Authenticated
-                   </p>
-                </div>
+                <>
+                    <div className="flex justify-between items-end mb-6 px-2">
+                        <div className="text-left group">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-blue-400 transition-colors">{p1.campusAcronym}</p>
+                        <p className="text-3xl font-black text-white tabular-nums">{battle.votes[p1Id] || 0}</p>
+                        </div>
+                        <div className="flex flex-col items-center gap-1">
+                        <Swords size={24} className="text-red-500 animate-bounce" />
+                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-[0.3em]">Energy</p>
+                        </div>
+                        <div className="text-right group">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 group-hover:text-amber-400 transition-colors">{p2.campusAcronym}</p>
+                        <p className="text-3xl font-black text-white tabular-nums">{battle.votes[p2Id] || 0}</p>
+                        </div>
+                    </div>
+
+                    {/* DYNAMIC ENERGY BAR */}
+                    <div className="h-4 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/5 mb-8 shadow-inner">
+                        <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(37,99,235,0.5)]" style={{ width: `${p1Pct}%` }} />
+                        <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(245,158,11,0.5)]" style={{ width: `${p2Pct}%` }} />
+                    </div>
+                    
+                    {!hasVoted ? (
+                        <div className="grid grid-cols-2 gap-4">
+                        <button 
+                            onClick={() => handleVote(p1Id)} 
+                            disabled={isVoting}
+                            className="py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all disabled:opacity-50"
+                        >
+                            VOTE {p1.campusAcronym}
+                        </button>
+                        <button 
+                            onClick={() => handleVote(p2Id)} 
+                            disabled={isVoting}
+                            className="py-4 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all disabled:opacity-50"
+                        >
+                            VOTE {p2.campusAcronym}
+                        </button>
+                        </div>
+                    ) : (
+                        <div className="text-center py-4 bg-white/5 rounded-2xl border border-white/5 animate-in zoom-in-95">
+                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
+                            <CheckCircle size={14} /> Vote Authenticated
+                        </p>
+                        </div>
+                    )}
+                </>
               )}
             </div>
           </div>
@@ -201,8 +238,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           <div>
             <h3 className="text-white font-black italic tracking-tight uppercase">{battle.title}</h3>
             <div className="flex items-center gap-2 mt-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{battle.viewerCount} Spectators</span>
+              <div className={cn("w-1.5 h-1.5 rounded-full", isEnded ? "bg-slate-500" : "bg-red-500 animate-pulse")} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{isEnded ? "Battle Archived" : `${battle.viewerCount} Spectators`}</span>
             </div>
           </div>
           <div className="p-3 bg-white/5 rounded-2xl text-slate-400"><MessageSquare size={20} /></div>
@@ -238,21 +275,23 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           <div ref={scrollRef} />
         </div>
 
-        <form onSubmit={handleSendMessage} className="p-6 bg-slate-950/80 border-t border-white/10 flex gap-2">
-          <input 
-            value={message}
-            onChange={e => setMessage(e.target.value)}
-            placeholder="Throw some live shade..."
-            className="flex-1 bg-white/5 rounded-[1.5rem] px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-600 transition-all font-bold placeholder:text-slate-600 shadow-inner"
-          />
-          <button 
-            type="submit" 
-            disabled={!message.trim()} 
-            className="p-4 bg-red-600 text-white rounded-full active:scale-90 transition-all shadow-lg shadow-red-900/40 disabled:opacity-30 flex items-center justify-center"
-          >
-            <Send size={20} />
-          </button>
-        </form>
+        {!isEnded && (
+            <form onSubmit={handleSendMessage} className="p-6 bg-slate-950/80 border-t border-white/10 flex gap-2">
+            <input 
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                placeholder="Throw some live shade..."
+                className="flex-1 bg-white/5 rounded-[1.5rem] px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-red-600 transition-all font-bold placeholder:text-slate-600 shadow-inner"
+            />
+            <button 
+                type="submit" 
+                disabled={!message.trim()} 
+                className="p-4 bg-red-600 text-white rounded-full active:scale-90 transition-all shadow-lg shadow-red-900/40 disabled:opacity-30 flex items-center justify-center"
+            >
+                <Send size={20} />
+            </button>
+            </form>
+        )}
       </div>
     </div>
   );
