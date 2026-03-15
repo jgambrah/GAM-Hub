@@ -20,6 +20,7 @@ import { useToast } from '@/hooks/use-toast';
  * -----------------------
  * Real-time competitive stage for inter-uni showdowns.
  * Features a Dual-Stream side-by-side grid.
+ * Fixed: Added defensive checks for opponentA/B data to prevent TypeError.
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
@@ -79,19 +80,19 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   };
 
   const handleVote = async (targetUserId: string) => {
-    if (!firestore || !user || hasVoted || isVoting || battle?.status === 'ended') return;
+    if (!firestore || !user || hasVoted || isVoting || !battle || battle.status === 'ended') return;
     setIsVoting(true);
     
     try {
       const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
       await setDoc(voteRef, { votedFor: targetUserId, timestamp: serverTimestamp() });
 
-      const isOpponentA = targetUserId === battle.opponentA.userId;
+      const isOpponentA = targetUserId === battle.opponentA?.userId;
       const battleRef = doc(firestore, 'arena_battles', battleId);
       
       await updateDoc(battleRef, {
         [isOpponentA ? 'opponentA.votes' : 'opponentB.votes']: increment(1),
-        [`votes.${targetUserId}`]: increment(1) // Keep flat map for Cloud Function compatibility
+        [`votes.${targetUserId}`]: increment(1)
       });
 
       setHasVoted(true);
@@ -103,14 +104,24 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     }
   };
 
-  if (!battle) return null;
+  // 🛡️ LIAISON DEFENSE: Wait for full data sync before rendering competitors
+  if (!battle || !battle.opponentA || !battle.opponentB) {
+    return (
+        <div className="fixed inset-0 z-[7000] bg-black flex items-center justify-center">
+            <div className="text-center space-y-4">
+                <Loader2 className="h-12 w-12 animate-spin text-red-600 mx-auto" />
+                <p className="text-sm font-black text-slate-400 uppercase tracking-widest">Calibrating Battle Stream...</p>
+            </div>
+        </div>
+    );
+  }
 
-  const { opponentA, opponentB, participantInfo } = battle;
+  const { opponentA, opponentB, participantInfo = {} } = battle;
   const p1 = participantInfo[opponentA.userId];
   const p2 = participantInfo[opponentB.userId];
   
-  const totalVotes = opponentA.votes + opponentB.votes;
-  const p1Pct = totalVotes > 0 ? (opponentA.votes / totalVotes) * 100 : 50;
+  const totalVotes = (opponentA.votes || 0) + (opponentB.votes || 0);
+  const p1Pct = totalVotes > 0 ? ((opponentA.votes || 0) / totalVotes) * 100 : 50;
   const p2Pct = 100 - p1Pct;
 
   const isEnded = battle.status === 'ended';
@@ -140,10 +151,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           <div className="relative rounded-[2rem] overflow-hidden border-4 border-white/5 bg-black group transition-all duration-700">
             <ReactPlayer url={opponentA.videoUrl} playing={!isEnded} muted={false} width="100%" height="100%" className="absolute inset-0" />
             <div className="absolute bottom-6 left-6 z-20 flex items-center gap-3">
-                <Avatar className="h-10 w-10 border-2 border-white"><AvatarImage src={p1?.avatarUrl} /><AvatarFallback>{p1?.name?.[0]}</AvatarFallback></Avatar>
+                <Avatar className="h-10 w-10 border-2 border-white shadow-xl">
+                    <AvatarImage src={p1?.avatarUrl} />
+                    <AvatarFallback>{p1?.name?.[0] || 'A'}</AvatarFallback>
+                </Avatar>
                 <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10">
-                    <p className="text-[9px] font-black text-white uppercase tracking-widest">{p1?.campusAcronym}</p>
-                    <p className="text-xs font-bold text-white">{p1?.name}</p>
+                    <p className="text-[9px] font-black text-white uppercase tracking-widest">{p1?.campusAcronym || 'GH'}</p>
+                    <p className="text-xs font-bold text-white">{p1?.name || 'Opponent A'}</p>
                 </div>
             </div>
           </div>
@@ -151,10 +165,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           <div className="relative rounded-[2rem] overflow-hidden border-4 border-white/5 bg-black group transition-all duration-700">
             <ReactPlayer url={opponentB.videoUrl} playing={!isEnded} muted={false} width="100%" height="100%" className="absolute inset-0" />
             <div className="absolute bottom-6 right-6 z-20 flex items-center gap-3 flex-row-reverse">
-                <Avatar className="h-10 w-10 border-2 border-white"><AvatarImage src={p2?.avatarUrl} /><AvatarFallback>{p2?.name?.[0]}</AvatarFallback></Avatar>
+                <Avatar className="h-10 w-10 border-2 border-white shadow-xl">
+                    <AvatarImage src={p2?.avatarUrl} />
+                    <AvatarFallback>{p2?.name?.[0] || 'B'}</AvatarFallback>
+                </Avatar>
                 <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-right">
-                    <p className="text-[9px] font-black text-white uppercase tracking-widest">{p2?.campusAcronym}</p>
-                    <p className="text-xs font-bold text-white">{p2?.name}</p>
+                    <p className="text-[9px] font-black text-white uppercase tracking-widest">{p2?.campusAcronym || 'GH'}</p>
+                    <p className="text-xs font-bold text-white">{p2?.name || 'Opponent B'}</p>
                 </div>
             </div>
           </div>
@@ -164,9 +181,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-2xl px-6 z-50">
           <div className="bg-slate-950/80 backdrop-blur-xl p-8 rounded-[3.5rem] border border-white/10 shadow-2xl">
             <div className="flex justify-between items-end mb-6 px-4">
-                <div className="text-left"><p className="text-[10px] font-black text-blue-400 uppercase">{p1?.campusAcronym}</p><p className="text-4xl font-black text-white">{opponentA.votes}</p></div>
+                <div className="text-left"><p className="text-[10px] font-black text-blue-400 uppercase">{p1?.campusAcronym || 'A'}</p><p className="text-4xl font-black text-white">{opponentA.votes || 0}</p></div>
                 <Swords size={32} className="text-red-600 animate-pulse mb-2" />
-                <div className="text-right"><p className="text-[10px] font-black text-amber-400 uppercase">{p2?.campusAcronym}</p><p className="text-4xl font-black text-white">{opponentB.votes}</p></div>
+                <div className="text-right"><p className="text-[10px] font-black text-amber-400 uppercase">{p2?.campusAcronym || 'B'}</p><p className="text-4xl font-black text-white">{opponentB.votes || 0}</p></div>
             </div>
 
             <div className="h-5 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/10 mb-8 shadow-inner relative">
@@ -177,13 +194,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             
             {!hasVoted && !isEnded ? (
                 <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => handleVote(opponentA.userId)} className="py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all">BOOST {p1?.campusAcronym}</button>
-                <button onClick={() => handleVote(opponentB.userId)} className="py-5 bg-amber-500 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all">BOOST {p2?.campusAcronym}</button>
+                <button onClick={() => handleVote(opponentA.userId)} className="py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all">BOOST {p1?.campusAcronym || 'A'}</button>
+                <button onClick={() => handleVote(opponentB.userId)} className="py-5 bg-amber-500 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all">BOOST {p2?.campusAcronym || 'B'}</button>
                 </div>
             ) : (
-                <div className="text-center py-5 bg-white/5 rounded-2xl border border-white/5">
+                <div className="text-center py-5 bg-white/5 rounded-2xl border border-white/5 animate-in zoom-in-95">
                 <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-                    <CheckCircle2 size={14} /> Vote Logged in National Hub
+                    <CheckCircle2 size={14} /> Vote Authenticated in National Hub
                 </p>
                 </div>
             )}
