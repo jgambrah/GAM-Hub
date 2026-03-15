@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -35,6 +34,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollArea, ScrollBar } from '../ui/scroll-area';
 import { Badge } from '../ui/badge';
 import { Label } from '../ui/label';
+import { Skeleton } from '../ui/skeleton';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },

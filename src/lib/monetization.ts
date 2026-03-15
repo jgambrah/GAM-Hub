@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -106,6 +105,7 @@ export async function spendCoins(
       }, { merge: true });
 
       // B. Leaderboard Impact Tracking
+      // Increments boostsReceived or giftsReceived based on transaction type
       const leaderRef = doc(db, 'arena_leaderboard', creatorId);
       transaction.set(leaderRef, {
         boostsReceived: type === 'powerup_used' ? increment(1) : increment(0),
