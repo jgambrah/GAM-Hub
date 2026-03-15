@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -54,7 +55,8 @@ interface LocalBurst {
  * LiveBattleRoom Component
  * -----------------------
  * Real-time competitive stage for inter-uni showdowns.
- * Features dual-stream visualization, live voting, weighted power-ups, and AI Referee.
+ * Optimized for Spectator Scaling: Primary scoreboard syncs via single doc listener.
+ * Sub-collections (Reactions/Powerups) use low-limit ephemeral listeners for visual bursts only.
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
@@ -68,11 +70,16 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [hasVoted, setHasVoted] = useState(false);
   const [verdictLoading, setVerdictLoading] = useState(false);
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
+  
+  // 🛡️ ANTI-SPAM PROTOCOL STATE
   const [lastPowerUpTime, setLastPowerUpTime] = useState(0);
+  const [userBoostCount, setUserBoostCount] = useState(0);
+  const MAX_BOOSTS_PER_BATTLE = 10;
+  const COOLDOWN_MS = 5000;
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. REAL-TIME BATTLE SYNC
+  // 1. 🏎️ SPECTATOR OPTIMIZATION: Real-time sync with main battle doc ONLY
   const battleRef = useMemoFirebase(() => {
     if (!firestore || !battleId) return null;
     return doc(firestore, 'arena_battles', battleId);
@@ -111,7 +118,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 3. REACTION LISTENER: Synchronized Emoji Bursts
+  // 3. 📡 VISUAL BURST LISTENER: Optimized to last 5 events
   useEffect(() => {
     if (!firestore || !battleId) return;
     const q = query(
@@ -123,28 +130,31 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         snap.docChanges().forEach((change) => {
             if (change.type === 'added') {
                 const data = change.doc.data();
-                const newBurst = {
-                    id: change.doc.id,
-                    emoji: data.emoji,
-                    x: 20 + Math.random() * 60
-                };
-                setBursts(prev => [...prev, newBurst]);
-                setTimeout(() => {
-                    setBursts(prev => prev.filter(b => b.id !== newBurst.id));
-                }, 2000);
+                const isRecent = data.createdAt ? (Date.now() - (data.createdAt?.toMillis?.() || Date.now()) < 3000) : true;
+                if (isRecent) {
+                    const newBurst = {
+                        id: change.doc.id,
+                        emoji: data.emoji,
+                        x: 20 + Math.random() * 60
+                    };
+                    setBursts(prev => [...prev, newBurst]);
+                    setTimeout(() => {
+                        setBursts(prev => prev.filter(b => b.id !== newBurst.id));
+                    }, 2000);
+                }
             }
         });
     });
     return () => unsub();
   }, [firestore, battleId]);
 
-  // 4. POWER-UP LISTENER: Trigger high-impact notifications
+  // 4. POWER-UP NOTIFICATION LISTENER
   useEffect(() => {
     if (!firestore || !battleId || !battle) return;
     const q = query(
         collection(firestore, 'arena_battles', battleId, 'powerups'),
         orderBy('createdAt', 'desc'),
-        limitToLast(5)
+        limitToLast(3)
     );
     const unsub = onSnapshot(q, (snap) => {
         snap.docChanges().forEach((change) => {
@@ -174,7 +184,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return () => unsub();
   }, [firestore, battleId, battle, p1.campusAcronym, p2.campusAcronym, toast]);
 
-  // 5. JUDGMENT PROTOCOL
+  // 5. JUDGMENT PROTOCOL: Liaison AI Referee
   useEffect(() => {
     if (!battle || battle.status !== 'ended' || battle.aiVerdict || !user || !firestore) return;
 
@@ -218,7 +228,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     if (!message.trim() || !firestore || !user || battle?.status === 'ended') return;
     const text = message.trim();
     setMessage('');
-    addDoc(collection(firestore, 'arena_battles', battleId, 'messages'), { 
+    addDoc(collection(firestore, "arena_battles", battleId, "messages"), { 
         userId: user.id, 
         userName: user.name, 
         text, 
@@ -263,8 +273,22 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     
     // 🛡️ ANTI-SPAM PROTOCOL: 5 Second Cooldown
     const now = Date.now();
-    if (now - lastPowerUpTime < 5000) {
-        toast({ variant: 'destructive', title: 'Slow down!', description: 'Please wait a few seconds before boosting again.' });
+    if (now - lastPowerUpTime < COOLDOWN_MS) {
+        toast({ 
+            variant: 'destructive', 
+            title: 'Slow down, Citizen!', 
+            description: `Handshake protocol in cooldown. Wait ${Math.ceil((COOLDOWN_MS - (now - lastPowerUpTime)) / 1000)}s.` 
+        });
+        return;
+    }
+
+    // 🛡️ BOOST LIMIT: Max 10 per battle
+    if (userBoostCount >= MAX_BOOSTS_PER_BATTLE) {
+        toast({ 
+            variant: 'destructive', 
+            title: 'Energy Exhausted', 
+            description: "You've deployed the maximum allowed vibe artillery for this showdown." 
+        });
         return;
     }
 
@@ -272,6 +296,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     if (!targetUserId) return;
 
     setLastPowerUpTime(now);
+    setUserBoostCount(prev => prev + 1);
 
     try {
         addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), {
@@ -323,7 +348,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
         
-        {/* REACTION LAYER */}
+        {/* REACTION LAYER (Synchronized Vibe Bursts) */}
         <div className="absolute inset-0 pointer-events-none z-[60]">
             <AnimatePresence>
                 {bursts.map(b => (
@@ -342,6 +367,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             </AnimatePresence>
         </div>
 
+        {/* CONTROLS HUB */}
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center">
           <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 active:scale-90 transition-all shadow-xl">
             <X size={24}/>
@@ -360,6 +386,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           </button>
         </div>
 
+        {/* END GAME OVERLAY: VICTORY THEATER */}
         {isEnded && (
             <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/95 backdrop-blur-3xl animate-in zoom-in duration-700 overflow-y-auto">
                 <div className="max-w-xl w-full text-center space-y-8 py-10">
@@ -423,6 +450,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             </div>
         )}
 
+        {/* REAL-TIME NATIONAL SCOREBOARD (Top Center) */}
         <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
             <div className="bg-black/60 backdrop-blur-xl p-4 rounded-[2rem] border border-white/10 shadow-2xl flex items-center justify-between gap-8">
                 <div className="text-center flex-1">
@@ -437,6 +465,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             </div>
         </div>
 
+        {/* DUAL STREAM GRID */}
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1 md:gap-4 p-1 md:p-4 bg-slate-900">
           <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
             <ReactPlayer url={opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" playsinline />
@@ -466,14 +495,18 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           </div>
         </div>
 
+        {/* ACTION HUD: VOTING & POWER-UPS */}
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-2xl px-6 z-50">
           <div className="bg-slate-950/80 backdrop-blur-xl p-8 rounded-[3.5rem] border border-white/10 shadow-2xl">
+            
+            {/* NATIONAL ENERGY BAR (Tug-of-War Visual) */}
             <div className="h-5 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/10 mb-8 shadow-inner relative">
                 <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full shadow-[0_0_20px_rgba(37,99,235,0.4)]" style={{ width: `${p1Pct}%` }} />
                 <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full shadow-[0_0_20px_rgba(245,158,11,0.4)]" style={{ width: `${p2Pct}%` }} />
                 <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/20 -translate-x-1/2" />
             </div>
 
+            {/* VOTE COMMANDS */}
             {!hasVoted && !isEnded ? (
                 <div className="grid grid-cols-2 gap-4">
                     <button onClick={() => handleVote('A')} disabled={isVoting} className="group relative py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest active:scale-95 transition-all shadow-xl hover:bg-blue-500">
@@ -483,7 +516,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         VOTE {p2?.campusAcronym}
                     </button>
                 </div>
-            ) : (
+            ) : !isEnded && (
                 <div className="text-center py-5 bg-white/5 rounded-2xl border border-white/5 animate-in zoom-in-95">
                     <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
                         <CheckCircle2 className="text-emerald-500" size={14} /> Vote Authenticated
@@ -494,11 +527,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         </div>
       </div>
 
+      {/* CHAT & BOOST SIDEBAR */}
       <div className="flex-1 bg-slate-900 flex flex-col shadow-2xl max-h-screen">
         <div className="p-6 border-b border-white/5 bg-slate-950/50 flex justify-between items-center flex-shrink-0">
           <div>
             <h3 className="text-white font-black italic tracking-tight uppercase truncate max-w-[180px]">{battle.title}</h3>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Comeback Hub</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">National Showdown Node</span>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setInputMode('chat')} className={cn("p-2 rounded-xl transition-all", inputMode === 'chat' ? "bg-blue-600 text-white" : "text-slate-500 hover:text-white")}><MessageSquare size={18}/></button>
@@ -522,7 +556,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         </div>
 
         <div className="p-6 bg-slate-950 border-t border-white/5">
-            {inputMode === 'chat' && (
+            {inputMode === 'chat' ? (
                 <form onSubmit={handleSendMessage} className="flex gap-2">
                     <input 
                         value={message} 
@@ -534,11 +568,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         <Send size={20} />
                     </button>
                 </form>
-            )}
-
-            {inputMode === 'boost' && (
+            ) : (
                 <div className="space-y-4 animate-in slide-in-from-bottom-4">
-                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest text-center mb-2">⚡ Boost Your Champion</p>
+                    <div className="flex items-center justify-between px-2">
+                        <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest">⚡ Audience Power-Ups</p>
+                        <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Limit: {userBoostCount}/{MAX_BOOSTS_PER_BATTLE}</span>
+                    </div>
                     <div className="grid grid-cols-3 gap-2">
                         {POWER_UPS.map(up => (
                             <div key={up.type} className="flex flex-col gap-2">
