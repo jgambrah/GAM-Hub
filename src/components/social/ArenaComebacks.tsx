@@ -7,7 +7,7 @@ import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { campuses } from '@/lib/data';
-import { Send, Zap, Loader2, Smile, ImagePlus, Video, X, Play, Youtube, Bot, ShieldAlert, AlertTriangle, Scale, ShieldCheck } from 'lucide-react';
+import { Send, Zap, Loader2, Smile, ImagePlus, X, Youtube, Bot, ShieldCheck, AlertTriangle, Scale } from 'lucide-react';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -16,7 +16,7 @@ import Image from 'next/image';
 import { TikTokEmbed } from './tiktok-embed';
 import { cn } from '@/lib/utils';
 import YouTube from 'react-youtube';
-import { getBattleVerdict, type RefereeOutput } from '@/ai/flows/arena-referee-flow';
+import { getBattleVerdict } from '@/ai/flows/arena-referee-flow';
 
 const getYouTubeId = (url: string) => {
     if (!url) return null;
@@ -142,7 +142,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     const selectedFile = e.target.files?.[0]
     if (!selectedFile) return
 
-    // Size guard (10MB max)
     if (selectedFile.size > 10 * 1024 * 1024) {
       toast({
         variant: "destructive",
@@ -177,8 +176,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     e.preventDefault();
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
 
-    // 🛡️ CONTENT MODERATION GUARD
-    const bannedWords = ["slur1", "slur2"]; // Placeholder for actual banned words
+    const bannedWords = ["slur1", "slur2"];
     if (bannedWords.some(word => text.toLowerCase().includes(word))) {
       toast({
         variant: "destructive",
@@ -188,7 +186,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       return;
     }
 
-    // 🛡️ ANTI-SPAM HANDSHAKE: Check Cooldown
     const lastReplyRef = doc(firestore, "users", userProfile.id, "rateLimits", "arenaReply");
     const lastSnap = await getDoc(lastReplyRef);
 
@@ -233,8 +230,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
           uploadTask.on(
             "state_changed",
             (snapshot) => {
-              const progress =
-                (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
               setUploadProgress(progress);
             },
             reject,
@@ -251,8 +247,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       
       await addDocumentNonBlocking(collection(firestore, 'campus_pulse', post.id, 'comebacks'), comebackData);
       await updateDocumentNonBlocking(doc(firestore, 'campus_pulse', post.id), { comebackCount: increment(1) });
-      
-      // Update the cooldown timestamp after successful post initiation
       await setDoc(lastReplyRef, { time: serverTimestamp() });
       
       resetInputs();
@@ -265,17 +259,34 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   };
 
   const handleRequestVerdict = async () => {
-    if (!firestore || !comebacks || comebacks.length < 2) {
-        toast({ variant: 'destructive', title: "More comebacks needed", description: "The AI Referee needs more vibrations to analyze this battle." });
+    if (!firestore || !comebacks) return;
+
+    const alreadyJudged = comebacks.some(c => c.isBot);
+    if (alreadyJudged) {
+      toast({
+        title: "Verdict already delivered.",
+        description: "The AI Referee has already spoken on this battle."
+      });
+      return;
+    }
+
+    const realReplies = comebacks.filter(c => !c.isBot);
+    if (realReplies.length < 3) {
+        toast({ 
+            variant: 'destructive', 
+            title: "More comebacks needed", 
+            description: "The AI Referee needs at least 3 real comebacks to analyze this battle properly." 
+        });
         return;
     }
+
     setIsRefereeing(true);
     try {
         const result = await getBattleVerdict({
             originalShade: post.content,
             originalCampus: post.authorAcronym || post.authorCampus || '??',
             targetCampus: post.targetCampus || 'National',
-            comebacks: comebacks.filter(c => !c.isBot).map(c => c.text)
+            comebacks: realReplies.map(c => c.text)
         });
 
         const comebackData = {
@@ -311,13 +322,13 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
             <Zap size={12} className="text-red-500 animate-pulse" /> Live Comebacks
         </h4>
-        {comebacks && comebacks.length >= 2 && !comebacks.some(c => c.isBot) && (
+        {comebacks && comebacks.length >= 3 && !comebacks.some(c => c.isBot) && (
             <button 
                 onClick={handleRequestVerdict}
                 disabled={isRefereeing}
                 className="bg-slate-900 text-amber-500 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg active:scale-95 disabled:opacity-50"
             >
-                {isRefereeing ? <Loader2 size={12} className="animate-spin" /> : <Scale size={12} />}
+                {isRefereeing ? <Loader2 className="animate-spin" size={12} /> : <Scale size={12} />}
                 Consult AI Referee
             </button>
         )}
@@ -331,7 +342,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
             </div>
         ) : comebacks?.length === 0 ? (
              <div className="py-16 text-center opacity-30">
-                <ShieldAlert className="mx-auto mb-4" size={48} />
+                <Scale className="mx-auto mb-4" size={48} />
                 <p className="text-[10px] font-black uppercase tracking-[0.4em]">Battle Ground Silent</p>
              </div>
         ) : (
@@ -365,7 +376,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
           <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3.5 text-muted-foreground hover:text-amber-500 rounded-full transition-colors"><Smile size={24}/></button>
           <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3.5 text-muted-foreground hover:text-blue-500 rounded-full transition-colors"><ImagePlus size={24}/></button>
           <button type="button" onClick={() => setShowUrlInput(!showUrlInput)} className="p-3.5 text-muted-foreground hover:text-red-500 rounded-full transition-colors"><Youtube size={24}/></button>
-          <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" />
+          <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileChange} />
           <input ref={textInputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder="Drop your battle response..." className="flex-1 bg-transparent border-none outline-none text-sm font-black text-foreground placeholder:text-muted-foreground/60" disabled={isPosting} />
           <button type="submit" disabled={isPosting || (!text.trim() && !videoUrl.trim() && !file)} className="p-5 bg-slate-900 text-white rounded-full active:scale-90 transition-transform shadow-xl disabled:opacity-30">
             {isPosting ? <Loader2 className="animate-spin" size={24}/> : <Send size={24} />}
