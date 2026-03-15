@@ -1,3 +1,4 @@
+
 'use client';
 
 import { usePathname } from 'next/navigation';
@@ -5,10 +6,12 @@ import {
   FlameKindling, Flame, LayoutDashboard, ShoppingBag, Users, Building, Settings, UserCheck, 
   Link, CreditCard, MessagesSquare, ShieldAlert, Landmark, Banknote, Sparkles, MapPin, 
   Globe, BookOpen, PackageCheck, Wallet, History, Zap, Star, Gavel, Key, FileCheck, TrendingUp, Rss,
-  Megaphone, ChevronRight
+  Megaphone, ChevronRight, Coins
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import type { NavItem } from '@/lib/types';
+import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
+import { doc } from 'firebase/firestore';
+import type { NavItem, HubWallet } from '@/lib/types';
 import {
   Sidebar,
   SidebarContent,
@@ -34,6 +37,7 @@ const navItems: NavItem[] = [
   { href: '/pulse', label: 'Campus Pulse', icon: Rss, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/explore', label: 'Explore', icon: Globe, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/arena', label: 'The Arena', icon: Flame, roles: ['student', 'staff', 'admin', 'src'] },
+  { href: '/wallet', label: 'My Wallet', icon: Wallet, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/registry', label: 'The Registry', icon: Landmark, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/products', label: 'Products', icon: ShoppingBag, roles: ['student', 'staff', 'admin', 'src'] },
   { href: '/chat', label: 'Chat', icon: MessagesSquare, roles: ['student', 'staff', 'src'] },
@@ -123,22 +127,50 @@ const vendorNavItems = [
 
 export function AppSidebar() {
   const { user, campus, isAdmin, isUserLoading } = useAuth();
+  const { firestore } = useFirebase();
   const { viewMode } = useView();
   const { viewAsCampus } = useCampusView();
   const pathname = usePathname();
+
+  // 💰 LIVE WALLET SYNC
+  const walletRef = useMemoFirebase(() => {
+    if (!firestore || !user?.id) return null;
+    return doc(firestore, 'wallets', user.id);
+  }, [firestore, user?.id]);
+  const { data: wallet } = useDoc<HubWallet>(walletRef);
 
   const displayCampus = isAdmin ? (viewAsCampus ?? { acronym: 'GAM', name: 'Global Admin View' }) : campus;
 
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="flex items-center gap-3">
-            <FlameKindling className="h-8 w-8 text-sidebar-primary" />
-            <div className="flex flex-col">
-                <span className="font-headline text-xl font-semibold leading-tight text-sidebar-primary">{displayCampus?.acronym ?? 'GAM'}</span>
-                <span className="text-xs text-sidebar-foreground/70 leading-tight group-data-[collapsible=icon]:hidden">{displayCampus?.name}</span>
+        <div className="flex items-center justify-between p-2">
+            <div className="flex items-center gap-3">
+                <FlameKindling className="h-8 w-8 text-sidebar-primary" />
+                <div className="flex flex-col">
+                    <span className="font-headline text-xl font-semibold leading-tight text-sidebar-primary">{displayCampus?.acronym ?? 'GAM'}</span>
+                    <span className="text-[10px] text-sidebar-foreground/70 leading-tight group-data-[collapsible=icon]:hidden uppercase font-black tracking-widest">{displayCampus?.name}</span>
+                </div>
             </div>
         </div>
+        
+        {/* COIN HUD */}
+        {!isUserLoading && user && (
+            <div className="mx-2 mt-2 p-3 bg-slate-900 text-white rounded-2xl flex items-center justify-between shadow-xl group-data-[collapsible=icon]:hidden animate-in zoom-in duration-500">
+                <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-500 rounded-lg text-slate-950">
+                        <Zap size={12} fill="currentColor" />
+                    </div>
+                    <div>
+                        <p className="text-[8px] font-black uppercase text-slate-500 tracking-widest">Artillery</p>
+                        <p className="text-xs font-black tabular-nums">{wallet?.coins || 0} Coins</p>
+                    </div>
+                </div>
+                <a href="/wallet" className="p-1.5 hover:bg-white/10 rounded-lg text-blue-400 transition-all">
+                    <Plus size={14} />
+                </a>
+            </div>
+        )}
       </SidebarHeader>
       <SidebarContent>
         {isUserLoading ? (

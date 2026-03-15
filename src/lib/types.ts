@@ -35,6 +35,14 @@ export type User = {
   candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
 };
 
+export type HubWallet = {
+  id: string;
+  coins: number;
+  totalPurchased: number;
+  totalSpent: number;
+  updatedAt: any;
+};
+
 export type ArenaBattle = {
   id: string;
   title: string;

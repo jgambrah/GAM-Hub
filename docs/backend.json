@@ -42,6 +42,17 @@
       },
       "required": ["id", "email", "role"]
     },
+    "HubWallet": {
+      "title": "HubWallet",
+      "type": "object",
+      "description": "The monetization node for individual users to participate in Arena economy.",
+      "properties": {
+        "coins": { "type": "number" },
+        "totalPurchased": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "ArenaBattle": {
       "title": "ArenaBattle",
       "type": "object",
@@ -67,66 +78,8 @@
             "votes": { "type": "number" }
           }
         },
-        "aiVerdict": {
-          "type": "object",
-          "properties": {
-            "verdict": { "type": "string" },
-            "burnLevel": { "type": "number" },
-            "winner": { "type": "string" },
-            "refereeAdvice": { "type": "string" }
-          }
-        },
-        "participants": { "type": "array", "items": { "type": "string" } },
-        "viewerCount": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "endsAt": { "type": "string", "format": "date-time" }
+        "viewerCount": { "type": "number" }
       }
-    },
-    "EngagementEvent": {
-      "title": "EngagementEvent",
-      "type": "object",
-      "description": "A discrete interaction event used to detect highlight spikes.",
-      "properties": {
-        "type": { "type": "string", "enum": ["vote", "powerup", "reaction"] },
-        "side": { "type": "string", "enum": ["A", "B"] },
-        "weight": { "type": "number" },
-        "timestamp": { "type": "string", "format": "date-time" }
-      }
-    },
-    "ArenaHighlight": {
-      "title": "ArenaHighlight",
-      "type": "object",
-      "description": "A viral clip extracted from an ended Arena battle.",
-      "properties": {
-        "battleId": { "type": "string" },
-        "clipUrl": { "type": "string" },
-        "creatorId": { "type": "string" },
-        "opponentId": { "type": "string" },
-        "startTime": { "type": "number" },
-        "endTime": { "type": "number" },
-        "votesSpike": { "type": "number" },
-        "winnerId": { "type": "string" },
-        "category": { "type": "string", "enum": ["savage_roast", "funniest_comeback", "crowd_favorite", "knockout_moment"] },
-        "createdAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "CampusWar": {
-      "title": "CampusWar",
-      "type": "object",
-      "description": "Large-scale inter-university competition.",
-      "properties": {
-        "id": { "type": "string" },
-        "title": { "type": "string" },
-        "campusAId": { "type": "string" },
-        "campusBId": { "type": "string" },
-        "votesA": { "type": "number" },
-        "votesB": { "type": "number" },
-        "status": { "type": "string", "enum": ["live", "ended"] },
-        "viewerCount": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "endsAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["title", "campusAId", "campusBId", "status"]
     }
   },
   "auth": {
@@ -134,12 +87,8 @@
   },
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
+    "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances for monetization." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
-    "/arena_battles/{battleId}/engagement_events/{eventId}": { "schema": "#/backend/entities/EngagementEvent", "description": "Spike detection logs." },
-    "/arena_highlights/{highlightId}": { "schema": "#/backend/entities/ArenaHighlight", "description": "Viral battle archive." },
-    "/arena_waiting_pool/{entryId}": { "description": "Staging queue for auto-match pairings." },
-    "/campus_wars/{warId}": { "schema": "#/backend/entities/CampusWar", "description": "Large-scale University vs University wars." },
-    "/campus_leaderboard/{campusId}": { "description": "National University rankings." },
-    "/arena_leaderboard/{userId}": { "description": "Individual warrior rankings and highlight counts." }
+    "/campus_pulse/{postId}": { "description": "Social feed content including highlights." }
   }
 }
