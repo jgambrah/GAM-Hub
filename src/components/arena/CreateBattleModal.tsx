@@ -1,0 +1,184 @@
+
+'use client';
+
+import React, { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useFirebase, addDocumentNonBlocking } from '@/firebase';
+import { useAuth } from '@/hooks/use-auth';
+import { useToast } from '@/hooks/use-toast';
+import { collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { Loader2, Swords, Zap, Search, UserPlus, X } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { campuses } from '@/lib/data';
+
+export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
+  const { firestore } = useFirebase();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  
+  const [title, setTitle] = useState('');
+  const [streamUrl, setStreamUrl] = useState('');
+  const [opponentEmail, setOpponentEmail] = useState('');
+  const [opponent, setOpponent] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  const handleSearchOpponent = async () => {
+    if (!opponentEmail || !firestore) return;
+    setSearching(true);
+    try {
+      const q = (await import('firebase/firestore')).query(
+        collection(firestore, 'users'), 
+        (await import('firebase/firestore')).where('email', '==', opponentEmail.toLowerCase())
+      );
+      const snap = await (await import('firebase/firestore')).getDocs(q);
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        setOpponent({ id: d.id, ...d.data() });
+      } else {
+        toast({ variant: 'destructive', title: "Student not found", description: "Ensure they have a GAM Hub account." });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleLaunch = async () => {
+    if (!firestore || !user || !opponent || !title || !streamUrl) return;
+    setIsLoading(true);
+
+    const opponentCampus = campuses.find(c => c.id === opponent.campusId);
+    const myCampus = campuses.find(c => c.id === user.campusId);
+
+    const battleData = {
+      title,
+      streamUrl,
+      creatorId: user.id,
+      creatorName: user.name,
+      participants: [user.id, opponent.id],
+      participantInfo: {
+        [user.id]: {
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+          campusAcronym: myCampus?.acronym || 'GH',
+          primaryColor: myCampus?.primaryColor || '#000'
+        },
+        [opponent.id]: {
+          name: opponent.name,
+          avatarUrl: opponent.avatarUrl,
+          campusAcronym: opponentCampus?.acronym || 'GH',
+          primaryColor: opponentCampus?.primaryColor || '#000'
+        }
+      },
+      status: 'live',
+      votes: {
+        [user.id]: 0,
+        [opponent.id]: 0
+      },
+      viewerCount: 1,
+      createdAt: serverTimestamp(),
+      endsAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() // 30 min duration
+    };
+
+    try {
+      await addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
+      toast({ title: "Battle Live! ⚔️", description: "The Yard is now watching your frequency." });
+      onOpenChange(false);
+    } catch (err) {
+      toast({ variant: 'destructive', title: "Launch Failed" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="rounded-[2.5rem] sm:max-w-md border-none shadow-2xl">
+        <DialogHeader>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-3 bg-red-600 text-white rounded-2xl shadow-lg">
+              <Swords size={24} />
+            </div>
+            <div>
+              <DialogTitle className="text-2xl font-black italic">Launch Live Battle</DialogTitle>
+              <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground">National inter-uni showdown</DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Battle Headline</Label>
+            <Input 
+              placeholder="e.g. UG vs KNUST: The Ultimate Roast" 
+              value={title} 
+              onChange={e => setTitle(e.target.value)} 
+              className="rounded-xl border-none bg-muted font-bold h-12"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Stream Link (YouTube/TikTok)</Label>
+            <Input 
+              placeholder="https://..." 
+              value={streamUrl} 
+              onChange={e => setStreamUrl(e.target.value)} 
+              className="rounded-xl border-none bg-muted font-mono text-xs h-12"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Challenge Opponent (Email)</Label>
+            <div className="relative">
+              <Input 
+                placeholder="opponent@st.edu.gh" 
+                value={opponentEmail} 
+                onChange={e => setOpponentEmail(e.target.value)} 
+                className="rounded-xl border-none bg-muted font-bold h-12 pr-24"
+              />
+              <Button 
+                onClick={handleSearchOpponent}
+                disabled={searching || !opponentEmail}
+                className="absolute right-1 top-1 bottom-1 h-auto rounded-lg bg-slate-900 text-white text-[10px] font-black uppercase px-4"
+              >
+                {searching ? <Loader2 className="animate-spin" size={14} /> : <Search size={14} />}
+              </Button>
+            </div>
+          </div>
+
+          {opponent && (
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border-2 border-blue-100 dark:border-blue-800 flex items-center justify-between animate-in zoom-in-95 duration-200">
+              <div className="flex items-center gap-3">
+                <Avatar className="border-2 border-white shadow-sm">
+                  <AvatarImage src={opponent.avatarUrl} />
+                  <AvatarFallback>{opponent.name.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="font-black text-sm">{opponent.name}</p>
+                  <p className="text-[10px] font-bold text-blue-500 uppercase">{opponent.campusId}</p>
+                </div>
+              </div>
+              <button onClick={() => setOpponent(null)} className="p-1 hover:bg-red-50 rounded-full text-red-500"><X size={16}/></button>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="bg-muted/30 p-6 -mx-6 -mb-6 border-t">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-xl font-bold">Cancel</Button>
+          <Button 
+            onClick={handleLaunch} 
+            disabled={isLoading || !opponent || !title || !streamUrl}
+            className="rounded-xl font-black bg-red-600 text-white px-8 h-12 shadow-xl active:scale-95 transition-all"
+          >
+            {isLoading ? <Loader2 className="animate-spin" /> : <><Zap size={18} fill="currentColor" /> Enter The Arena</>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

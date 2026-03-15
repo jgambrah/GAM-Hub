@@ -35,34 +35,27 @@ export type User = {
   candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
 };
 
-export type Notification = {
+export type ArenaBattle = {
   id: string;
-  type: 
-    | 'like' | 'comment' | 'share' | 'follow' | 'voice_reply' 
-    | 'message' | 'voice_message' | 'group_message'
-    | 'order' | 'price_drop' | 'vendor_reply' | 'product_recommendation'
-    | 'event' | 'hostel_update' | 'department_news' | 'system';
   title: string;
-  message: string;
-  link?: string;
-  actorId?: string;
-  actorName?: string;
-  read: boolean;
+  creatorId: string;
+  creatorName: string;
+  participants: string[];
+  participantInfo: Record<string, { name: string; avatarUrl: string; campusAcronym: string; primaryColor: string }>;
+  status: 'live' | 'ended';
+  streamUrl: string;
+  votes: Record<string, number>;
+  viewerCount: number;
   createdAt: any;
+  endsAt: any;
 };
 
-export type UserIntelligence = {
+export type BattleMessage = {
   id: string;
-  interests: Record<string, number>;
-  affinities: {
-    creators: Record<string, number>;
-    vendors: Record<string, number>;
-  };
-  tasteVector?: number[];
-  pricePreference: { min: number; max: number; };
-  engagementLevel: number;
-  updatedAt: string;
-  currentStrategy?: 'A' | 'B' | 'C' | 'D';
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: any;
 };
 
 export type SocialPost = {
@@ -284,179 +277,18 @@ export type ArenaComeback = {
     createdAt: any;
 };
 
-export type PayoutRequest = {
+export type Notification = {
   id: string;
-  vendorId: string;
-  vendorName: string;
-  amount: number;
-  momoNumber: string;
-  momoBankCode: string;
-  status: 'pending' | 'paid' | 'rejected';
+  type: 
+    | 'like' | 'comment' | 'share' | 'follow' | 'voice_reply' 
+    | 'message' | 'voice_message' | 'group_message'
+    | 'order' | 'price_drop' | 'vendor_reply' | 'product_recommendation'
+    | 'event' | 'hostel_update' | 'department_news' | 'system';
+  title: string;
+  message: string;
+  link?: string;
+  actorId?: string;
+  actorName?: string;
+  read: boolean;
   createdAt: any;
 };
-
-export type DemandSignal = {
-  id: string;
-  item: string;
-  category: string;
-  campusId: string;
-  demandCount: number;
-  lastUpdated: any;
-};
-
-export type MarketRequest = {
-  id: string;
-  userId: string;
-  userName: string;
-  query: string;
-  category: string;
-  tags: string[];
-  condition: 'new' | 'used' | 'any';
-  campusId: string;
-  location: string;
-  createdAt: any;
-  status: 'open' | 'closed';
-};
-
-export type SpotlightItem = {
-  id: string;
-  title: string;
-  type: 'vendor' | 'student' | 'vlog' | 'event' | 'announcement';
-  itemId?: string;
-  data?: any;
-  score?: number;
-  isOfficial?: boolean;
-  campusId: string;
-  authorCampus?: string;
-  vibeColor?: string;
-  image?: string;
-  imageHint?: string;
-  content?: string;
-  category?: string;
-  updatedAt: string;
-  sourceType?: 'management' | 'src' | 'department';
-};
-
-export type RegistryPost = {
-  id: string;
-  title: string;
-  content: string;
-  isUrgent: boolean;
-  targetAudience: 'all' | 'staff' | 'student';
-  attachments?: string[];
-  campusId: string;
-  authorId: string;
-  createdAt: string;
-};
-
-export type LiveBroadcast = {
-  id: string;
-  status: 'live' | 'off-air';
-  videoUrl: string;
-  hostName: string;
-  hostId: string;
-  title: string;
-  viewerCount: number;
-  currentTime: number;
-  updatedAt: any;
-};
-
-export type HallOfFameEntry = {
-  id: string;
-  campusId: string;
-  totalBurns: number;
-  weekEnding: any;
-};
-
-export type MarketIntent = {
-  category?: string;
-  tags?: string[];
-  priceMin?: number;
-  priceMax?: number;
-  intent?: string;
-};
-
-export type KnowledgeGraphNode = {
-  id: string;
-  type: 'tag' | 'category' | 'vendor' | 'creator' | 'location';
-  name: string;
-  connections?: Record<string, { weight: number; lastUpdated: any }>;
-  updatedAt: any;
-};
-
-export type PickupPoint = {
-  id: string;
-  name: string;
-  description: string;
-  campusId: string;
-  latitude: number;
-  longitude: number;
-  isOfficial: boolean;
-  status: 'active' | 'inactive';
-  createdAt: string;
-};
-
-export type LeadPrice = {
-  id: string;
-  category: string;
-  price: number;
-  updatedAt: string;
-};
-
-export type MarketProfile = {
-    favoriteProducts: string[];
-    followedVendors: string[];
-};
-
-export type CandidateApplication = {
-    id: string;
-    userId: string;
-    name: string;
-    position: string;
-    campusId: string;
-    hall: string;
-    studentIdCardUrl: string;
-    status: 'pending' | 'approved' | 'rejected';
-    createdAt: string;
-};
-
-export type Dispute = {
-    id: string;
-    orderId: string;
-    buyerId: string;
-    vendorId: string;
-    reason: string;
-    evidenceUrls: string[];
-    status: 'pending' | 'investigating' | 'resolved_refund' | 'resolved_payout';
-    createdAt: string;
-    refundNumber?: string;
-};
-
-export type Manifesto = {
-    id: string;
-    candidateName: string;
-    candidateImage: string;
-    position: string;
-    campusId: string;
-    campusAcronym: string;
-    hall: string;
-    motto: string;
-    fullManifesto: string;
-    campaignVideoUrl?: string;
-    endorsements: number;
-    status: 'active' | 'archived';
-    updatedAt: any;
-};
-
-export type SrcPost = {
-    id: string;
-    title: string;
-    content: string;
-    mediaUrls?: string[];
-    campusId: string;
-    authorId: string;
-    createdAt: any;
-};
-
-export type VibeSignal = 'watch' | 'like' | 'share' | 'comment' | 'skip' | 'reaction';
-export type MarketplaceSignal = 'view' | 'click' | 'purchase' | 'favorite' | 'intent';

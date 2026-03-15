@@ -20,6 +20,25 @@ service cloud.firestore {
       allow write: if isAdmin() || request.auth.uid == userId;
     }
 
+    match /arena_battles/{battleId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        request.auth.uid in resource.data.participants ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'status'])
+      );
+
+      match /messages/{msgId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+      }
+
+      match /user_votes/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
     match /video_hashes/{hash} {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
@@ -30,7 +49,7 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.authorId ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'commerceClicks', 'trendScore'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'comebackCount', 'commerceClicks', 'trendScore'])
       );
       allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
     }
