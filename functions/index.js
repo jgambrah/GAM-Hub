@@ -39,10 +39,11 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     const participants = data.participants || [];
     const info = data.participantInfo || {};
     
-    // Sort votes to find winner
-    const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1]);
-    const winnerId = sorted[0]?.[0];
-    const isDraw = sorted.length > 1 && sorted[0][1] === sorted[1][1];
+    // Sort votes to find winner from new opponentA/B structure
+    const vA = data.opponentA?.votes || 0;
+    const vB = data.opponentB?.votes || 0;
+    const winnerId = vA > vB ? data.opponentA.userId : (vB > vA ? data.opponentB.userId : null);
+    const isDraw = vA === vB;
 
     // 1. Mark Battle as Ended
     batch.update(doc.ref, { 
@@ -53,7 +54,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     // 2. Update Leaderboard for all participants
     for (const pId of participants) {
       const isWinner = !isDraw && pId === winnerId;
-      const receivedVotes = votes[pId] || 0;
+      const receivedVotes = votes[pId] || (pId === data.opponentA?.userId ? vA : vB);
       const pInfo = info[pId] || {};
       
       const leaderRef = db.collection("arena_leaderboard").doc(pId);
