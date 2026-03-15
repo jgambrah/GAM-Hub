@@ -277,7 +277,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
                     style={{ width: `${p1Pct}%`, backgroundColor: war.campusAInfo?.primaryColor || '#3b82f6' }} 
                 />
                 <div 
-                    className="h-full transition-all duration-1000 ease-out rounded-full shadow-[0_0_30px_rgba(245,158,11,0.2)]" 
+                    className="h-full transition-all duration-1000 ease-out rounded-full shadow-[0_0_20px_rgba(245,158,11,0.2)]" 
                     style={{ width: `${p2Pct}%`, backgroundColor: war.campusBInfo?.primaryColor || '#f59e0b' }} 
                 />
                 <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-white/40 -translate-x-1/2 z-20" />
