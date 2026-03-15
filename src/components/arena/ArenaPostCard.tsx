@@ -63,6 +63,19 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
     const videoSource = post.hlsUrl || post.mediaUrl;
     const youtubeId = useMemo(() => isBlocked ? null : getYouTubeId(post.mediaUrl || ''), [post.mediaUrl, isBlocked]);
 
+    React.useEffect(() => {
+        setLocalStats({ ...post.stats, comebacks: post.comebackCount || 0 });
+    }, [post.stats, post.comebackCount]);
+
+    React.useEffect(() => {
+        if (user && firestore) {
+            const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
+            const burnRef = doc(firestore, 'campus_pulse', post.id, 'burnedBy', user.id);
+            getDoc(likeRef).then(doc => { if (doc.exists()) setUserAction('liked') });
+            getDoc(burnRef).then(doc => { if (doc.exists()) setUserAction('burned') });
+        }
+    }, [user, firestore, post.id]);
+
     const handleAction = async (action: 'like' | 'burn') => {
         if (!user || !firestore || isProcessing || isBlocked) return;
         setIsProcessing(true);
@@ -128,6 +141,19 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
         setShowShareMenu(false);
     };
 
+    const handleDeletePost = async (e: React.MouseEvent) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!firestore || !post.id) return;
+        if (window.confirm("Retract this vibration from The Arena?")) {
+            try {
+                await deleteDoc(doc(firestore, 'campus_pulse', post.id));
+                toast({ title: "Vibe Retracted" });
+            } catch (err: any) {
+                toast({ variant: 'destructive', title: "Action Blocked" });
+            }
+        }
+    };
+
     const catInfo = isHighlight && post.battleMetadata?.category ? getCategoryLabel(post.battleMetadata.category) : null;
 
     return (
@@ -156,7 +182,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <p className={cn("text-base font-black leading-none", isHighlight ? "text-white" : "text-foreground")}>
+                            <p className={cn("text-base font-black text-foreground leading-none", isHighlight && "text-white")}>
                                 {post.authorName} 
                             </p>
                             {isHighlight ? <Crown size={14} className="text-amber-500 fill-amber-500" /> : isShade ? <Flame size={14} className="text-red-500 fill-current" /> : <Trophy size={14} className="text-amber-500" />}
@@ -165,6 +191,12 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                            <span className={cn("px-2 py-0.5 rounded-lg text-white font-black")} style={{backgroundColor: post.authorColor}}>
                                {post.authorAcronym || post.authorCampus}
                            </span>
+                           {!isBlocked && post.targetCampus && (
+                                <div className="flex items-center gap-1.5 text-slate-400">
+                                    <Target size={12} className="text-primary" />
+                                    <span className="font-black text-primary/80">TARGET: {post.targetCampus}</span>
+                                </div>
+                            )}
                            {isHighlight && (
                                <div className="flex items-center gap-1.5 text-amber-400">
                                     <Zap size={10} fill="currentColor" />
@@ -175,11 +207,18 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                     </div>
                 </div>
                 
-                {post.createdAt && (
-                    <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest bg-muted/30 px-3 py-1 rounded-full">
-                        {formatDistanceToNow(new Date(post.createdAt?.toDate?.() || post.createdAt), { addSuffix: true })}
-                    </p>
-                )}
+                <div className="flex items-center gap-3">
+                    {canDelete && (
+                        <button type="button" onClick={handleDeletePost} className="p-3 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-2xl hover:scale-110 active:scale-95" >
+                            <Trash2 size={18} />
+                        </button>
+                    )}
+                    {post.createdAt && (
+                        <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest bg-muted/30 px-3 py-1 rounded-full">
+                            {formatDistanceToNow(new Date(post.createdAt?.toDate?.() || post.createdAt), { addSuffix: true })}
+                        </p>
+                    )}
+                </div>
             </div>
             
             <div className="relative z-10 space-y-6">
@@ -192,7 +231,28 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                     </p>
                 )}
                 
-                {post.mediaUrl && (
+                {/* 🎙️ SHOUTOUT HERO STAGE (ARENA MODE) */}
+                {post.mediaType === 'audio' && post.mediaUrl && (
+                    <div className="p-10 bg-slate-900 rounded-[3rem] border-4 border-white/5 relative overflow-hidden flex flex-col items-center justify-center gap-6 cursor-pointer hover:bg-slate-850 transition-all group/audio shadow-2xl">
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(220,38,38,0.1),transparent)] animate-pulse" />
+                        <div className="relative z-10 p-8 bg-white/5 backdrop-blur-xl rounded-full border-2 border-white/10 group-hover/audio:scale-110 transition-transform duration-700">
+                            <Mic size={48} className={isShade ? "text-red-500" : "text-amber-400"} />
+                        </div>
+                        <div className="relative z-10 w-full max-w-sm">
+                            <VoicePlayer url={post.mediaUrl} duration={post.duration} theme="dark" />
+                            <div className="mt-4 flex flex-col items-center gap-2">
+                                <div className="flex gap-1">
+                                    {[1,2,3,4,5,6].map(i => (
+                                        <div key={i} className={cn("w-1 rounded-full animate-bounce", isShade ? "bg-red-500" : "bg-amber-500")} style={{ height: `${10 + Math.random() * 20}px`, animationDelay: `${i * 0.1}s` }} />
+                                    ))}
+                                </div>
+                                <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.4em]">Vocal Artillery Logged</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {post.mediaUrl && post.mediaType !== 'audio' && (
                     <div className="rounded-[2.5rem] overflow-hidden bg-black border-4 border-white dark:border-slate-800 shadow-2xl relative group/media">
                         {post.mediaType === 'image' && <Image src={post.mediaUrl} width={600} height={400} className="w-full h-auto object-cover" alt="Arena Visual" />}
                         
@@ -204,9 +264,20 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
 
                         {post.mediaType === 'youtube' && youtubeId && (
                             <div className="relative w-full aspect-video">
-                                <YouTube videoId={youtubeId} opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }} className="w-full h-full" />
+                                {isRestricted ? (
+                                    <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-8 text-center">
+                                        <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                                        <h4 className="text-white font-black text-xs uppercase tracking-[0.2em]">Restricted Signal</h4>
+                                        <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer" className="mt-4 bg-red-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center gap-2">
+                                            <Youtube size={16} fill="white" /> Open on YouTube
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <YouTube videoId={youtubeId} opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1 } }} className="w-full h-full" onError={() => setIsRestricted(true)} />
+                                )}
                             </div>
                         )}
+                        {post.mediaType === 'tiktok' && <div className="bg-black flex justify-center py-4"><TikTokEmbed url={post.mediaUrl} /></div>}
                     </div>
                 )}
 
@@ -218,7 +289,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                             "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-90 border-2",
                             isHighlight ? "bg-amber-500 text-slate-950 border-amber-500" : isShade 
                                 ? (userAction === 'burned' ? "bg-red-600 text-white border-red-600 shadow-xl shadow-red-200" : "bg-red-50 border-red-100 text-red-600 hover:bg-red-100")
-                                : (userAction === 'liked' ? "bg-amber-500 text-white border-amber-500 shadow-xl shadow-amber-200" : "bg-amber-100 border-amber-100 text-amber-600 hover:bg-amber-100")
+                                : (userAction === 'liked' ? "bg-amber-500 text-white border-amber-500 shadow-xl shadow-amber-200" : "bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100")
                         )}
                     >
                         {isShade ? <Flame size={16} className={cn(userAction === 'burned' && "fill-current")} /> : <ThumbsUp size={16} className={cn(userAction === 'liked' && "fill-current")} />}

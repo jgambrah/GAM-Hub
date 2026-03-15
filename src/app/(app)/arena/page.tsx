@@ -1,10 +1,12 @@
+
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp, getDoc, setDoc, increment } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target } from 'lucide-react';
+import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target, Smile, ImagePlus, Youtube, PlusCircle } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -14,7 +16,10 @@ import { Button } from '@/components/ui/button';
 import { ArenaRules } from '@/components/arena/ArenaRules';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { extractHashtags } from '@/lib/hashtag-utils';
+import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/hashtag-utils';
+import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
+import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
+import { validateVideo, generateFileHash } from '@/lib/video-utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CreateBattleModal } from '@/components/arena/CreateBattleModal';
 import { LiveBattleCard } from '@/components/arena/LiveBattleCard';
@@ -25,26 +30,35 @@ import { CampusWarCard } from '@/components/arena/CampusWarCard';
 import { CampusWarRoom } from '@/components/arena/CampusWarRoom';
 import { CreateWarModal } from '@/components/arena/CreateWarModal';
 import { CampusWarLeaderboard } from '@/components/arena/CampusWarLeaderboard';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import HallOfFame from '@/components/social/HallOfFame';
 
 const INITIAL_LIMIT = 50;
+const LOAD_MORE_BATCH = 25;
 
 export default function ArenaPage() {
-    const { firestore } = useFirebase();
+    const { firestore, storage } = useFirebase();
     const { user, isTokenReady, isAdmin, campus } = useAuth();
     const { toast } = useToast();
     
     const [isPosting, setIsPosting] = useState(false);
+    const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
     const [content, setContent] = useState('');
     const [vibeType, setVibeType] = useState<'shade' | 'celebration'>('celebration');
     const [targetCampus, setTargetCampus] = useState('all');
     
+    const [showHallOfFame, setShowHallOfFame] = useState(false);
     const [isBattleModalOpen, setIsBattleModalOpen] = useState(false);
     const [isWarModalOpen, setIsWarModalOpen] = useState(false);
     const [activeBattleId, setActiveBattleId] = useState<string | null>(null);
     const [activeWarId, setActiveWarId] = useState<string | null>(null);
     const [matchCountdown, setMatchCountdown] = useState<number | null>(null);
     const [secondsInPool, setSecondsInPool] = useState(0);
+
+    const [file, setFile] = useState<File | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [videoUrl, setVideoUrl] = useState('');
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
@@ -170,9 +184,9 @@ export default function ArenaPage() {
             collection(firestore, 'campus_pulse'),
             where('isArenaEntry', '==', true),
             orderBy('createdAt', 'desc'),
-            limit(INITIAL_LIMIT)
+            limit(limitCount)
         );
-    }, [firestore, user?.id, isTokenReady]);
+    }, [firestore, user?.id, isTokenReady, limitCount]);
     const { data: posts, isLoading: isLoadingPosts } = useCollection<ArenaPost>(postsQuery);
 
     const handleCancelMatch = async () => {
@@ -183,35 +197,105 @@ export default function ArenaPage() {
         } catch (e) {}
     };
 
+    const resetInputs = () => {
+        setContent(''); setVibeType('celebration'); setTargetCampus('all'); setVideoUrl(''); setFile(null); setPreviewUrl(null);
+        if(fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const selectedFile = e.target.files?.[0];
+        if (selectedFile) {
+            setFile(selectedFile);
+            setPreviewUrl(URL.createObjectURL(selectedFile));
+        }
+    };
+
     const handlePost = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || !content.trim()) return;
+        if (!user || (!content.trim() && !file && !videoUrl.trim())) return;
 
         setIsPosting(true);
         try {
-            const postData: any = {
+            let postData: any = {
                 content,
                 vibeType,
                 targetCampus: targetCampus !== 'all' ? staticCampuses.find(c => c.id === targetCampus)?.acronym : 'National',
                 authorId: user.id,
-                authorName: user.name,
-                authorAvatarUrl: user.avatarUrl,
+                authorName: user.name || "Campus Member",
+                authorAvatarUrl: user.avatarUrl || "",
                 authorCampus: userCampusInfo?.acronym || "GH",
                 authorColor: userCampusInfo?.primaryColor || "#0f172a",
                 stats: { likes: 0, burns: 0 },
                 createdAt: new Date().toISOString(),
                 isArenaEntry: true,
                 campusId: user.campusId,
+                storageTier: 'hot'
             };
 
-            const manualTags = extractHashtags(content);
-            postData.tags = manualTags;
+            // 1. Process Multimedia with Deduplication Registry 🧬
+            if (file && storage && firestore) {
+                const isVideo = file.type.startsWith('video');
+                if (isVideo) {
+                    await validateVideo(file);
+                    const hash = await generateFileHash(file);
+                    const hashRef = doc(firestore, 'video_hashes', hash);
+                    const hashSnap = await getDoc(hashRef);
 
+                    if (hashSnap.exists()) {
+                        const existing = hashSnap.data();
+                        postData.mediaUrl = existing.mediaUrl;
+                        postData.mediaType = 'video';
+                        postData.imageUrl = existing.imageUrl;
+                        postData.storageTier = existing.storageTier || 'hot';
+                        postData.videoHash = hash;
+                        await setDoc(hashRef, { uploads: increment(1) }, { merge: true });
+                        toast({ title: "Viral Vibe Detected!", description: "Reusing existing high-quality version from the Yard." });
+                    } else {
+                        const filePath = `videos/hot/${user.id}/${Date.now()}_${file.name}`;
+                        const fileRef = ref(storage, filePath);
+                        await uploadBytes(fileRef, file, { customMetadata: { hash } });
+                        postData.mediaUrl = await getDownloadURL(fileRef);
+                        postData.mediaType = 'video';
+                        postData.videoHash = hash;
+                        await setDoc(hashRef, { mediaUrl: postData.mediaUrl, storagePath: filePath, storageTier: 'hot', processed: false, uploads: 1, updatedAt: serverTimestamp() });
+                    }
+                } else {
+                    const filePath = `arena_media/${user.id}/${Date.now()}_${file.name}`;
+                    const fileRef = ref(storage, filePath);
+                    await uploadBytes(fileRef, file);
+                    postData.mediaUrl = await getDownloadURL(fileRef);
+                    postData.mediaType = 'image';
+                }
+            } else if (videoUrl.trim()) {
+                postData.mediaUrl = videoUrl.trim();
+                postData.mediaType = videoUrl.includes('youtube') ? 'youtube' : 'tiktok';
+            }
+
+            // 2. AI SEMANTIC UPGRADE 🧠
+            const manualTags = extractHashtags(content);
+            let aiTags: string[] = [];
+            try {
+                const aiResult = await generateSemanticHashtags({ content, campusAcronym: userCampusInfo?.acronym });
+                aiTags = aiResult.tags;
+            } catch (e) { console.warn("AI Tagging drifted."); }
+
+            const finalHashtags = Array.from(new Set([...manualTags, ...aiTags])).slice(0, 10);
+            postData.tags = finalHashtags;
+            const embedding = await generatePostEmbedding({ content, tags: finalHashtags });
+            postData.embedding = embedding;
+
+            // 3. Launch to Yard
             await addDocumentNonBlocking(collection(firestore, 'campus_pulse'), postData);
-            toast({ title: 'Vibe Shared!' });
-            setContent('');
+            if (finalHashtags.length > 0 && firestore) {
+                await updateHashtagIndex(firestore, finalHashtags);
+                if (finalHashtags.length >= 2) await updateHashtagGraph(firestore, finalHashtags);
+            }
+
+            toast({ title: 'Vibe Shared in The Arena!' });
+            resetInputs();
         } catch (error: any) {
-            toast({ variant: 'destructive', title: 'Action Blocked' });
+            console.error(error);
+            toast({ variant: 'destructive', title: 'Action Blocked', description: error.message });
         } finally {
             setIsPosting(false);
         }
@@ -219,6 +303,7 @@ export default function ArenaPage() {
 
     const isLiaison = user?.role === 'admin' || isAdmin;
     const isSRC = user?.role === 'src' || isLiaison;
+    const hasMore = posts && posts.length >= limitCount;
 
     return (
         <div className="p-4 bg-muted/50 min-h-screen pb-32">
@@ -345,76 +430,91 @@ export default function ArenaPage() {
                 </div>
             </section>
 
-            <section className="max-w-2xl mx-auto mb-16 px-4">
-                <div className="bg-slate-950 p-8 rounded-[3rem] border-4 border-slate-900 shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-8 opacity-10 rotate-12">
-                        <Flame size={120} />
-                    </div>
-                    <div className="relative z-10 space-y-6">
-                        <div className="flex gap-2 p-1.5 bg-white/5 rounded-2xl border border-white/10 w-fit">
-                            <button 
-                                onClick={() => setVibeType('celebration')}
-                                className={cn(
-                                    "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all",
-                                    vibeType === 'celebration' ? "bg-amber-500 text-slate-950 shadow-lg" : "text-slate-400 hover:text-white"
-                                )}
-                            >
-                                Vibe
-                            </button>
-                            <button 
-                                onClick={() => setVibeType('shade')}
-                                className={cn(
-                                    "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all",
-                                    vibeType === 'shade' ? "bg-red-600 text-white shadow-lg" : "text-slate-400 hover:text-white"
-                                )}
-                            >
-                                Shade
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <textarea 
-                                value={content}
-                                onChange={(e) => setContent(e.target.value)}
-                                placeholder="Broadcasting battle vibes... Deduplication Active 🧬"
-                                className="w-full bg-white/5 border-2 border-white/10 p-6 rounded-[2rem] outline-none focus:border-indigo-500 transition-all font-bold text-lg text-white resize-none h-32 no-scrollbar"
-                            />
-                            
-                            <div className="flex flex-col sm:flex-row items-center gap-4">
-                                <div className="flex-1 w-full">
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2 mb-2 block">Target Rival Campus</label>
-                                    <Select value={targetCampus} onValueChange={setTargetCampus}>
-                                        <SelectTrigger className="bg-white/5 border-white/10 text-white h-14 rounded-2xl font-bold">
-                                            <Target className="mr-2 text-red-500" size={16} />
-                                            <SelectValue placeholder="Target Campus" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-slate-900 text-white border-white/10 rounded-2xl">
-                                            <SelectItem value="all">All Rivals (National)</SelectItem>
-                                            {staticCampuses.map(c => (
-                                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <Button 
-                                    onClick={handlePost}
-                                    disabled={isPosting || !content.trim()}
-                                    className="w-full sm:w-auto px-10 h-14 bg-indigo-600 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:bg-indigo-500 active:scale-95 transition-all self-end"
+            {/* RESTORED MULTIMEDIA BROADCAST HUB */}
+            {user && (
+                <section className="max-w-2xl mx-auto mb-16 px-4">
+                    <div className="bg-card rounded-[2.5rem] p-8 shadow-xl border border-border">
+                        <div className="flex flex-col sm:flex-row justify-between gap-4 mb-8">
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={() => setVibeType('celebration')}
+                                    className={cn(
+                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2",
+                                        vibeType === 'celebration' ? "bg-amber-100 text-amber-700 shadow-sm ring-2 ring-amber-500/20" : "bg-muted text-muted-foreground"
+                                    )}
                                 >
-                                    {isPosting ? <Loader2 className="animate-spin" /> : <><Send size={16} className="mr-2" /> Broadcast Vibe</>}
-                                </Button>
+                                    <Star size={14} fill={vibeType === 'celebration' ? 'currentColor' : 'none'} /> Victory
+                                </button>
+                                <button 
+                                    onClick={() => setVibeType('shade')}
+                                    className={cn(
+                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2",
+                                        vibeType === 'shade' ? "bg-red-100 text-red-700 shadow-sm ring-2 ring-red-500/20" : "bg-muted text-muted-foreground"
+                                    )}
+                                >
+                                    <Flame size={14} fill={vibeType === 'shade' ? 'currentColor' : 'none'} /> Shade
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest hidden sm:inline">Target:</span>
+                                <Select value={targetCampus} onValueChange={setTargetCampus}>
+                                    <SelectTrigger className="w-[180px] rounded-xl font-bold border-none bg-muted h-10">
+                                        <Target className="mr-2 text-primary" size={14} />
+                                        <SelectValue placeholder="All Rivals" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-slate-900 text-white border-white/10 rounded-2xl">
+                                        <SelectItem value="all">🌍 All Rivals (National)</SelectItem>
+                                        {staticCampuses.filter(c => c.id !== user.campusId).map(c => (
+                                            <SelectItem key={c.id} value={c.id}>{c.acronym} Hub</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
 
-                        <div className="pt-6 border-t border-white/5 flex items-center gap-3">
-                            <ShieldCheck size={14} className="text-indigo-500" />
-                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em]">
-                                Liaison AI semantic indexing & deduplication active. 🛡️✨
-                            </p>
-                        </div>
+                        <form onSubmit={handlePost} className="space-y-6">
+                            {previewUrl && (
+                                <div className="relative aspect-video rounded-[2rem] overflow-hidden border-4 border-muted shadow-inner bg-black animate-in zoom-in">
+                                    {file?.type.startsWith('image') ? <img src={previewUrl} className="w-full h-full object-cover" alt="" /> : <video src={previewUrl} className="w-full h-full object-cover" muted />}
+                                    <button type="button" onClick={() => { setFile(null); setPreviewUrl(null); }} className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full"><X size={16} /></button>
+                                </div>
+                            )}
+
+                            <div className="relative flex items-center gap-2 bg-muted p-2 rounded-[2.5rem] border-2 border-transparent focus-within:bg-background focus-within:border-primary/20 transition-all shadow-inner">
+                                <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3.5 text-muted-foreground hover:text-blue-500 rounded-full transition-colors">
+                                    <ImagePlus size={24} />
+                                </button>
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileChange} />
+                                <Input 
+                                    value={content}
+                                    onChange={(e) => setContent(e.target.value)}
+                                    placeholder={vibeType === 'shade' ? "Dropping a national heat-seek... 🧨" : "Broadcasting Yard success! 🏆"}
+                                    className="flex-1 bg-transparent border-none outline-none font-bold text-base h-14"
+                                />
+                                <Button 
+                                    type="submit"
+                                    disabled={isPosting || (!content.trim() && !file)}
+                                    className={cn(
+                                        "p-5 rounded-full shadow-lg transition-transform active:scale-90 h-auto",
+                                        vibeType === 'shade' ? "bg-red-600 hover:bg-red-700" : "bg-amber-500 hover:bg-amber-600"
+                                    )}
+                                >
+                                    {isPosting ? <Loader2 className="animate-spin" size={24} /> : <Zap size={24} fill="currentColor" />}
+                                </Button>
+                            </div>
+
+                            <div className="flex justify-between items-center px-6">
+                                <p className="text-[9px] text-muted-foreground italic">Liaison AI semantic indexing & deduplication active. 🛡️✨</p>
+                                <div className="flex items-center gap-1.5 opacity-50">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="text-[8px] font-black text-slate-400 uppercase">Yard Sync Live</span>
+                                </div>
+                            </div>
+                        </form>
                     </div>
-                </div>
-            </section>
+                </section>
+            )}
 
             <ArenaLegends />
             <ArenaChampions />
@@ -423,12 +523,32 @@ export default function ArenaPage() {
                 <ArenaRules />
 
                 <div className="space-y-8 max-w-2xl mx-auto">
-                    {isLoadingPosts ? (
+                    {isLoadingPosts && limitCount === INITIAL_LIMIT ? (
                         <Skeleton className="h-64 w-full rounded-[2.5rem]" />
                     ) : posts?.map(post => <ArenaPostCard key={post.id} post={post} />)}
                 </div>
 
-                <HallOfFame />
+                {hasMore && (
+                    <div className="flex flex-col items-center pt-12 pb-20">
+                        <Button 
+                            onClick={() => setLimitCount(prev => prev + LOAD_MORE_BATCH)} 
+                            disabled={isLoadingPosts}
+                            className="bg-slate-900 text-white rounded-2xl px-12 h-16 font-black shadow-xl hover:scale-105 transition-all"
+                        >
+                            {isLoadingPosts ? <Loader2 className="animate-spin mr-2" /> : <PlusCircle className="mr-2" />}
+                            Load More Showdowns
+                        </Button>
+                    </div>
+                )}
+
+                <div className="mt-16 mb-8 flex justify-center">
+                    <button 
+                        onClick={() => setShowHallOfFame(true)}
+                        className="bg-white text-amber-600 border-2 border-amber-100 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg hover:bg-amber-50 transition-all active:scale-95"
+                    >
+                        <Trophy size={16} className="inline mr-2" /> Open National Archives
+                    </button>
+                </div>
             </div>
 
             <CreateBattleModal open={isBattleModalOpen} onOpenChange={setIsBattleModalOpen} />
@@ -440,6 +560,17 @@ export default function ArenaPage() {
             {activeWarId && (
                 <CampusWarRoom warId={activeWarId} onClose={() => setActiveWarId(null)} />
             )}
+
+            <Sheet open={showHallOfFame} onOpenChange={setShowHallOfFame}>
+                <SheetContent side="bottom" className="h-[80vh] rounded-t-[3.5rem] overflow-y-auto border-t-8 border-amber-500">
+                    <SheetHeader className="mb-8">
+                        <SheetTitle className="text-3xl font-black text-center italic flex items-center justify-center gap-3">
+                            <Trophy className="text-amber-500" size={32} /> THE NATIONAL ARCHIVES
+                        </SheetTitle>
+                    </SheetHeader>
+                    <HallOfFame />
+                </SheetContent>
+            </Sheet>
         </div>
     )
 }

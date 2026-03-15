@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc, increment, getDoc, setDoc, limit } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { campuses } from '@/lib/data';
@@ -134,7 +135,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textInputRef = useRef<HTMLInputElement>(null);
@@ -143,73 +143,21 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const { user: userProfile } = useAuth();
   const { toast } = useToast();
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    // Size guard (10MB max)
-    if (selectedFile.size > 10 * 1024 * 1024) {
-      toast({
-        variant: "destructive",
-        title: "File too large",
-        description: "Maximum upload size is 10MB"
-      });
-      return;
-    }
-
-    setFile(selectedFile);
-    setPreviewUrl(URL.createObjectURL(selectedFile));
-  };
-
   const comebacksQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(
-        collection(firestore, 'campus_pulse', post.id, 'comebacks'), 
-        orderBy('createdAt', 'asc'),
-        limit(200)
-    );
+    return query(collection(firestore, 'campus_pulse', post.id, 'comebacks'), orderBy('createdAt', 'asc'));
   }, [firestore, post.id]);
 
   const { data: comebacks, isLoading } = useCollection<ArenaComeback>(comebacksQuery);
 
   const resetInputs = () => {
     setText(''); setVideoUrl(''); setShowUrlInput(false); setShowEmojiPicker(false); setFile(null); setPreviewUrl(null);
-    setUploadProgress(null);
     if(fileInputRef.current) fileInputRef.current.value = '';
   }
 
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
-
-    // 4. Content Moderation Guard
-    const bannedWords = ["slur1", "slur2"];
-    if (bannedWords.some(word => text.toLowerCase().includes(word))) {
-      toast({
-        variant: "destructive",
-        title: "Content blocked",
-        description: "Your comeback violates Arena rules."
-      });
-      return;
-    }
-
-    // 3. Rate Limiting Logic
-    const lastReplyRef = doc(firestore, "users", userProfile.id, "rateLimits", "arenaReply");
-    const lastSnap = await getDoc(lastReplyRef);
-
-    if (lastSnap.exists()) {
-      const lastTime = lastSnap.data().time?.toMillis?.() || 0;
-      const now = Date.now();
-
-      if (now - lastTime < 5000) {
-        toast({
-          variant: "destructive",
-          title: "Slow down!",
-          description: "Wait a few seconds before posting again."
-        });
-        return;
-      }
-    }
 
     setIsPosting(true);
 
@@ -231,22 +179,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       if (file) {
         const filePath = `arena_media/${post.id}/${Date.now()}_${file.name}`;
         const fileRef = ref(storage, filePath);
-        
-        // 2. Real-time Upload Progress
-        const uploadTask = uploadBytesResumable(fileRef, file);
-
-        await new Promise((resolve, reject) => {
-          uploadTask.on(
-            "state_changed",
-            (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              setUploadProgress(progress);
-            },
-            reject,
-            () => resolve(null)
-          );
-        });
-
+        await uploadBytes(fileRef, file);
         comebackData.mediaUrl = await getDownloadURL(fileRef);
         comebackData.mediaType = file.type.startsWith('image') ? 'image' : 'video';
       } else if (videoUrl.trim()) {
@@ -256,38 +189,18 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       
       await addDocumentNonBlocking(collection(firestore, 'campus_pulse', post.id, 'comebacks'), comebackData);
       await updateDocumentNonBlocking(doc(firestore, 'campus_pulse', post.id), { comebackCount: increment(1) });
-      await setDoc(lastReplyRef, { time: serverTimestamp() });
       
       resetInputs();
     } catch(err) {
       toast({ variant: 'destructive', title: 'Error', description: 'Could not post comeback.' });
     } finally {
       setIsPosting(false);
-      setUploadProgress(null);
     }
   };
 
   const handleRequestVerdict = async () => {
-    if (!firestore || !comebacks) return;
-
-    // 7. Duplicate Prevention
-    const alreadyJudged = comebacks.some(c => c.isBot);
-    if (alreadyJudged) {
-      toast({
-        title: "Verdict already delivered.",
-        description: "The AI Referee has already spoken on this battle."
-      });
-      return;
-    }
-
-    // 6. Intensity Threshold
-    const realReplies = comebacks.filter(c => !c.isBot);
-    if (realReplies.length < 3) {
-        toast({ 
-            variant: 'destructive', 
-            title: "More comebacks needed", 
-            description: "The AI Referee needs at least 3 real comebacks to analyze this battle properly." 
-        });
+    if (!firestore || !comebacks || comebacks.length < 2) {
+        toast({ variant: 'destructive', title: "More comebacks needed", description: "The AI Referee needs more vibrations to analyze this battle." });
         return;
     }
 
@@ -297,7 +210,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
             originalShade: post.content,
             originalCampus: post.authorAcronym || post.authorCampus || '??',
             targetCampus: post.targetCampus || 'National',
-            comebacks: realReplies.map(c => c.text)
+            comebacks: comebacks.filter(c => !c.isBot).map(c => c.text)
         });
 
         const comebackData = {
@@ -333,7 +246,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2">
             <Zap size={12} className="text-red-500 animate-pulse" /> Live Comebacks
         </h4>
-        {comebacks && comebacks.length >= 3 && !comebacks.some(c => c.isBot) && (
+        {comebacks && comebacks.length >= 2 && !comebacks.some(c => c.isBot) && (
             <button 
                 onClick={handleRequestVerdict}
                 disabled={isRefereeing}
@@ -353,7 +266,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
             </div>
         ) : comebacks?.length === 0 ? (
              <div className="py-16 text-center opacity-30">
-                <Scale className="mx-auto mb-4" size={48} />
+                <ShieldCheck className="mx-auto mb-4" size={48} />
                 <p className="text-[10px] font-black uppercase tracking-[0.4em]">Battle Ground Silent</p>
              </div>
         ) : (
@@ -371,14 +284,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         {previewUrl && (
             <div className="relative w-48 h-32 rounded-[2rem] overflow-hidden border-4 border-card shadow-2xl group animate-in zoom-in duration-300">
                 {file?.type.startsWith('image') ? <Image src={previewUrl} layout="fill" className="object-cover" alt="" /> : <video src={previewUrl} className="w-full h-full object-cover" />}
-                {uploadProgress !== null && uploadProgress < 100 && (
-                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <div className="text-center">
-                            <Loader2 className="animate-spin text-white mb-2 mx-auto" />
-                            <p className="text-[10px] text-white font-black">{Math.round(uploadProgress)}%</p>
-                        </div>
-                    </div>
-                )}
                 <button type="button" onClick={resetInputs} className="absolute top-3 right-3 bg-black/60 text-white p-2 rounded-full hover:bg-black transition-colors shadow-lg"><X size={14} /></button>
             </div>
         )}
