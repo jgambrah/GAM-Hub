@@ -82,6 +82,17 @@
         "endsAt": { "type": "string", "format": "date-time" }
       }
     },
+    "EngagementEvent": {
+      "title": "EngagementEvent",
+      "type": "object",
+      "description": "A discrete interaction event used to detect highlight spikes.",
+      "properties": {
+        "type": { "type": "string", "enum": ["vote", "powerup", "reaction"] },
+        "side": { "type": "string", "enum": ["A", "B"] },
+        "weight": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
     "ArenaHighlight": {
       "title": "ArenaHighlight",
       "type": "object",
@@ -123,6 +134,7 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
+    "/arena_battles/{battleId}/engagement_events/{eventId}": { "schema": "#/backend/entities/EngagementEvent", "description": "Spike detection logs." },
     "/arena_highlights/{highlightId}": { "schema": "#/backend/entities/ArenaHighlight", "description": "Viral battle archive." },
     "/arena_waiting_pool/{entryId}": { "schema": "#/backend/entities/ArenaWaitingPoolEntry", "description": "Staging queue for auto-match pairings." },
     "/campus_wars/{warId}": { "schema": "#/backend/entities/CampusWar", "description": "Large-scale University vs University wars." },

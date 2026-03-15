@@ -7,6 +7,7 @@
  * Elite National Arena Stage.
  * Handshake Lifecycle: WAITING (Challenge Mode) -> LIVE (Showdown Mode) -> ENDED (Verdict Mode)
  * Includes Creator Selection logic and Direct Rivalry Acceptance.
+ * Enhanced with Engagement Spike Logging for Replay Highlights.
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -91,6 +92,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     });
   }, [firestore, user?.id, battleId]);
 
+  const logEngagementSpike = (type: 'vote' | 'powerup' | 'reaction', side: 'A' | 'B', weight: number = 1) => {
+    if (!firestore || !battleId) return;
+    addDoc(collection(firestore, 'arena_battles', battleId, 'engagement_events'), {
+        type, side, weight, timestamp: serverTimestamp()
+    });
+  };
+
   const handleSelectOpponent = async (challenger: ArenaChallenger) => {
     if (!firestore || !battle || !user || battle.creatorId !== user.id) return;
     setSelectingOpponentId(challenger.id);
@@ -154,6 +162,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(1), 
           [`votes.${targetUserId}`]: increment(1) 
       });
+      
+      logEngagementSpike('vote', target, 1);
+      
       setHasVoted(true);
       toast({ title: "Energy Logged!" });
     } catch(err) {
@@ -174,6 +185,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
             [`votes.${targetUserId}`]: increment(powerup.weight) 
         });
+        
+        logEngagementSpike('powerup', target, powerup.weight);
+        
     } catch (err) { toast({ variant: 'destructive', title: 'Power-Up Refused' }); }
   };
 
@@ -205,7 +219,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl"><X size={24}/></button>
           <div className={cn(
               "px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10",
-              isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-500"
+              isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-50"
           )}>
             {isWaiting ? "DEPLOYMENT OPEN" : isLive ? "LIVE SHOWDOWN" : "CONCLUDED"}
           </div>

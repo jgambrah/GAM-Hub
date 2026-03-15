@@ -140,7 +140,7 @@ exports.onBattleStarted = onDocumentUpdated("arena_battles/{battleId}", async (e
 });
 
 /**
- * 🛡️ ARENA RING: AUTO-END BATTLES & LEADERBOARD SYNC
+ * 🛡️ ARENA RING: AUTO-END BATTLES, HIGHLIGHT DETECTION & LEADERBOARD SYNC
  */
 exports.endBattle = onSchedule("every 1 minutes", async (event) => {
   const db = admin.firestore();
@@ -153,8 +153,6 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
 
   if (expiredBattles.empty) return null;
 
-  const batch = db.batch();
-
   for (const doc of expiredBattles.docs) {
     const data = doc.data();
     const votes = data.votes || {};
@@ -166,17 +164,43 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     const winnerId = vA > vB ? data.opponentA.userId : (vB > vA ? data.opponentB.userId : null);
     const isDraw = vA === vB;
 
+    const batch = db.batch();
+
     batch.update(doc.ref, { 
       status: "ended", 
       endedAt: admin.firestore.FieldValue.serverTimestamp() 
     });
 
-    // 🎬 REPLAY ENGINE: Create Highlight
+    // 🎬 REPLAY ENGINE: Advanced Spike Detection
     if (!isDraw && winnerId) {
         const winner = data.opponentA.userId === winnerId ? data.opponentA : data.opponentB;
         const loser = data.opponentA.userId === winnerId ? data.opponentB : data.opponentA;
         const winnerInfo = info[winnerId];
         
+        // Fetch engagement events to find the PEAK SPIKE
+        const eventsSnap = await doc.ref.collection("engagement_events").orderBy("timestamp", "asc").get();
+        let peakEnergy = 0;
+        let peakTimeOffset = 0;
+
+        if (!eventsSnap.empty) {
+            const events = eventsSnap.docs.map(d => ({ ...d.data(), time: d.data().timestamp.toMillis() }));
+            const startTime = data.createdAt.toMillis();
+            
+            // Analyze 10-second buckets for peak energy velocity
+            const bucketSize = 10000; 
+            const buckets = {};
+            
+            events.forEach(e => {
+                const bucketIdx = Math.floor((e.time - startTime) / bucketSize);
+                buckets[bucketIdx] = (buckets[bucketIdx] || 0) + (e.weight || 1);
+            });
+
+            // Find the bucket with most weighted interaction
+            const peakBucketIdx = Object.entries(buckets).sort((a, b) => b[1] - a[1])[0][0];
+            peakTimeOffset = parseInt(peakBucketIdx) * 10; 
+            peakEnergy = buckets[peakBucketIdx];
+        }
+
         const highlightRef = db.collection("arena_highlights").doc();
         const highlightData = {
             battleId: doc.id,
@@ -184,7 +208,9 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             creatorId: data.creatorId,
             opponentId: loser.userId,
             winnerId: winnerId,
-            votesSpike: winner.votes,
+            startTime: peakTimeOffset,
+            endTime: peakTimeOffset + 10,
+            votesSpike: peakEnergy || winner.votes,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
         batch.set(highlightRef, highlightData);
@@ -197,7 +223,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             authorAvatarUrl: winnerInfo.avatarUrl,
             campusId: winnerInfo.campusId || "all",
             campusAcronym: winnerInfo.campusAcronym,
-            content: `🏆 Victory Archive: ${winnerInfo.name} just dominated the Yard in the "${data.title}" showdown!`,
+            content: `🏆 Victory Archive: ${winnerInfo.name} dominated the Yard at the ${peakTimeOffset}s mark! Peak Intensity: ${peakEnergy || winner.votes}`,
             mediaType: "video",
             mediaUrl: winner.videoUrl,
             type: "arena_highlight",
@@ -205,7 +231,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             battleMetadata: {
                 battleId: doc.id,
                 winnerName: winnerInfo.name,
-                totalEnergy: winner.votes
+                totalEnergy: peakEnergy || winner.votes
             },
             likes: 0,
             commentCount: 0,
@@ -230,9 +256,10 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
     }
+
+    await batch.commit();
   }
 
-  await batch.commit();
   return null;
 });
 

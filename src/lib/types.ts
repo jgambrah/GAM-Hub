@@ -67,6 +67,14 @@ export type ArenaBattle = {
   endsAt: any;
 };
 
+export type EngagementEvent = {
+  id: string;
+  type: 'vote' | 'powerup' | 'reaction';
+  side: 'A' | 'B';
+  weight: number;
+  timestamp: any;
+};
+
 export type ArenaHighlight = {
   id: string;
   battleId: string;
