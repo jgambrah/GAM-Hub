@@ -5,9 +5,10 @@
  * @fileOverview Liaison Monetization Engine: Wallet Transactions.
  * Implements safe, atomic functions for adding and spending Hub Coins.
  * Synchronized with the Hub Error Emitter for security audit context.
+ * Now logs transaction history.
  */
 
-import { Firestore, doc, increment, runTransaction, updateDoc } from 'firebase/firestore';
+import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
@@ -15,28 +16,44 @@ import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/e
  * addCoins
  * --------
  * Standardized handshake to increase a user's coin balance.
- * Typically called after a successful MoMo payment.
+ * logs a 'purchase' transaction history record.
  */
-export function addCoins(db: Firestore, userId: string, amount: number) {
-  if (!db || !userId || amount <= 0) return;
+export async function addCoins(db: Firestore, userId: string, coins: number, amountPaidGHS?: number) {
+  if (!db || !userId || coins <= 0) return;
 
-  const ref = doc(db, 'wallets', userId);
+  const walletRef = doc(db, 'wallets', userId);
+  const historyRef = collection(db, 'wallet_transactions');
+
   const updateData = {
-    coins: increment(amount),
-    totalPurchased: increment(amount),
-    updatedAt: new Date().toISOString()
+    coins: increment(coins),
+    totalPurchased: increment(coins),
+    updatedAt: serverTimestamp()
   };
 
-  // 🏎️ NON-BLOCKING HANDSHAKE: Update cache immediately
-  updateDoc(ref, updateData).catch(async (serverError) => {
-    // Create the rich, contextual error asynchronously.
+  const historyData = {
+    userId,
+    type: 'purchase',
+    coins,
+    amountPaidGHS: amountPaidGHS || 0,
+    createdAt: serverTimestamp()
+  };
+
+  // Perform as individual writes for responsiveness (Pattern 1)
+  updateDoc(walletRef, updateData).catch(async (serverError) => {
     const permissionError = new FirestorePermissionError({
-      path: ref.path,
+      path: walletRef.path,
       operation: 'update',
       requestResourceData: updateData,
     } satisfies SecurityRuleContext);
+    errorEmitter.emit('permission-error', permissionError);
+  });
 
-    // Emit the error with the global error emitter
+  addDoc(historyRef, historyData).catch(async (serverError) => {
+    const permissionError = new FirestorePermissionError({
+      path: historyRef.path,
+      operation: 'create',
+      requestResourceData: historyData,
+    } satisfies SecurityRuleContext);
     errorEmitter.emit('permission-error', permissionError);
   });
 }
@@ -45,12 +62,19 @@ export function addCoins(db: Firestore, userId: string, amount: number) {
  * spendCoins
  * ----------
  * High-integrity transaction to deduct coins for Arena actions.
- * Audits balance before commit to prevent "Negative Artillery" states.
+ * Audits balance before commit and logs transaction history.
  */
-export function spendCoins(db: Firestore, userId: string, amount: number) {
+export async function spendCoins(
+  db: Firestore, 
+  userId: string, 
+  amount: number, 
+  type: 'gift_sent' | 'powerup_used' | 'tournament_entry',
+  metadata: any = {}
+) {
   if (!db || !userId || amount <= 0) return Promise.reject("Invalid amount");
 
   const walletRef = doc(db, 'wallets', userId);
+  const historyRef = collection(db, 'wallet_transactions');
 
   // 🛡️ ATOMIC TRANSACTION: Ensuring read-before-write integrity
   return runTransaction(db, async (transaction) => {
@@ -66,22 +90,34 @@ export function spendCoins(db: Firestore, userId: string, amount: number) {
       throw new Error("Insufficient Hub Coins artillery for this action.");
     }
 
-    const updateData = {
-      coins: currentCoins - amount, // Explicit subtraction within TX
+    // 1. Update Wallet
+    transaction.update(walletRef, {
+      coins: currentCoins - amount,
       totalSpent: increment(amount),
-      updatedAt: new Date().toISOString()
-    };
+      updatedAt: serverTimestamp()
+    });
 
-    transaction.update(walletRef, updateData);
+    // 2. Log History
+    const historyData = {
+      userId,
+      type,
+      coins: amount,
+      metadata,
+      createdAt: serverTimestamp()
+    };
+    
+    // addDoc isn't directly usable in transaction, so we use a doc reference
+    const newHistoryRef = doc(historyRef);
+    transaction.set(newHistoryRef, historyData);
+
   }).catch(async (serverError) => {
-    // Handle security rule rejections or logical errors
     const permissionError = new FirestorePermissionError({
       path: walletRef.path,
       operation: 'update',
-      requestResourceData: { amountSpent: amount }
+      requestResourceData: { amountSpent: amount, type }
     } satisfies SecurityRuleContext);
 
     errorEmitter.emit('permission-error', permissionError);
-    throw serverError; // Re-throw for UI error handling
+    throw serverError;
   });
 }

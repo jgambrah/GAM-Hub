@@ -4,6 +4,7 @@
 /**
  * @fileOverview Hub Coin Shop Component.
  * Implements Step 1 of Arena Monetization using GHS currency and Paystack.
+ * Now synchronized with the National Ledger.
  */
 
 import React, { useState } from 'react';
@@ -86,12 +87,6 @@ export function CoinShop() {
           />
         ))}
       </div>
-
-      <div className="p-8 bg-blue-50 dark:bg-blue-900/20 rounded-[2.5rem] border-2 border-dashed border-blue-100 dark:border-blue-800 text-center">
-         <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-[0.4em]">
-           Official Liaison Monetization Protocol • Step 1 Active • GH 🇬🇭
-         </p>
-      </div>
     </div>
   );
 }
@@ -112,8 +107,8 @@ function CoinPackageCard({ pkg, user, firestore, isProcessing, onStart, onEnd }:
         if (!firestore || !user?.id) return;
         
         try {
-            // 🚀 LIAISON PROTOCOL: Standardized Coin Handshake
-            addCoins(firestore, user.id, pkg.coins);
+            // 🚀 LIAISON PROTOCOL: Standardized Coin Handshake with History
+            await addCoins(firestore, user.id, pkg.coins, pkg.priceGHS);
 
             toast({
                 title: "Refill Successful!",

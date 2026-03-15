@@ -23,8 +23,13 @@ service cloud.firestore {
     // 💰 MONETIZATION: Coin Wallet Registry
     match /wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      // Client only allowed to update if incrementing coins (Simulating payment logic for prototype)
       allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // 💰 MONETIZATION: Transaction History
+    match /wallet_transactions/{txId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
     }
 
     match /arena_waiting_pool/{entryId} {

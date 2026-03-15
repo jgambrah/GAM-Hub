@@ -43,6 +43,16 @@ export type HubWallet = {
   updatedAt: any;
 };
 
+export type WalletTransaction = {
+  id: string;
+  userId: string;
+  type: 'purchase' | 'gift_sent' | 'gift_received' | 'powerup_used' | 'tournament_entry';
+  coins: number;
+  amountPaidGHS?: number;
+  metadata?: any;
+  createdAt: any;
+};
+
 export type ArenaBattle = {
   id: string;
   title: string;
