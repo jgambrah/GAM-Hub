@@ -15,6 +15,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
+/**
+ * LiveBattleRoom Component
+ * -----------------------
+ * Real-time competitive theater for inter-uni battles.
+ * Implements the "Live Comeback Messages" protocol for high-velocity chat.
+ */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
   const { user } = useAuth();
@@ -35,10 +41,15 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return () => unsub();
   }, [firestore, battleId]);
 
-  // 2. LIVE CHAT STREAM
+  // 2. LIVE CHAT STREAM - Calibrated to the last 100 comebacks
   const messagesQuery = useMemoFirebase(() => 
-    firestore ? query(collection(firestore, 'arena_battles', battleId, 'messages'), orderBy('createdAt', 'asc'), limitToLast(30)) : null
+    firestore ? query(
+      collection(firestore, "arena_battles", battleId, "messages"),
+      orderBy("createdAt", "asc"),
+      limitToLast(100)
+    ) : null
   , [firestore, battleId]);
+  
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
   // 3. VOTE AUDIT: Check if user already voted (Single Vote Protocol)
@@ -48,6 +59,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     getDoc(voteRef).then(snap => { if (snap.exists()) setHasVoted(true); });
   }, [firestore, user, battleId]);
 
+  // AUTO-SCROLL: Keep the latest vibes in view
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -57,12 +69,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     if (!message.trim() || !firestore || !user) return;
     const text = message.trim();
     setMessage('');
-    await addDoc(collection(firestore, 'arena_battles', battleId, 'messages'), {
+    
+    // 🚀 LIAISON HANDSHAKE: Non-blocking message broadcast
+    addDoc(collection(firestore, 'arena_battles', battleId, 'messages'), {
       userId: user.id,
       userName: user.name,
       text,
       createdAt: serverTimestamp()
-    });
+    }).catch(err => console.error("Liaison Chat Drift:", err));
   };
 
   const handleVote = async (participantId: string) => {
@@ -148,7 +162,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         </div>
       </div>
 
-      {/* RIGHT: THE CROWD (CHAT) */}
+      {/* RIGHT: THE CROWD (LIVE CHAT) */}
       <div className="flex-1 bg-slate-900 border-l border-white/10 flex flex-col">
         <div className="p-6 border-b border-white/5 bg-slate-950/50">
           <h3 className="text-white font-black italic tracking-tight">{battle.title}</h3>
