@@ -33,10 +33,10 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'opponentA', 'opponentB', 'aiVerdict', 'participants', 'participantInfo', 'status']) &&
           
           // CRITICAL GUARD: Only the Creator can promote from 'waiting' to 'live'
-          !(resource.data.status == 'waiting' && request.resource.data.status == 'live') &&
+          !(resource.data.status == 'waiting' && request.resource.data.status == 'live' && request.auth.uid != resource.data.creatorId) &&
           
           // CRITICAL GUARD: Only the Creator can assign the second opponent
-          !(resource.data.opponentB == null && request.resource.data.opponentB != null)
+          !(resource.data.opponentB == null && request.resource.data.opponentB != null && request.auth.uid != resource.data.creatorId)
         )
       );
 

@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -14,7 +15,7 @@ import {
   serverTimestamp, addDoc, updateDoc, 
   increment, setDoc, doc, getDoc, onSnapshot, writeBatch
 } from 'firebase/firestore';
-import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase, useDoc, updateDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger } from '@/lib/types';
@@ -57,7 +58,7 @@ interface LocalBurst { id: string; emoji: string; x: number; }
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
-  const { user } = useAuth();
+  const { user, campus } = useAuth();
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
   

@@ -79,11 +79,13 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
  */
 exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
   const db = admin.firestore();
-  const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
+  
+  // Logic: Find waiting battles older than 2 minutes
+  const twoMinutesAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 120000));
 
   const staleChallenges = await db.collection("arena_battles")
     .where("status", "==", "waiting")
-    .where("createdAt", "<=", admin.firestore.Timestamp.fromDate(new Date(Date.now() - 120000)))
+    .where("createdAt", "<=", twoMinutesAgo)
     .get();
 
   if (staleChallenges.empty) return null;
@@ -190,6 +192,8 @@ exports.onWarCreated = onDocumentCreated("campus_wars/{warId}", async (event) =>
     const usersSnap = await db.collection("users")
         .where("campusId", "in", [war.campusAId, war.campusBId])
         .limit(300) 
+        .get();
+        
     const batch = db.batch();
     
     usersSnap.forEach(u => {
