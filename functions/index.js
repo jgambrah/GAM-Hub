@@ -39,19 +39,16 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     const participants = data.participants || [];
     const info = data.participantInfo || {};
     
-    // Sort votes to find winner from new opponentA/B structure
     const vA = data.opponentA?.votes || 0;
     const vB = data.opponentB?.votes || 0;
     const winnerId = vA > vB ? data.opponentA.userId : (vB > vA ? data.opponentB.userId : null);
     const isDraw = vA === vB;
 
-    // 1. Mark Battle as Ended
     batch.update(doc.ref, { 
       status: "ended", 
       endedAt: admin.firestore.FieldValue.serverTimestamp() 
     });
 
-    // 2. Update Leaderboard for all participants
     for (const pId of participants) {
       const isWinner = !isDraw && pId === winnerId;
       const receivedVotes = votes[pId] || (pId === data.opponentA?.userId ? vA : vB);
@@ -77,6 +74,34 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
 });
 
 /**
+ * 🛡️ ARENA RING: CANCEL INACTIVE CHALLENGES
+ * If nobody joins or creator doesn't select an opponent after 2 minutes, auto cancel.
+ */
+exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
+  const db = admin.firestore();
+  const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
+
+  const staleChallenges = await db.collection("arena_battles")
+    .where("status", "==", "waiting")
+    .where("createdAt", "<=", admin.firestore.Timestamp.fromDate(new Date(Date.now() - 120000)))
+    .get();
+
+  if (staleChallenges.empty) return null;
+
+  const batch = db.batch();
+  staleChallenges.forEach(doc => {
+    batch.update(doc.ref, { 
+      status: "ended",
+      cancelReason: "timeout_no_opponent"
+    });
+  });
+
+  await batch.commit();
+  console.log(`🧹 Liaison Arena: Cancelled ${staleChallenges.size} stale challenges.`);
+  return null;
+});
+
+/**
  * 🏛️ CAMPUS WAR: AUTO-END WARS & NATIONAL LEADERBOARD SYNC
  */
 exports.endWar = onSchedule("every 1 minutes", async (event) => {
@@ -96,7 +121,6 @@ exports.endWar = onSchedule("every 1 minutes", async (event) => {
     const war = doc.data();
     const warId = doc.id;
 
-    // Aggregate Shards for final score
     const shardsSnap = await db.collection("campus_wars").doc(warId).collection("vote_shards").get();
     let votesA = 0;
     let votesB = 0;
@@ -109,7 +133,6 @@ exports.endWar = onSchedule("every 1 minutes", async (event) => {
     const winnerId = votesA > votesB ? war.campusAId : (votesB > votesA ? war.campusBId : null);
     const isDraw = votesA === votesB;
 
-    // 1. Close the War
     batch.update(doc.ref, {
         status: "ended",
         votesA,
@@ -117,7 +140,6 @@ exports.endWar = onSchedule("every 1 minutes", async (event) => {
         closedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // 2. Update National Leaderboard
     const updateCampus = (campusId, isWinner, votes) => {
         const ref = db.collection("campus_leaderboard").doc(campusId);
         batch.set(ref, {
@@ -131,7 +153,6 @@ exports.endWar = onSchedule("every 1 minutes", async (event) => {
     updateCampus(war.campusAId, winnerId === war.campusAId, votesA);
     updateCampus(war.campusBId, winnerId === war.campusBId, votesB);
 
-    // 3. Notify Result to involved campuses
     const resultTitle = "🏆 Campus War Result!";
     const resultMsg = isDraw 
         ? `The War between ${war.campusAInfo.acronym} and ${war.campusBInfo.acronym} ended in a DRAW! 🤝`
@@ -166,12 +187,9 @@ exports.onWarCreated = onDocumentCreated("campus_wars/{warId}", async (event) =>
     const war = event.data.data();
     const db = admin.firestore();
     
-    // Fetch students from both factions
     const usersSnap = await db.collection("users")
         .where("campusId", "in", [war.campusAId, war.campusBId])
-        .limit(300) // Prototype limit
-        .get();
-
+        .limit(300) 
     const batch = db.batch();
     
     usersSnap.forEach(u => {
@@ -349,7 +367,6 @@ exports.compressVideo = onObjectFinalized({
  * 🔔 NOTIFICATION ENGINE
  */
 
-// 1. Push Notification Relay: Dispatches FCM message whenever a notification doc is created
 exports.onNotificationCreated = onDocumentCreated("users/{userId}/notifications/{notifId}", async (event) => {
   const notif = event.data.data();
   const userId = event.params.userId;
@@ -383,7 +400,6 @@ exports.onNotificationCreated = onDocumentCreated("users/{userId}/notifications/
   return null;
 });
 
-// 2. Social: Comment Notifications
 exports.onCommentCreated = onDocumentCreated("campus_pulse/{postId}/comments/{commentId}", async (event) => {
   const comment = event.data.data();
   const db = admin.firestore();
@@ -406,7 +422,6 @@ exports.onCommentCreated = onDocumentCreated("campus_pulse/{postId}/comments/{co
   });
 });
 
-// 3. Social: Like Notifications
 exports.onLikeCreated = onDocumentCreated("campus_pulse/{postId}/likedBy/{userId}", async (event) => {
   const db = admin.firestore();
   
@@ -431,7 +446,6 @@ exports.onLikeCreated = onDocumentCreated("campus_pulse/{postId}/likedBy/{userId
   });
 });
 
-// 4. Commercial: New Order Notifications (To Vendor)
 exports.onOrderCreated = onDocumentCreated("orders/{orderId}", async (event) => {
   const order = event.data.data();
   const db = admin.firestore();
@@ -448,7 +462,6 @@ exports.onOrderCreated = onDocumentCreated("orders/{orderId}", async (event) => 
   });
 });
 
-// 5. Chat: Private Message Notifications
 exports.onChatMessageCreated = onDocumentCreated("chats/{chatId}/messages/{messageId}", async (event) => {
   const message = event.data.data();
   const db = admin.firestore();
@@ -471,9 +484,6 @@ exports.onChatMessageCreated = onDocumentCreated("chats/{chatId}/messages/{messa
   });
 });
 
-/**
- * 🧹 NOTIFICATION PRUNING (Cost Optimization)
- */
 exports.pruneNotifications = onSchedule("every 24 hours", async (event) => {
   const db = admin.firestore();
   const thirtyDaysAgo = new Date();
@@ -494,9 +504,6 @@ exports.pruneNotifications = onSchedule("every 24 hours", async (event) => {
   return null;
 });
 
-/**
- * 🛡️ DEDUPLICATION-SAFE DELETION TRIGGER
- */
 exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event) => {
   const post = event.data.data();
   if (!post || (post.mediaType !== 'video' && post.mediaType !== 'native') || !post.videoHash) return null;
@@ -526,9 +533,6 @@ exports.onPulseDeleted = onDocumentDeleted("campus_pulse/{postId}", async (event
   });
 });
 
-/**
- * ⛅ HYBRID STORAGE LIFECYCLE
- */
 exports.manageVideoLifecycle = onSchedule("every 24 hours", async (event) => {
   const db = admin.firestore();
   const bucket = admin.storage().bucket();

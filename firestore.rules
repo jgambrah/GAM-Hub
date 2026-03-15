@@ -23,10 +23,21 @@ service cloud.firestore {
     match /arena_battles/{battleId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
+      
       allow update: if isSignedIn() && (
-        request.auth.uid == resource.data.creatorId ||
-        request.auth.uid in resource.data.participants ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'status', 'opponentA', 'opponentB', 'aiVerdict', 'participants', 'participantInfo'])
+        // 1. Liaison Admins & Battle Creators have full control
+        request.auth.uid == resource.data.creatorId || isAdmin() ||
+        
+        // 2. Spectators & Participants can update engagement metrics only
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'opponentA', 'opponentB', 'aiVerdict', 'participants', 'participantInfo', 'status']) &&
+          
+          // CRITICAL GUARD: Only the Creator can promote from 'waiting' to 'live'
+          !(resource.data.status == 'waiting' && request.resource.data.status == 'live') &&
+          
+          // CRITICAL GUARD: Only the Creator can assign the second opponent
+          !(resource.data.opponentB == null && request.resource.data.opponentB != null)
+        )
       );
 
       match /messages/{msgId} {
