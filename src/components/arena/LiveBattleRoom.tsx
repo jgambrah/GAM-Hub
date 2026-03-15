@@ -12,7 +12,7 @@ import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX
+  Loader2, MessageSquare, Trophy, Flame, Crown, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile, Scale, Bot, Star, Volume2, VolumeX, AlertTriangle
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -95,6 +95,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return rawBattle;
   }, [rawBattle]);
 
+  // Derived participants info
+  const p1 = battle?.participantInfo[battle.opponentA.userId] || { name: 'Warrior A', campusAcronym: 'HUB', primaryColor: '#3b82f6' };
+  const p2 = battle?.participantInfo[battle.opponentB.userId] || { name: 'Warrior B', campusAcronym: 'RIVAL', primaryColor: '#f59e0b' };
+
   // 2. LIVE COMEBACK STREAM
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
@@ -133,7 +137,45 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return () => unsub();
   }, [firestore, battleId]);
 
-  // 4. JUDGMENT PROTOCOL
+  // 4. POWER-UP LISTENER: Trigger high-impact notifications
+  useEffect(() => {
+    if (!firestore || !battleId || !battle) return;
+    const q = query(
+        collection(firestore, 'arena_battles', battleId, 'powerups'),
+        orderBy('createdAt', 'desc'),
+        limitToLast(5)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+        snap.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                const data = change.doc.data();
+                // Only show for others or if it's very recent
+                const isRecent = data.createdAt ? (Date.now() - (data.createdAt?.toMillis?.() || Date.now()) < 5000) : true;
+                if (isRecent) {
+                    const powerup = POWER_UPS.find(p => p.type === data.type);
+                    const targetName = data.target === 'A' ? p1.campusAcronym : p2.campusAcronym;
+                    
+                    toast({
+                        title: `${powerup?.emoji || '⚡'} Boost Sent!`,
+                        description: `+${data.weight} Energy to ${targetName} Hub.`,
+                    });
+
+                    // Extra large burst for power-ups
+                    const newBurst = {
+                        id: change.doc.id,
+                        emoji: powerup?.emoji || '⚡',
+                        x: 50 + (Math.random() - 0.5) * 20
+                    };
+                    setBursts(prev => [...prev, newBurst]);
+                    setTimeout(() => setBursts(p => p.filter(b => b.id !== newBurst.id)), 2500);
+                }
+            }
+        });
+    });
+    return () => unsub();
+  }, [firestore, battleId, battle, p1.campusAcronym, p2.campusAcronym, toast]);
+
+  // 5. JUDGMENT PROTOCOL
   useEffect(() => {
     if (!battle || battle.status !== 'ended' || battle.aiVerdict || !user || !firestore) return;
 
@@ -141,10 +183,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         const runReferee = async () => {
             setVerdictLoading(true);
             try {
-                const participantIds = battle.participants;
-                const p1 = battle.participantInfo[participantIds[0]];
-                const p2 = battle.participantInfo[participantIds[1]];
-
                 const verdictResult = await getBattleVerdict({
                     originalShade: battle.title,
                     comebacks: messages?.map(m => m.text) || ["Silence in the Yard."],
@@ -165,9 +203,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         };
         runReferee();
     }
-  }, [battle?.status, battle?.aiVerdict, user?.id, firestore, battleId, messages, toast]);
+  }, [battle?.status, battle?.aiVerdict, user?.id, firestore, battleId, messages, p1.campusAcronym, p2.campusAcronym, toast]);
 
-  // 5. VOTE AUDIT
+  // 6. VOTE AUDIT
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
     const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
@@ -241,10 +279,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         });
 
         sendReaction(powerup.emoji);
-        toast({ 
-            title: `${powerup.label} Deployed!`, 
-            description: `Boosted by +${powerup.weight} Energy.` 
-        });
     } catch (err) {
         toast({ variant: 'destructive', title: 'Power-Up Refused' });
     }
@@ -268,10 +302,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     );
   }
 
-  const { opponentA, opponentB, participantInfo = {}, aiVerdict } = battle;
-  const p1 = participantInfo[opponentA.userId] || { name: 'Warrior A', campusAcronym: 'HUB', primaryColor: '#3b82f6' };
-  const p2 = participantInfo[opponentB.userId] || { name: 'Warrior B', campusAcronym: 'RIVAL', primaryColor: '#f59e0b' };
-  
+  const { opponentA, opponentB, aiVerdict } = battle;
   const totalVotes = (opponentA.votes || 0) + (opponentB.votes || 0);
   const p1Pct = totalVotes > 0 ? ((opponentA.votes || 0) / totalVotes) * 100 : 50;
   const p2Pct = 100 - p1Pct;
@@ -290,10 +321,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                     <motion.div
                         key={b.id}
                         initial={{ opacity: 0, y: 0, scale: 0.5 }}
-                        animate={{ opacity: [0, 1, 1, 0], y: -200, scale: [0.5, 1.5, 1.2, 1] }}
+                        animate={{ opacity: [0, 1, 1, 0], y: -300, scale: [0.5, 2, 1.5, 1] }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: 1.5, ease: "easeOut" }}
-                        className="absolute text-5xl select-none"
+                        transition={{ duration: 2, ease: "easeOut" }}
+                        className="absolute text-6xl select-none"
                         style={{ left: `${b.x}%`, bottom: '150px' }}
                     >
                         {b.emoji}
@@ -498,17 +529,17 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
             {inputMode === 'boost' && (
                 <div className="space-y-4 animate-in slide-in-from-bottom-4">
-                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest text-center mb-2">Deploy Power-Ups</p>
+                    <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest text-center mb-2">⚡ Boost Your Champion</p>
                     <div className="grid grid-cols-3 gap-2">
                         {POWER_UPS.map(up => (
                             <div key={up.type} className="flex flex-col gap-2">
-                                <button onClick={() => handlePowerUp(up, 'A')} className="flex-1 p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95">
-                                    <span className="text-xl">{up.emoji}</span>
-                                    <p className="text-[8px] font-black text-white mt-1 uppercase">To {p1.campusAcronym}</p>
+                                <button onClick={() => handlePowerUp(up, 'A')} className="flex-1 p-3 bg-blue-600/20 border border-blue-500/30 rounded-xl hover:bg-blue-600 transition-all active:scale-95 group">
+                                    <span className="text-xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
+                                    <p className="text-[8px] font-black text-white mt-1 uppercase">+{up.weight}</p>
                                 </button>
-                                <button onClick={() => handlePowerUp(up, 'B')} className="flex-1 p-3 bg-amber-500/20 border border-amber-500/30 rounded-xl hover:bg-amber-500 transition-all active:scale-95">
-                                    <span className="text-xl">{up.emoji}</span>
-                                    <p className="text-[8px] font-black text-white mt-1 uppercase">To {p2.campusAcronym}</p>
+                                <button onClick={() => handlePowerUp(up, 'B')} className="flex-1 p-3 bg-amber-500/20 border border-amber-500/30 rounded-xl hover:bg-amber-500 transition-all active:scale-95 group">
+                                    <span className="text-xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
+                                    <p className="text-[8px] font-black text-white mt-1 uppercase">+{up.weight}</p>
                                 </button>
                             </div>
                         ))}
