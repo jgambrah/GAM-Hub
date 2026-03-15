@@ -6,14 +6,14 @@
  * -----------------------
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
- * Now integrated with Step 2: Paid Audience Power-Ups.
+ * Now integrated with Step 2: Paid Audience Power-Ups & Live Overlays.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
-  increment, doc, getDoc, onSnapshot, writeBatch
+  increment, doc, getDoc, onSnapshot, writeBatch, limit
 } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -31,6 +31,7 @@ import YouTube from 'react-youtube';
 import { Button } from '@/components/ui/button';
 import { JoinBattleModal } from './JoinBattleModal';
 import { spendCoins } from '@/lib/monetization';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // ⚡ LIAISON POWER-UP CONFIGURATION
 const POWER_UPS = [
@@ -41,7 +42,7 @@ const POWER_UPS = [
 ];
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
-  const { firestore, storage, auth } = useFirebase();
+  const { firestore, auth } = useFirebase();
   const { user, campus } = useAuth();
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
@@ -53,6 +54,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [selectingOpponentId, setSelectingOpponentId] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
+  const [recentPowerUp, setRecentPowerUp] = useState<any>(null);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 1. DATA SYNC: Battle Metadata
@@ -70,6 +73,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   }, [firestore, user?.id]);
   const { data: wallet } = useDoc<HubWallet>(walletRef);
 
+  // 3. CHALLENGERS & MESSAGES
   const challengersQuery = useMemoFirebase(() => {
     if (!firestore || !battleId) return null;
     return query(collection(firestore, 'arena_battles', battleId, 'challengers'), orderBy('createdAt', 'desc'));
@@ -87,6 +91,32 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
+  // 4. LIVE POWER-UP LISTENER (Animation Protocol)
+  useEffect(() => {
+    if (!firestore || !battleId || !isLive) return;
+    
+    const q = query(
+      collection(firestore, 'arena_battles', battleId, 'powerups'),
+      orderBy('createdAt', 'desc'),
+      limit(1)
+    );
+    
+    const unsub = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        const data = snap.docs[0].data();
+        const createdAt = data.createdAt?.toMillis?.() || 0;
+        // Only trigger if the event is very fresh (prevent replay on room open)
+        if (Date.now() - createdAt < 5000) {
+          setRecentPowerUp({ id: snap.docs[0].id, ...data });
+          const timer = setTimeout(() => setRecentPowerUp(null), 4500);
+          return () => clearTimeout(timer);
+        }
+      }
+    });
+    return () => unsub();
+  }, [firestore, battleId, !!battle?.status]);
+
+  // 5. VOTE AUDIT
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
     const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
@@ -175,30 +205,21 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     } finally { setIsVoting(false); }
   };
 
-  /**
-   * handlePowerUp
-   * ------------
-   * Implements Step 2: Paid Audience Power-Ups.
-   * Orchestrates the coin-spending handshake and real-time score injection.
-   */
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
     
-    // Preliminary check to save a transaction if obviously short
     if (wallet.coins < powerup.cost) {
         toast({ variant: 'destructive', title: 'Insufficient Coins', description: 'Refill your Hub artillery to deploy this vibe.' });
         return;
     }
 
     try {
-        // 1. DEDUCT COINS: The National Handshake (Atomic Transaction)
         await spendCoins(firestore, user.id, powerup.cost, 'powerup_used', {
             battleId,
             targetSide: target,
             powerupType: powerup.type
         });
 
-        // 2. INJECT VOTES: Update Battle Score (Atomic Update)
         const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
         const battleRef = doc(firestore, 'arena_battles', battleId);
         
@@ -207,7 +228,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             [`votes.${targetUserId}`]: increment(powerup.weight) 
         });
 
-        // 3. LOG POWER-UP: For Highlight Analytics
         await addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), {
             userId: user.id,
             userName: user.name,
@@ -218,9 +238,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             createdAt: serverTimestamp()
         });
 
-        // 4. LOG SPIKE: Trigger Engagement Engine
         logEngagementEvent('powerup', target, powerup.weight);
-        
         toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
 
     } catch (err: any) { 
@@ -251,6 +269,37 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
+      
+      {/* ── LIVE POWER-UP OVERLAY ── */}
+      <AnimatePresence>
+        {recentPowerUp && (
+          <motion.div 
+            initial={{ opacity: 0, y: 100, scale: 0.5 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5 }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[10000] pointer-events-none w-full max-w-sm"
+          >
+            <div className="bg-slate-900/90 backdrop-blur-2xl border-4 border-amber-500 p-8 rounded-[3.5rem] shadow-[0_0_80px_rgba(245,158,11,0.6)] flex flex-col items-center text-center gap-4">
+              <div className="text-7xl drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]">
+                {POWER_UPS.find(p => p.type === recentPowerUp.type)?.emoji}
+              </div>
+              <div>
+                <p className="text-white font-black uppercase text-[10px] tracking-[0.4em] mb-1">Incoming Vibe</p>
+                <h4 className="text-2xl font-black text-white italic tracking-tighter uppercase leading-none">
+                  {recentPowerUp.userName} sent {recentPowerUp.type.replace('_', ' ')}
+                </h4>
+              </div>
+              <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black text-lg shadow-xl">
+                +{recentPowerUp.votesAdded} Energy
+              </div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest italic mt-2">
+                Deployment to: {recentPowerUp.target === 'opponentA' ? p1?.name : p2?.name}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center">
           <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl"><X size={24}/></button>
