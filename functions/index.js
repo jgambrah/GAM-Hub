@@ -2,6 +2,7 @@
 const {onDocumentUpdated, onDocumentCreated, onDocumentDeleted} = require("firebase-functions/v2/firestore");
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {onObjectFinalized} = require("firebase-functions/v2/storage");
+const {beforeUserCreated} = require("firebase-functions/v2/identity");
 const {setGlobalOptions} = require("firebase-functions");
 const admin = require("firebase-admin");
 const ffmpeg = require("fluent-ffmpeg");
@@ -17,6 +18,25 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 setGlobalOptions({maxInstances: 10});
+
+/**
+ * 💰 MONETIZATION: AUTO-CREATE WALLET ON SIGNUP
+ */
+exports.createUserWallet = beforeUserCreated(async (event) => {
+  const db = admin.firestore();
+  const user = event.data;
+  
+  // Provision the wallet immediately during the creation flow
+  await db.collection("wallets").doc(user.uid).set({
+    coins: 0,
+    totalPurchased: 0,
+    totalSpent: 0,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return {};
+});
 
 /**
  * 🛡️ ARENA RING: SMART AUTO-MATCHMAKER
