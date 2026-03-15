@@ -1,9 +1,14 @@
-
 'use client';
+
+/**
+ * @fileOverview Arena Comebacks Component.
+ * Restored multimedia response engine for asynchronous battle vibrations.
+ * Includes handleFileChange logic and AI Referee integration.
+ */
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, increment, getDoc, setDoc, limit } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, increment } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -87,7 +92,7 @@ function ComebackItem({ c, onReply }: { c: ArenaComeback, onReply: (name: string
             <div className="bg-slate-50 dark:bg-slate-800/40 p-5 rounded-[1.8rem] border border-slate-100 dark:border-border shadow-sm group-hover/comeback:shadow-lg transition-all relative">
                 {c.mediaUrl && (
                     <div className="mb-4 rounded-[1.5rem] overflow-hidden bg-black border-2 border-white shadow-inner relative group/media">
-                        {c.mediaType === 'image' && <Image src={c.mediaUrl} width={400} height={300} className="w-full h-auto object-cover max-h-60" alt="vibe evidence" />}
+                        {c.mediaType === 'image' && <Image src={c.mediaUrl} width={400} height={300} className="w-full h-auto object-cover max-h-60" alt="vibe evidence" data-ai-hint="battle evidence" />}
                         {c.mediaType === 'video' && <video src={c.mediaUrl} controls className="w-full max-h-60" />}
                         {c.mediaType === 'youtube' && youtubeId && (
                             <div className="relative w-full aspect-video">
@@ -154,6 +159,14 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     setText(''); setVideoUrl(''); setShowUrlInput(false); setShowEmojiPicker(false); setFile(null); setPreviewUrl(null);
     if(fileInputRef.current) fileInputRef.current.value = '';
   }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      setPreviewUrl(URL.createObjectURL(selectedFile));
+    }
+  };
 
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();

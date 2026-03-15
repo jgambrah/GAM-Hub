@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -51,7 +50,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
     const [userAction, setUserAction] = React.useState<'liked' | 'burned' | null>(null);
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [showComebacks, setShowComments] = useState(false);
-    const [isRestricted, setIsRestricted] = React.useState(false);
+    const [isRestricted, setIsRestricted] = useState(false);
     const [showShareMenu, setShowShareMenu] = useState(false);
 
     const isBlocked = post.status === 'blocked';
