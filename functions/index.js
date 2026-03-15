@@ -115,7 +115,7 @@ exports.onBattleStarted = onDocumentUpdated("arena_battles/{battleId}", async (e
         const title = "🔥 New Arena Battle!";
         const message = `${p1.campusAcronym} vs ${p2.campusAcronym}: "${after.title}" is LIVE!`;
         
-        // Find a subset of students to notify (To avoid massive fan-out costs)
+        // Find a subset of students to notify
         const campusIds = [after.participantInfo[after.creatorId].campusId, p2.campusId].filter(id => !!id);
         const usersSnap = await db.collection("users")
             .where("campusId", "in", campusIds)
@@ -170,6 +170,48 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
       status: "ended", 
       endedAt: admin.firestore.FieldValue.serverTimestamp() 
     });
+
+    // 🎬 REPLAY ENGINE: Create Highlight
+    if (!isDraw && winnerId) {
+        const winner = data.opponentA.userId === winnerId ? data.opponentA : data.opponentB;
+        const loser = data.opponentA.userId === winnerId ? data.opponentB : data.opponentA;
+        const winnerInfo = info[winnerId];
+        
+        const highlightRef = db.collection("arena_highlights").doc();
+        const highlightData = {
+            battleId: doc.id,
+            clipUrl: winner.videoUrl,
+            creatorId: data.creatorId,
+            opponentId: loser.userId,
+            winnerId: winnerId,
+            votesSpike: winner.votes,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        batch.set(highlightRef, highlightData);
+
+        // Publish to Campus Pulse
+        const pulseRef = db.collection("campus_pulse").doc();
+        batch.set(pulseRef, {
+            authorId: winnerId,
+            authorName: winnerInfo.name,
+            authorAvatarUrl: winnerInfo.avatarUrl,
+            campusId: winnerInfo.campusId || "all",
+            campusAcronym: winnerInfo.campusAcronym,
+            content: `🏆 Victory Archive: ${winnerInfo.name} just dominated the Yard in the "${data.title}" showdown!`,
+            mediaType: "video",
+            mediaUrl: winner.videoUrl,
+            type: "arena_highlight",
+            isArenaEntry: true,
+            battleMetadata: {
+                battleId: doc.id,
+                winnerName: winnerInfo.name,
+                totalEnergy: winner.votes
+            },
+            likes: 0,
+            commentCount: 0,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    }
 
     for (const pId of participants) {
       const isWinner = !isDraw && pId === winnerId;
@@ -538,7 +580,7 @@ exports.compressVideo = onObjectFinalized({
       storagePath: filePath,
       storageTier: 'hot',
       processed: true,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: admin.FieldValue.serverTimestamp()
     }, { merge: true });
 
     await batch.commit();

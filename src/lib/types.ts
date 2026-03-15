@@ -67,51 +67,17 @@ export type ArenaBattle = {
   endsAt: any;
 };
 
-export type ArenaWaitingPoolEntry = {
+export type ArenaHighlight = {
   id: string;
-  userId: string;
-  userName: string;
-  videoUrl: string;
-  title: string;
-  avatarUrl: string;
-  campusAcronym: string;
-  campusId: string;
+  battleId: string;
+  clipUrl: string;
+  creatorId: string;
+  opponentId: string;
+  startTime: number;
+  endTime: number;
+  votesSpike: number;
+  winnerId: string;
   createdAt: any;
-};
-
-export type ArenaChallenger = {
-  id: string;
-  userId: string;
-  userName: string;
-  avatarUrl: string;
-  campusAcronym: string;
-  videoUrl: string;
-  createdAt: any;
-};
-
-export type CampusWar = {
-  id: string;
-  title: string;
-  campusAId: string;
-  campusBId: string;
-  votesA: number;
-  votesB: number;
-  status: 'live' | 'ended';
-  viewerCount: number;
-  campusAInfo?: { name: string; acronym: string; primaryColor: string };
-  campusBInfo?: { name: string; acronym: string; primaryColor: string };
-  createdAt: any;
-  endsAt: any;
-  aiVerdict?: {
-    verdict: string;
-    winner: string;
-  };
-};
-
-export type VoteShard = {
-  id: string;
-  votesA: number;
-  votesB: number;
 };
 
 export type SocialPost = {
@@ -143,11 +109,16 @@ export type SocialPost = {
   isArenaEntry?: boolean;
   vibeType?: 'shade' | 'celebration';
   isOfficial?: boolean;
-  type?: 'regular' | 'src_official' | 'vetted_announcement' | 'election_winner' | 'shoutout';
+  type?: 'regular' | 'src_official' | 'vetted_announcement' | 'election_winner' | 'shoutout' | 'arena_highlight';
   status?: 'active' | 'blocked' | 'hidden';
   moderationNote?: string;
   authorColor?: string;
   stats?: { likes: number; burns: number };
+  battleMetadata?: {
+    battleId: string;
+    winnerName: string;
+    totalEnergy: number;
+  };
 };
 
 export type ArenaPost = SocialPost;

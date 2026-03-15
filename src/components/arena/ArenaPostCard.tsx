@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -5,7 +6,7 @@ import type { ArenaPost } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc } from 'firebase/firestore';
-import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic, Music, Target, Trophy } from 'lucide-react';
+import { Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, AlertTriangle, Mic, Music, Target, Trophy, PlayCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import ArenaComebacks from '../social/ArenaComebacks';
@@ -42,6 +43,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
     const isAuthor = user?.id === post.authorId;
     const canDelete = isAuthor || isAdmin;
     const isShade = post.vibeType === 'shade';
+    const isHighlight = post.type === 'arena_highlight';
 
     const videoSource = post.hlsUrl || post.mediaUrl;
     const youtubeId = useMemo(() => isBlocked ? null : getYouTubeId(post.mediaUrl || ''), [post.mediaUrl, isBlocked]);
@@ -127,17 +129,25 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
     return (
         <div className={cn(
             "relative bg-card rounded-[3rem] p-8 border-l-8 shadow-2xl transition-all duration-500 overflow-hidden",
-            isBlocked ? "border-red-600 bg-red-50 dark:bg-red-950/10" : isShade ? "border-red-500 bg-gradient-to-br from-white to-red-50/30" : "border-amber-500 bg-gradient-to-br from-white to-amber-50/30"
+            isBlocked ? "border-red-600 bg-red-50 dark:bg-red-950/10" : isHighlight ? "border-amber-500 bg-gradient-to-br from-slate-900 to-slate-950 text-white" : isShade ? "border-red-500 bg-gradient-to-br from-white to-red-50/30" : "border-amber-500 bg-gradient-to-br from-white to-amber-50/30"
         )}>
             {/* AMBIENT BACKGROUND GLOW */}
             <div className={cn(
                 "absolute -top-20 -right-20 w-64 h-64 rounded-full blur-3xl opacity-5 transition-opacity duration-1000",
-                isShade ? "bg-red-500 group-hover:opacity-10" : "bg-amber-500 group-hover:opacity-10"
+                isHighlight ? "bg-amber-500 opacity-10" : isShade ? "bg-red-500 group-hover:opacity-10" : "bg-amber-500 group-hover:opacity-10"
             )} />
 
             {isBlocked && (
                 <div className="absolute top-6 right-6 p-2 bg-red-600 text-white rounded-xl shadow-lg z-20 animate-pulse">
                     <ShieldAlert size={20} />
+                </div>
+            )}
+
+            {isHighlight && (
+                <div className="absolute top-6 right-6 z-20 animate-in zoom-in duration-500">
+                    <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
+                        <Trophy size={12} fill="currentColor" /> Winning Performance
+                    </div>
                 </div>
             )}
 
@@ -155,16 +165,22 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
-                            <p className="text-base font-black text-foreground leading-none">
+                            <p className={cn("text-base font-black leading-none", isHighlight ? "text-white" : "text-foreground")}>
                                 {isBlocked ? "Liaison Moderator" : post.authorName} 
                             </p>
-                            {isShade ? <Flame size={14} className="text-red-500 fill-current" /> : <Trophy size={14} className="text-amber-500" />}
+                            {isHighlight ? <Crown size={14} className="text-amber-500 fill-amber-500" /> : isShade ? <Flame size={14} className="text-red-500 fill-current" /> : <Trophy size={14} className="text-amber-500" />}
                         </div>
                         <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1.5 flex items-center gap-3">
                            <span className={cn("px-2 py-0.5 rounded-lg text-white font-black", isBlocked ? "bg-red-600" : "")} style={{backgroundColor: isBlocked ? undefined : post.authorColor}}>
                                {isBlocked ? "SHIELD" : post.authorAcronym || post.authorCampus}
                            </span>
-                           {!isBlocked && post.targetCampus && (
+                           {isHighlight && (
+                               <div className="flex items-center gap-1.5 text-amber-400">
+                                    <Zap size={10} fill="currentColor" />
+                                    <span className="font-black">PEAK ENERGY: {post.battleMetadata?.totalEnergy || 0}</span>
+                               </div>
+                           )}
+                           {!isBlocked && !isHighlight && post.targetCampus && (
                                <div className="flex items-center gap-1.5 text-slate-400">
                                     <Target size={12} className="text-primary" />
                                     <span className="font-black text-primary/80">TARGET: {post.targetCampus}</span>
@@ -209,7 +225,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                     {post.content && (
                         <p className={cn(
                             "text-xl font-black leading-tight tracking-tight",
-                            isShade ? "text-slate-900" : "text-amber-900"
+                            isHighlight ? "text-indigo-50" : isShade ? "text-slate-900" : "text-amber-900"
                         )}>
                             "{post.content}"
                         </p>
@@ -291,7 +307,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                             disabled={isProcessing}
                             className={cn(
                                 "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-90 border-2",
-                                isShade 
+                                isHighlight ? "bg-amber-500 text-slate-950 border-amber-500" : isShade 
                                     ? (userAction === 'burned' ? "bg-red-600 text-white border-red-600 shadow-xl shadow-red-200" : "bg-red-50 border-red-100 text-red-600 hover:bg-red-100")
                                     : (userAction === 'liked' ? "bg-amber-500 text-white border-amber-500 shadow-xl shadow-amber-200" : "bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100")
                             )}
@@ -304,7 +320,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                             onClick={() => setShowComments(!showComebacks)} 
                             className={cn(
                                 "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all",
-                                showComebacks ? "bg-slate-900 text-white border-slate-900 shadow-xl" : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
+                                isHighlight ? "bg-white/10 text-white border-white/20" : showComebacks ? "bg-slate-900 text-white border-slate-900 shadow-xl" : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
                             )}
                         >
                             <MessageSquare size={16} /> 

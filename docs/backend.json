@@ -76,38 +76,25 @@
             "refereeAdvice": { "type": "string" }
           }
         },
-        "participantInfo": { "type": "object" },
         "participants": { "type": "array", "items": { "type": "string" } },
         "viewerCount": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" },
         "endsAt": { "type": "string", "format": "date-time" }
       }
     },
-    "ArenaWaitingPoolEntry": {
-      "title": "ArenaWaitingPoolEntry",
+    "ArenaHighlight": {
+      "title": "ArenaHighlight",
       "type": "object",
-      "description": "A fighter waiting for an auto-match pairing.",
+      "description": "A viral clip extracted from an ended Arena battle.",
       "properties": {
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "videoUrl": { "type": "string" },
-        "title": { "type": "string" },
-        "avatarUrl": { "type": "string" },
-        "campusAcronym": { "type": "string" },
-        "campusId": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "ArenaChallenger": {
-      "title": "ArenaChallenger",
-      "type": "object",
-      "description": "A student who has requested to join a waiting battle.",
-      "properties": {
-        "userId": { "type": "string" },
-        "userName": { "type": "string" },
-        "avatarUrl": { "type": "string" },
-        "campusAcronym": { "type": "string" },
-        "videoUrl": { "type": "string" },
+        "battleId": { "type": "string" },
+        "clipUrl": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "opponentId": { "type": "string" },
+        "startTime": { "type": "number" },
+        "endTime": { "type": "number" },
+        "votesSpike": { "type": "number" },
+        "winnerId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
@@ -128,17 +115,6 @@
         "endsAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "campusAId", "campusBId", "status"]
-    },
-    "CampusLeaderboard": {
-      "title": "CampusLeaderboard",
-      "type": "object",
-      "description": "Aggregated inter-university war rankings.",
-      "properties": {
-        "wins": { "type": "number" },
-        "losses": { "type": "number" },
-        "totalVotes": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
     }
   },
   "auth": {
@@ -147,14 +123,9 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
+    "/arena_highlights/{highlightId}": { "schema": "#/backend/entities/ArenaHighlight", "description": "Viral battle archive." },
     "/arena_waiting_pool/{entryId}": { "schema": "#/backend/entities/ArenaWaitingPoolEntry", "description": "Staging queue for auto-match pairings." },
-    "/arena_battles/{battleId}/challengers/{userId}": { "schema": "#/backend/entities/ArenaChallenger", "description": "Queue of potential rivals for a waiting battle." },
     "/campus_wars/{warId}": { "schema": "#/backend/entities/CampusWar", "description": "Large-scale University vs University wars." },
-    "/campus_wars/{warId}/messages/{msgId}": { "description": "Live chat for campus wars." },
-    "/campus_wars/{warId}/votes/{userId}": { "description": "Unique student votes per war (Integrity Protocol)." },
-    "/campus_wars/{warId}/vote_shards/{shardId}": { "description": "Distributed counters for massive scale voting." },
-    "/campus_wars/{warId}/boosts/{boostId}": { "description": "Weighted audience boosts for wars." },
-    "/arena_leaderboard/{userId}": { "schema": "#/backend/entities/ArenaLeaderboard", "description": "Individual Arena rankings." },
-    "/campus_leaderboard/{campusId}": { "schema": "#/backend/entities/CampusLeaderboard", "description": "National University rankings." }
+    "/campus_leaderboard/{campusId}": { "description": "National University rankings." }
   }
 }
