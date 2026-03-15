@@ -5,14 +5,14 @@
  * ArenaChampions Component
  * ------------------------
  * Displays top individual warriors in the Yard based on wins and votes received.
- * Implements the Creator Reputation Rank system (Bronze -> Arena Legend).
+ * Now expanded to show Monetization Impact: Boosts Received & Coins Earned.
  */
 
 import React from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, limit } from 'firebase/firestore';
 import type { ArenaLeaderboard } from '@/lib/types';
-import { Trophy, Crown, Zap, Star, Medal } from 'lucide-react';
+import { Trophy, Crown, Zap, Star, Medal, Coins } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '../ui/skeleton';
@@ -110,15 +110,22 @@ export function ArenaChampions() {
                     {rank.icon} {rank.label}
                   </div>
                   
-                  <div className="flex items-center gap-4 mt-4">
-                    <div className="text-center">
+                  <div className="grid grid-cols-2 gap-4 mt-4 border-t pt-4 border-dashed border-slate-100 dark:border-slate-800">
+                    <div className="text-left">
                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Wins</p>
                       <p className="text-sm font-black text-foreground">{champ.wins}</p>
                     </div>
-                    <div className="w-[1px] h-6 bg-border" />
-                    <div className="text-center">
+                    <div className="text-left">
                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Energy</p>
                       <p className="text-sm font-black text-amber-600">{champ.votes_received.toLocaleString()}</p>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1"><Zap size={8} /> Boosts</p>
+                      <p className="text-sm font-black text-blue-600">{champ.boostsReceived || 0}</p>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1"><Coins size={8} /> Earned</p>
+                      <p className="text-sm font-black text-emerald-600">{(champ.coinsEarned || 0).toLocaleString()}</p>
                     </div>
                   </div>
                 </div>

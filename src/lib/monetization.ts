@@ -4,6 +4,7 @@
 /**
  * @fileOverview Liaison Monetization Engine: Wallet Transactions.
  * Implements Step 2: Spam Prevention & 50/50 Creator Revenue Split.
+ * Now synchronized with the National Leaderboard for Achievement Tracking.
  */
 
 import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -56,6 +57,7 @@ export async function addCoins(db: Firestore, userId: string, coins: number, amo
  * spendCoins
  * ----------
  * High-integrity transaction with 50/50 Creator Split logic.
+ * Also updates the Arena Leaderboard to track boosts and earnings.
  */
 export async function spendCoins(
   db: Firestore, 
@@ -85,14 +87,23 @@ export async function spendCoins(
       updatedAt: serverTimestamp()
     });
 
-    // 3. Creator Payout (50% Split)
+    // 3. Creator Achievement Handshake (50% Split)
     if (creatorId) {
+      // A. Wallet Payout
       const creatorWalletRef = doc(db, 'creator_wallets', creatorId);
       const earnedAmount = Math.floor(amount * 0.5); // The Arena's 50% cut stays in platform pool
       
       transaction.set(creatorWalletRef, {
         earnedCoins: increment(earnedAmount),
         totalEarned: increment(earnedAmount),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      // B. Leaderboard Impact Tracking
+      const leaderRef = doc(db, 'arena_leaderboard', creatorId);
+      transaction.set(leaderRef, {
+        boostsReceived: increment(1),
+        coinsEarned: increment(earnedAmount),
         updatedAt: serverTimestamp()
       }, { merge: true });
     }

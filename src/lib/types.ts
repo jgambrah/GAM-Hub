@@ -360,6 +360,8 @@ export type ArenaLeaderboard = {
   losses: number;
   votes_received: number;
   highlightCount: number;
+  boostsReceived: number;
+  coinsEarned: number;
   updatedAt: any;
 };
 

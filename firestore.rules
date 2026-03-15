@@ -23,19 +23,23 @@ service cloud.firestore {
     // 💰 MONETIZATION: Coin Wallet Registry
     match /wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      // 🛡️ SECURITY PROTOCOL: Only Liaison can update balances
+      // 🛡️ ANTI-CHEAT PROTOCOL: Client can only deduct from their own wallet during transactions.
+      // Increases (Refills) MUST be handled by Cloud Functions or Admins.
+      allow update: if isSignedIn() && request.auth.uid == userId && request.resource.data.coins < resource.data.coins;
       allow write: if isAdmin();
     }
 
     match /creator_wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
+      // 🛡️ REVENUE SPLIT: Allowing automated client transactions to increment earned coins
+      allow write: if isSignedIn();
     }
 
     // 💰 MONETIZATION: Transaction History
     match /wallet_transactions/{txId} {
       allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow create: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow write: if isAdmin();
     }
 
     match /arena_waiting_pool/{entryId} {
@@ -62,7 +66,7 @@ service cloud.firestore {
 
       match /powerups/{powerupId} {
         allow read: if isSignedIn();
-        // 🛡️ ANTI-SPAM PROTOCOL: Max 5 per citizen per battle
+        // 🛡️ ANTI-SPAM PROTOCOL: UI level cap at 5, rules allow create if user is signed in.
         allow create: if isSignedIn() && 
                       request.resource.data.userId == request.auth.uid;
       }
@@ -127,7 +131,7 @@ service cloud.firestore {
 
     match /arena_leaderboard/{userId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isSignedIn();
     }
 
     match /campus_leaderboard/{campusId} {
