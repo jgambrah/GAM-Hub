@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -184,7 +185,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                             <p className={cn("text-base font-black text-foreground leading-none", isHighlight && "text-white")}>
                                 {post.authorName} 
                             </p>
-                            {isHighlight ? <Crown size={14} className="text-amber-500 fill-amber-500" /> : isShade ? <Flame size={14} className="text-red-500 fill-current" /> : <Trophy size={14} className="text-amber-500" />}
+                            {isHighlight ? <Crown size={14} className="text-amber-500 fill-amber-500" /> : isShade ? <Flame size={14} className="text-red-500 fill-current" /> : <Star size={14} className="text-amber-500 fill-amber-500" />}
                         </div>
                         <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1.5 flex items-center gap-3">
                            <span className={cn("px-2 py-0.5 rounded-lg text-white font-black")} style={{backgroundColor: post.authorColor}}>

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -359,7 +360,7 @@ export default function ArenaPage() {
                                     <p className="text-sm text-slate-400 font-medium italic">"Liaison Matchmaker is auditing the National Hub for a worthy contender..."</p>
                                     <div className="w-full bg-white/5 h-1.5 rounded-full mt-6 overflow-hidden">
                                         <div 
-                                            className="bg-indigo-500 h-full transition-all duration-1000 ease-linear" 
+                                            className="bg-indigo-50 h-full transition-all duration-1000 ease-linear" 
                                             style={{ width: `${(secondsInPool / 30) * 100}%` }}
                                         />
                                     </div>

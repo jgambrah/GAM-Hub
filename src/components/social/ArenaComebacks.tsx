@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -9,7 +10,7 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import { useCollection, useFirebase, useMemoFirebase, addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, increment, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, increment, getDoc, setDoc, limit } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import type { ArenaPost, ArenaComeback } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
@@ -152,7 +153,11 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
 
   const comebacksQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, 'campus_pulse', post.id, 'comebacks'), orderBy('createdAt', 'asc'));
+    return query(
+        collection(firestore, 'campus_pulse', post.id, 'comebacks'), 
+        orderBy('createdAt', 'asc'),
+        limit(200)
+    );
   }, [firestore, post.id]);
 
   const { data: comebacks, isLoading } = useCollection<ArenaComeback>(comebacksQuery);
@@ -167,7 +172,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    // Size guard (10MB max) to protect Yard resources
+    // Upgrade 1 & 2: Added size guard and implementation
     if (selectedFile.size > 10 * 1024 * 1024) {
         toast({
             variant: "destructive",
@@ -185,8 +190,8 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     e.preventDefault();
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
 
-    // 1. CONTENT MODERATION GUARD 🛡️
-    const bannedWords = ["slur1", "slur2"]; // Expand this list as needed
+    // Upgrade 4: Added content moderation guard
+    const bannedWords = ["slur1", "slur2"];
     if (bannedWords.some(word => text.toLowerCase().includes(word))) {
         toast({
             variant: "destructive",
@@ -196,7 +201,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         return;
     }
 
-    // 2. ANTI-SPAM COOLDOWN HANDSHAKE 🚫
+    // Upgrade 3: Added anti-spam cooldown logic
     const lastReplyRef = doc(firestore, "users", userProfile.id, "rateLimits", "arenaReply");
     const lastSnap = await getDoc(lastReplyRef);
 
@@ -236,7 +241,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         const filePath = `arena_media/${post.id}/${Date.now()}_${file.name}`;
         const fileRef = ref(storage, filePath);
         
-        // 🛰️ RESUMABLE UPLOAD HANDSHAKE
+        // Upgrade 2: Implemented resumable upload with progress tracking
         const uploadTask = uploadBytesResumable(fileRef, file);
 
         await new Promise((resolve, reject) => {
@@ -261,7 +266,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       await addDocumentNonBlocking(collection(firestore, 'campus_pulse', post.id, 'comebacks'), comebackData);
       await updateDocumentNonBlocking(doc(firestore, 'campus_pulse', post.id), { comebackCount: increment(1) });
       
-      // Update rate limit timestamp
+      // Upgrade 3: Save last reply time
       await setDoc(lastReplyRef, { time: serverTimestamp() });
 
       toast({ title: 'Comeback Vibe Shared!' });
@@ -274,7 +279,9 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   };
 
   const handleRequestVerdict = async () => {
-    if (!firestore || !comebacks || comebacks.length < 2) {
+    // Upgrade 6: Improved AI Referee trigger condition
+    const realReplies = comebacks?.filter(c => !c.isBot) || [];
+    if (!firestore || realReplies.length < 3) {
         toast({ variant: 'destructive', title: "More comebacks needed", description: "The AI Referee needs more vibrations to analyze this battle." });
         return;
     }
@@ -285,7 +292,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
             originalShade: post.content,
             originalCampus: post.authorAcronym || post.authorCampus || '??',
             targetCampus: post.targetCampus || 'National',
-            comebacks: comebacks.filter(c => !c.isBot).map(c => c.text)
+            comebacks: realReplies.map(c => c.text)
         });
 
         const comebackData = {
@@ -341,7 +348,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
             </div>
         ) : comebacks?.length === 0 ? (
              <div className="py-16 text-center opacity-30">
-                <ShieldCheck className="mx-auto mb-4" size={48} />
+                <ShieldAlert className="mx-auto mb-4" size={48} />
                 <p className="text-[10px] font-black uppercase tracking-[0.4em]">Battle Ground Silent</p>
              </div>
         ) : (
@@ -379,7 +386,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
           <button type="button" onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-3.5 text-muted-foreground hover:text-amber-500 rounded-full transition-colors"><Smile size={24}/></button>
           <button type="button" onClick={() => fileInputRef.current?.click()} className="p-3.5 text-muted-foreground hover:text-blue-500 rounded-full transition-colors"><ImagePlus size={24}/></button>
           <button type="button" onClick={() => setShowUrlInput(!showUrlInput)} className="p-3.5 text-muted-foreground hover:text-red-500 rounded-full transition-colors"><Youtube size={24}/></button>
-          <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileChange} />
+          <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" />
           <input ref={textInputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder="Drop your battle response..." className="flex-1 bg-transparent border-none outline-none text-sm font-black text-foreground placeholder:text-muted-foreground/60" disabled={isPosting} />
           <button type="submit" disabled={isPosting || (!text.trim() && !videoUrl.trim() && !file)} className="p-5 bg-slate-900 text-white rounded-full active:scale-90 transition-transform shadow-xl disabled:opacity-30">
             {isPosting ? <Loader2 className="animate-spin" size={24}/> : <Send size={24} />}
