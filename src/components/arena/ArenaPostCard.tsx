@@ -178,7 +178,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl border-4 border-white dark:border-slate-800 shadow-xl overflow-hidden flex-shrink-0" 
                         style={{ backgroundColor: isBlocked ? "#dc2626" : post.authorColor }}>
-                        <Image src={post.authorAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${post.authorName}`} width={48} height={48} alt="avatar" className="object-cover w-full h-full"/>
+                        <Image src={post.authorAvatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${post.authorName}`} width={48} height={48} alt="avatar" className="object-cover w-full h-full" data-ai-hint="user avatar" />
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
@@ -254,7 +254,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
 
                 {post.mediaUrl && post.mediaType !== 'audio' && (
                     <div className="rounded-[2.5rem] overflow-hidden bg-black border-4 border-white dark:border-slate-800 shadow-2xl relative group/media">
-                        {post.mediaType === 'image' && <Image src={post.mediaUrl} width={600} height={400} className="w-full h-auto object-cover" alt="Arena Visual" />}
+                        {post.mediaType === 'image' && <Image src={post.mediaUrl} width={600} height={400} className="w-full h-auto object-cover" alt="Arena Visual" data-ai-hint="battle visual" />}
                         
                         {(post.mediaType === 'video' || post.mediaType === 'native') && videoSource && (
                             <div className="aspect-video">
