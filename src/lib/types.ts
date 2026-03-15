@@ -67,6 +67,13 @@ export type BattleMessage = {
   createdAt: any;
 };
 
+export type BattleReaction = {
+  id: string;
+  emoji: string;
+  userId: string;
+  createdAt: any;
+};
+
 export type CounterAttack = {
   id: string;
   userId: string;

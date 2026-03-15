@@ -5,10 +5,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { doc, onSnapshot, collection, query, orderBy, limitToLast, serverTimestamp, addDoc, updateDoc, increment, setDoc, getDoc } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
-import type { ArenaBattle, BattleMessage, CounterAttack } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, CounterAttack, BattleReaction } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube, CheckCircle2, Mic, Video, Plus, Play
+  Loader2, MessageSquare, Trophy, Flame, Crown, AlertCircle, Youtube, CheckCircle2, Mic, Video, Plus, Play, Heart, Smile
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -29,11 +29,14 @@ const getYouTubeId = (url: string) => {
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
+const REACTIONS = ['🔥', '😂', '😱', '💯', '👑'];
+
 /**
  * LiveBattleRoom Component
  * -----------------------
  * Real-time competitive stage for inter-uni showdowns.
- * Features a Dual-Stream side-by-side grid and a video counter-attack system.
+ * Features a Dual-Stream side-by-side grid, video counter-attacks,
+ * a real-time scoreboard, and a live emoji reaction burst system.
  */
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
   const { firestore } = useFirebase();
@@ -46,10 +49,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [videoUrl, setVideoUrl] = useState('');
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
+  const [bursts, setBursts] = useState<{ id: string, emoji: string, x: number }[]>([]);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const artilleryRef = useRef<HTMLDivElement>(null);
 
-  // 1. REAL-TIME BATTLE SYNC
+  // 1. REAL-TIME BATTLE SYNC & SCOREBOARD
   useEffect(() => {
     if (!firestore || !battleId) return;
     const unsub = onSnapshot(doc(firestore, 'arena_battles', battleId), (snap) => {
@@ -63,7 +68,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     firestore ? query(
       collection(firestore, "arena_battles", battleId, "messages"),
       orderBy("createdAt", "asc"),
-      limitToLast(100)
+      limitToLast(50)
     ) : null
   , [firestore, battleId]);
   
@@ -80,21 +85,42 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: counterAttacks } = useCollection<CounterAttack>(artilleryQuery);
 
-  // 4. VOTE AUDIT: Check if user already voted in this battle
+  // 4. LIVE REACTION LISTENER (BURSTS)
+  useEffect(() => {
+    if (!firestore || !battleId) return;
+    const q = query(
+        collection(firestore, 'arena_battles', battleId, 'reactions'),
+        orderBy('createdAt', 'desc'),
+        limitToLast(5)
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === "added") {
+                const reaction = change.doc.data() as BattleReaction;
+                // Add to local burst list
+                const id = Math.random().toString(36).substring(7);
+                setBursts(prev => [...prev, { id, emoji: reaction.emoji, x: 20 + Math.random() * 60 }]);
+                // Remove after animation duration
+                setTimeout(() => {
+                    setBursts(prev => prev.filter(b => b.id !== id));
+                }, 3000);
+            }
+        });
+    });
+    return () => unsub();
+  }, [firestore, battleId]);
+
+  // 5. VOTE AUDIT
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
     const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
     getDoc(voteRef).then(snap => { if (snap.exists()) setHasVoted(true); });
   }, [firestore, user, battleId]);
 
-  // 5. AUTO-SCROLL
+  // 6. AUTO-SCROLL
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-
-  useEffect(() => {
-    artilleryRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [counterAttacks]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,9 +156,15 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     toast({ title: "Artillery Launched! 🔥" });
   };
 
-  /**
-   * 🗳️ VOTE FUNCTION: Atomic update with audit trail
-   */
+  const sendReaction = (emoji: string) => {
+    if (!firestore || !user || battle?.status === 'ended') return;
+    addDoc(collection(firestore, 'arena_battles', battleId, 'reactions'), {
+        emoji,
+        userId: user.id,
+        createdAt: serverTimestamp()
+    });
+  };
+
   const handleVote = async (target: 'A' | 'B') => {
     if (!firestore || !user || hasVoted || isVoting || !battle || battle.status === 'ended') return;
     
@@ -193,6 +225,20 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       
       {/* --- THE STAGE: DUAL VIDEO GRID --- */}
       <div className="flex-[3] relative bg-slate-950 flex flex-col">
+        
+        {/* REACTION BURST LAYER */}
+        <div className="absolute inset-0 z-[60] pointer-events-none overflow-hidden">
+            {bursts.map(b => (
+                <div 
+                    key={b.id} 
+                    className="absolute text-5xl animate-bounce-slow" 
+                    style={{ left: `${b.x}%`, bottom: '20px', transition: 'all 3s linear', transform: 'translateY(-100vh)' }}
+                >
+                    {b.emoji}
+                </div>
+            ))}
+        </div>
+
         {/* OVERLAY CONTROLS */}
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center pointer-events-none">
           <div className="flex items-center gap-4 pointer-events-auto">
@@ -207,6 +253,26 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           <div className="bg-black/40 backdrop-blur-md px-6 py-2 rounded-2xl border border-white/10 flex items-center gap-3 pointer-events-auto text-[10px] text-white font-black uppercase">
             <Users size={14} className="text-slate-400" /> {battle.viewerCount || 0} Citizens
           </div>
+        </div>
+
+        {/* 🏆 LIVE SCOREBOARD HUD */}
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
+            <div className="bg-black/60 backdrop-blur-xl p-4 rounded-[2rem] border border-white/10 shadow-2xl flex items-center justify-between gap-8">
+                <div className="text-center flex-1">
+                    <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest">{p1?.campusAcronym || 'A'}</p>
+                    <p className="text-2xl font-black text-white tabular-nums">{opponentA.votes || 0}</p>
+                </div>
+                <div className="flex flex-col items-center">
+                    <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white/20">
+                        <Swords size={18} className="text-white" />
+                    </div>
+                    <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest mt-1">LIVE SCORE</p>
+                </div>
+                <div className="text-center flex-1">
+                    <p className="text-[8px] font-black text-amber-400 uppercase tracking-widest">{p2?.campusAcronym || 'B'}</p>
+                    <p className="text-2xl font-black text-white tabular-nums">{opponentB.votes || 0}</p>
+                </div>
+            </div>
         </div>
 
         {/* SIDE-BY-SIDE GRID */}
@@ -243,12 +309,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         {/* HUD: ENERGY TALLY & ARTILLERY SHELF */}
         <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-2xl px-6 z-50">
           <div className="bg-slate-950/80 backdrop-blur-xl p-8 rounded-[3.5rem] border border-white/10 shadow-2xl">
-            <div className="flex justify-between items-end mb-6 px-4">
-                <div className="text-left"><p className="text-[10px] font-black text-blue-400 uppercase">{p1?.campusAcronym || 'A'}</p><p className="text-4xl font-black text-white">{opponentA.votes || 0}</p></div>
-                <Swords size={32} className="text-red-600 animate-pulse mb-2" />
-                <div className="text-right"><p className="text-[10px] font-black text-amber-400 uppercase">{p2?.campusAcronym || 'B'}</p><p className="text-4xl font-black text-white">{opponentB.votes || 0}</p></div>
-            </div>
-
+            
             <div className="h-5 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/10 mb-8 shadow-inner relative">
                 <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p1Pct}%` }} />
                 <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p2Pct}%` }} />
@@ -310,7 +371,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         </div>
                     ) : (
                         <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em] flex items-center justify-center gap-2">
-                            <CheckCircle2 size={14} /> Vote Authenticated by Liaison
+                            <CheckCircle2 size={14} className="text-emerald-500" /> Vote Authenticated by Liaison
                         </p>
                     )}
                 </div>
@@ -352,6 +413,24 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             </div>
           ))}
           <div ref={scrollRef} />
+        </div>
+
+        {/* 🚀 LIVE REACTION BAR */}
+        <div className="px-6 py-3 bg-slate-950/30 flex justify-between items-center border-t border-white/5">
+            <div className="flex gap-2">
+                {REACTIONS.map(emoji => (
+                    <button 
+                        key={emoji} 
+                        onClick={() => sendReaction(emoji)}
+                        className="text-xl hover:scale-125 transition-transform active:scale-90 p-1"
+                    >
+                        {emoji}
+                    </button>
+                ))}
+            </div>
+            <div className="p-2 bg-white/5 rounded-lg border border-white/10">
+                <Smile size={14} className="text-slate-500" />
+            </div>
         </div>
 
         {!isEnded && (
