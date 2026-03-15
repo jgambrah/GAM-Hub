@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -42,13 +43,43 @@ const POWER_UPS = [
     { type: 'knockout', label: 'Knockout', emoji: '⚡', weight: 50, cost: 120 },
 ];
 
-const GIFTS = [
-    { type: 'fire', label: 'Fire', emoji: '🔥', cost: 10 },
-    { type: 'mic', label: 'Mic', emoji: '🎤', cost: 25 },
-    { type: 'crown', label: 'Crown', emoji: '👑', cost: 50 },
-    { type: 'rocket', label: 'Rocket', emoji: '🚀', cost: 100 },
-    { type: 'dragon', label: 'Dragon', emoji: '🐉', cost: 500 },
-];
+const GIFTS = {
+  fire: {
+    id: 'fire',
+    label: 'Fire',
+    emoji: '🔥',
+    cost: 10,
+    animation: "fire.json"
+  },
+  mic: {
+    id: 'mic',
+    label: 'Mic',
+    emoji: '🎤',
+    cost: 25,
+    animation: "mic.json"
+  },
+  crown: {
+    id: 'crown',
+    label: 'Crown',
+    emoji: '👑',
+    cost: 50,
+    animation: "crown.json"
+  },
+  rocket: {
+    id: 'rocket',
+    label: 'Rocket',
+    emoji: '🚀',
+    cost: 100,
+    animation: "rocket.json"
+  },
+  dragon: {
+    id: 'dragon',
+    label: 'Dragon',
+    emoji: '🐉',
+    cost: 500,
+    animation: "dragon.json"
+  }
+};
 
 const MAX_BOOSTS_PER_USER = 5;
 
@@ -77,7 +108,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
 
-  // Status flags should be declared before they are used in hooks
+  // Status flags
   const isCreator = user?.id === battle?.creatorId;
   const isWaiting = battle?.status === 'waiting';
   const isLive = battle?.status === 'live';
@@ -89,7 +120,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   }, [firestore, user?.id]);
   const { data: wallet } = useDoc<HubWallet>(walletRef);
 
-  // 🛡️ ANTI-SPAM: Track user's total boosts in this battle
   const myBoostsQuery = useMemoFirebase(() => {
     if (!firestore || !battleId || !user?.id) return null;
     return query(
@@ -117,11 +147,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // GIFTS & POWERUPS REAL-TIME LISTENERS
   useEffect(() => {
     if (!firestore || !battleId || !isLive) return;
     
-    // Powerups Listener
     const qP = query(collection(firestore, 'arena_battles', battleId, 'powerups'), orderBy('createdAt', 'desc'), limit(1));
     const unsubP = onSnapshot(qP, (snap) => {
       if (!snap.empty) {
@@ -134,7 +162,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       }
     });
 
-    // Gifts Listener
     const qG = query(collection(firestore, 'arena_battles', battleId, 'gifts'), orderBy('createdAt', 'desc'), limit(1));
     const unsubG = onSnapshot(qG, (snap) => {
       if (!snap.empty) {
@@ -257,7 +284,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     } catch (err: any) { toast({ variant: 'destructive', title: 'Deployment Failed' }); }
   };
 
-  const handleSendGift = async (gift: typeof GIFTS[0], target: 'A' | 'B') => {
+  const handleSendGift = async (gift: any, target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
     
     if (wallet.coins < gift.cost) {
@@ -272,7 +299,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         await spendCoins(firestore, user.id, gift.cost, 'gift_sent', {
             battleId,
             targetSide: target,
-            giftType: gift.type,
+            giftType: gift.id,
             targetCreatorId: targetUserId 
         });
 
@@ -280,7 +307,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             senderId: user.id,
             senderName: user.name,
             receiverId: targetUserId,
-            giftType: gift.type,
+            giftType: gift.id,
             coinsSpent: gift.cost,
             createdAt: serverTimestamp()
         });
@@ -327,7 +354,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 "p-8 rounded-[3.5rem] shadow-2xl flex flex-col items-center text-center gap-4 border-4",
                 recentGift.giftType === 'dragon' ? "bg-red-600 border-red-400 shadow-red-500/50" : "bg-indigo-900/90 backdrop-blur-xl border-indigo-400 shadow-indigo-500/50"
             )}>
-              <div className="text-[10rem] animate-bounce">{GIFTS.find(g => g.type === recentGift.giftType)?.emoji}</div>
+              <div className="text-[10rem] animate-bounce">
+                {(GIFTS as any)[recentGift.giftType]?.emoji}
+              </div>
               <h4 className="text-3xl font-black text-white uppercase tracking-tighter italic">
                 {recentGift.senderName} sent a {recentGift.giftType.toUpperCase()}!
               </h4>
@@ -521,9 +550,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                     </div>
                     <ScrollArea className="w-full">
                         <div className="flex gap-2 pb-2">
-                            {GIFTS.map(gift => (
+                            {Object.values(GIFTS).map(gift => (
                                 <button 
-                                    key={gift.type} 
+                                    key={gift.id} 
                                     onClick={() => handleSendGift(gift, 'A')}
                                     className="flex-shrink-0 flex flex-col items-center gap-1 p-4 bg-white/5 border border-white/10 rounded-3xl hover:bg-pink-500/10 hover:border-pink-500/30 transition-all active:scale-90 group"
                                 >
