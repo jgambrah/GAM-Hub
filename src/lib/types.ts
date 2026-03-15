@@ -67,6 +67,18 @@ export type ArenaBattle = {
   endsAt: any;
 };
 
+export type ArenaWaitingPoolEntry = {
+  id: string;
+  userId: string;
+  userName: string;
+  videoUrl: string;
+  title: string;
+  avatarUrl: string;
+  campusAcronym: string;
+  campusId: string;
+  createdAt: any;
+};
+
 export type ArenaChallenger = {
   id: string;
   userId: string;

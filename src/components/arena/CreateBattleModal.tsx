@@ -10,7 +10,7 @@ import { useFirebase, addDocumentNonBlocking, useCollection, useMemoFirebase } f
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { collection, serverTimestamp, query, where, limit } from 'firebase/firestore';
-import { Loader2, Swords, Zap, Video, Search, UserPlus, X, Target } from 'lucide-react';
+import { Loader2, Swords, Zap, Video, Search, UserPlus, X, Target, Globe } from 'lucide-react';
 import { campuses } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -18,7 +18,7 @@ import type { User } from '@/lib/types';
 
 export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { firestore } = useFirebase();
-  const { user } = useAuth();
+  const { user, campus } = useAuth();
   const { toast } = useToast();
   
   const [title, setTitle] = useState('');
@@ -28,7 +28,6 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
   // RIVAL SEARCH STATE
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRival, setSelectedRival] = useState<User | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
 
   const usersQuery = useMemoFirebase(() => {
     if (!firestore || searchQuery.length < 2) return null;
@@ -42,50 +41,61 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
 
   const { data: searchResults } = useCollection<User>(usersQuery);
 
-  const handleLaunch = () => {
+  const handleLaunch = async () => {
     if (!firestore || !user || !title || !myStreamUrl) return;
     setIsLoading(true);
 
     try {
-      const myCampus = campuses.find(c => c.id === user.campusId);
-
-      const battleData: any = {
-        title: title.trim(),
-        creatorId: user.id,
-        creatorName: user.name,
-        participants: [user.id],
-        opponentA: {
-          userId: user.id,
-          videoUrl: myStreamUrl.trim(),
-          votes: 0
-        },
-        opponentB: null,
-        participantInfo: {
-          [user.id]: {
-            name: user.name,
-            avatarUrl: user.avatarUrl || '',
-            campusAcronym: myCampus?.acronym || 'GH',
-            primaryColor: myCampus?.primaryColor || '#000'
-          }
-        },
-        status: 'waiting',
-        votes: { [user.id]: 0 },
-        viewerCount: 1,
-        createdAt: serverTimestamp(),
-        endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
-      };
-
       if (selectedRival) {
-          battleData.targetUserId = selectedRival.id;
-          battleData.targetUserName = selectedRival.name;
+        // 1. DIRECT CHALLENGE: Create a battle in 'waiting' state targeting someone
+        const myCampus = campuses.find(c => c.id === user.campusId);
+        const battleData: any = {
+          title: title.trim(),
+          creatorId: user.id,
+          creatorName: user.name,
+          participants: [user.id],
+          opponentA: {
+            userId: user.id,
+            videoUrl: myStreamUrl.trim(),
+            votes: 0
+          },
+          opponentB: null,
+          participantInfo: {
+            [user.id]: {
+              name: user.name,
+              avatarUrl: user.avatarUrl || '',
+              campusAcronym: myCampus?.acronym || 'GH',
+              primaryColor: myCampus?.primaryColor || '#000'
+            }
+          },
+          status: 'waiting',
+          targetUserId: selectedRival.id,
+          targetUserName: selectedRival.name,
+          votes: { [user.id]: 0 },
+          viewerCount: 1,
+          createdAt: serverTimestamp(),
+          endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+        };
+
+        await addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
+        toast({ title: `Challenged ${selectedRival.name}! 🏹`, description: "Invitation sent to their device." });
+      } else {
+        // 2. AUTO-MATCH: Enter the staging pool for automated pairing
+        const entryData = {
+          userId: user.id,
+          userName: user.name,
+          avatarUrl: user.avatarUrl || '',
+          campusAcronym: campus?.acronym || 'GH',
+          campusId: user.campusId,
+          videoUrl: myStreamUrl.trim(),
+          title: title.trim(),
+          createdAt: serverTimestamp()
+        };
+
+        await addDocumentNonBlocking(collection(firestore, 'arena_waiting_pool'), entryData);
+        toast({ title: "Entering Waiting Pool... ⏳", description: "Liaison is matching you with a worthy rival across the Hub." });
       }
 
-      addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
-      
-      toast({ 
-          title: selectedRival ? `Challenged ${selectedRival.name}! 🏹` : "Challenge Launched! 🛡️", 
-          description: selectedRival ? "Invitation sent to their device." : "Waiting for a rival to enter the ring." 
-      });
       onOpenChange(false);
       resetForm();
 
@@ -115,7 +125,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
             </div>
             <div>
               <DialogTitle className="text-2xl font-black italic">Arena Deployment</DialogTitle>
-              <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400">Call out specific rivals or launch an open challenge</DialogDescription>
+              <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400">Call out specific rivals or auto-match across the Yard</DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -126,7 +136,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
             {/* 1. RIVAL TARGETING */}
             <div className="space-y-3">
                 <Label className="text-[10px] font-black uppercase text-indigo-500 px-1 flex items-center gap-2">
-                    <Target size={12} /> Target a Specific Rival (Optional)
+                    <Target size={12} /> Challenge a Specific Rival (Optional)
                 </Label>
                 
                 {selectedRival ? (
@@ -191,13 +201,22 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
                     </div>
                 </div>
             </div>
+
+            {!selectedRival && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800 flex items-start gap-3">
+                    <Zap className="text-blue-600 mt-1" size={16} />
+                    <p className="text-[10px] text-blue-800 dark:text-blue-300 font-bold leading-relaxed italic">
+                        Liaison Auto-Match: Launching without a target rival will enter you into the National Waiting Pool for automated pairing.
+                    </p>
+                </div>
+            )}
           </div>
         </div>
 
         <DialogFooter className="bg-muted/30 p-6 border-t">
             <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-xl font-bold">Cancel</Button>
             <Button onClick={handleLaunch} disabled={isLoading || !isFormValid} className={cn("flex-1 rounded-xl font-black px-8 h-14 shadow-xl transition-all active:scale-95", isFormValid ? "bg-red-600 text-white" : "bg-slate-200 text-slate-400")}>
-                {isLoading ? <Loader2 className="animate-spin" /> : <><Zap size={18} fill="currentColor" /> {selectedRival ? 'DISPATCH CHALLENGE' : 'LAUNCH OPEN RING'}</>}
+                {isLoading ? <Loader2 className="animate-spin" /> : <><Zap size={18} fill="currentColor" /> {selectedRival ? 'DISPATCH CHALLENGE' : 'ENTER AUTO-MATCH'}</>}
             </Button>
         </DialogFooter>
       </DialogContent>

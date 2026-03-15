@@ -83,6 +83,21 @@
         "endsAt": { "type": "string", "format": "date-time" }
       }
     },
+    "ArenaWaitingPoolEntry": {
+      "title": "ArenaWaitingPoolEntry",
+      "type": "object",
+      "description": "A fighter waiting for an auto-match pairing.",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "title": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "campusAcronym": { "type": "string" },
+        "campusId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "ArenaChallenger": {
       "title": "ArenaChallenger",
       "type": "object",
@@ -132,6 +147,7 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
+    "/arena_waiting_pool/{entryId}": { "schema": "#/backend/entities/ArenaWaitingPoolEntry", "description": "Staging queue for auto-match pairings." },
     "/arena_battles/{battleId}/challengers/{userId}": { "schema": "#/backend/entities/ArenaChallenger", "description": "Queue of potential rivals for a waiting battle." },
     "/campus_wars/{warId}": { "schema": "#/backend/entities/CampusWar", "description": "Large-scale University vs University wars." },
     "/campus_wars/{warId}/messages/{msgId}": { "description": "Live chat for campus wars." },

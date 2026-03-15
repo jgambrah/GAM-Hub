@@ -18,6 +18,81 @@ if (!admin.apps.length) {
 setGlobalOptions({maxInstances: 10});
 
 /**
+ * 🛡️ ARENA RING: AUTO-MATCHMAKER
+ * When a student enters the waiting pool, look for a rival and pairing them.
+ */
+exports.matchFighters = onDocumentCreated("arena_waiting_pool/{entryId}", async (event) => {
+  const db = admin.firestore();
+  const newEntry = event.data.data();
+  const entryId = event.params.entryId;
+
+  return db.runTransaction(async (transaction) => {
+    // 1. Find oldest entry in pool (excluding self)
+    const poolQuery = db.collection("arena_waiting_pool")
+      .orderBy("createdAt", "asc")
+      .limit(5); // Check top 5 for concurrency safety
+
+    const poolSnap = await transaction.get(poolQuery);
+    const rivalDoc = poolSnap.docs.find(doc => doc.id !== entryId);
+
+    if (!rivalDoc) {
+      console.log("⏳ Arena: No rival found in pool yet. Waiting...");
+      return;
+    }
+
+    const rival = rivalDoc.data();
+
+    // 2. Pair Found: Initialize LIVE Battle
+    const battleRef = db.collection("arena_battles").doc();
+    const battleData = {
+      title: `Auto-Match: ${newEntry.campusAcronym} vs ${rival.campusAcronym}`,
+      status: "live",
+      creatorId: newEntry.userId,
+      participants: [newEntry.userId, rival.userId],
+      opponentA: {
+        userId: newEntry.userId,
+        videoUrl: newEntry.videoUrl,
+        votes: 0
+      },
+      opponentB: {
+        userId: rival.userId,
+        videoUrl: rival.videoUrl,
+        votes: 0
+      },
+      participantInfo: {
+        [newEntry.userId]: {
+          name: newEntry.userName,
+          avatarUrl: newEntry.avatarUrl,
+          campusAcronym: newEntry.campusAcronym,
+          primaryColor: "#3b82f6"
+        },
+        [rival.userId]: {
+          name: rival.userName,
+          avatarUrl: rival.avatarUrl,
+          campusAcronym: rival.campusAcronym,
+          primaryColor: "#ef4444"
+        }
+      },
+      votes: {
+        [newEntry.userId]: 0,
+        [rival.userId]: 0
+      },
+      viewerCount: 2,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 mins showdown
+    };
+
+    transaction.set(battleRef, battleData);
+    
+    // 3. Cleanup: Remove both from pool
+    transaction.delete(db.collection("arena_waiting_pool").doc(entryId));
+    transaction.delete(rivalDoc.ref);
+
+    console.log(`⚔️ Arena: Paired ${newEntry.userName} and ${rival.userName} into live battle.`);
+  });
+});
+
+/**
  * 🛡️ ARENA RING: AUTO-END BATTLES & LEADERBOARD SYNC
  */
 exports.endBattle = onSchedule("every 1 minutes", async (event) => {
@@ -101,6 +176,24 @@ exports.cancelInactiveBattles = onSchedule("every 1 minutes", async (event) => {
   await batch.commit();
   console.log(`🧹 Liaison Arena: Cancelled ${staleChallenges.size} stale challenges.`);
   return null;
+});
+
+/**
+ * 🛡️ ARENA RING: PRUNE WAITING POOL
+ */
+exports.pruneWaitingPool = onSchedule("every 5 minutes", async (event) => {
+  const db = admin.firestore();
+  const fiveMinutesAgo = admin.firestore.Timestamp.fromDate(new Date(Date.now() - 300000));
+
+  const staleEntries = await db.collection("arena_waiting_pool")
+    .where("createdAt", "<=", fiveMinutesAgo)
+    .get();
+
+  if (staleEntries.empty) return null;
+
+  const batch = db.batch();
+  staleEntries.forEach(doc => batch.delete(doc.ref));
+  return batch.commit();
 });
 
 /**
