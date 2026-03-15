@@ -3,8 +3,8 @@
 
 import React, { useState, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, limit, where, doc, getDoc, setDoc, serverTimestamp, increment } from 'firebase/firestore';
-import type { ArenaPost, ArenaBattle, Campus } from '@/lib/types';
+import { collection, query, orderBy, limit, where } from 'firebase/firestore';
+import type { ArenaPost, ArenaBattle } from '@/lib/types';
 import { Swords, Trophy, Zap, Loader2, Plus, Flame, Sparkles } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
@@ -15,14 +15,10 @@ import { Button } from '@/components/ui/button';
 import ArenaLeaderboard from '@/components/social/ArenaLeaderboard';
 import HallOfFame from '@/components/social/HallOfFame';
 import { ArenaRules } from '@/components/arena/ArenaRules';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { generatePostEmbedding } from '@/ai/flows/generate-post-embedding';
-import { extractHashtags, updateHashtagIndex, updateHashtagGraph } from '@/lib/hashtag-utils';
-import { generateSemanticHashtags } from '@/ai/flows/generate-semantic-hashtags';
-import { validateVideo, generateFileHash } from '@/lib/video-utils';
+import { extractHashtags } from '@/lib/hashtag-utils';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CreateBattleModal } from '@/components/arena/CreateBattleModal';
 import { LiveBattleCard } from '@/components/arena/LiveBattleCard';
@@ -31,7 +27,7 @@ import { LiveBattleRoom } from '@/components/arena/LiveBattleRoom';
 const INITIAL_LIMIT = 50;
 
 export default function ArenaPage() {
-    const { firestore, storage } = useFirebase();
+    const { firestore } = useFirebase();
     const { user, isTokenReady } = useAuth();
     const { toast } = useToast();
     
@@ -113,7 +109,7 @@ export default function ArenaPage() {
                             <Swords size={20} />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-black italic tracking-tight">The Live Ring</h2>
+                            <h2 className="text-2xl font-black italic tracking-tight text-foreground">The Live Ring</h2>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Real-time inter-uni showdowns</p>
                         </div>
                     </div>
@@ -142,7 +138,7 @@ export default function ArenaPage() {
                 </div>
             </section>
 
-            <div className="bg-slate-900 rounded-[3rem] p-8 mb-8 text-white relative overflow-hidden shadow-2xl">
+            <div className="bg-slate-900 rounded-[3rem] p-8 mb-8 text-white relative overflow-hidden shadow-2xl mx-auto max-w-4xl">
                 <div className="absolute right-0 top-0 p-6 opacity-20"><Flame size={120} /></div>
                 <div className="relative z-10">
                     <h1 className="text-3xl font-black italic tracking-tighter uppercase">Arena Threads</h1>
@@ -150,45 +146,47 @@ export default function ArenaPage() {
                 </div>
             </div>
 
-            <ArenaRules />
+            <div className="max-w-4xl mx-auto">
+                <ArenaRules />
 
-            {user && (
-                <div className="bg-card rounded-[2.5rem] p-6 mb-10 shadow-xl border border-border">
-                    <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-                        <div className="flex gap-2">
-                            <button onClick={() => setVibeType('celebration')} className={cn("px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all", vibeType === 'celebration' ? 'bg-amber-100 text-amber-700 shadow-sm ring-2 ring-amber-500/20' : 'bg-muted text-muted-foreground')}> Victory</button>
-                            <button onClick={() => setVibeType('shade')} className={cn("px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all", vibeType === 'shade' ? 'bg-red-100 text-red-700 shadow-sm ring-2 ring-red-500/20' : 'bg-muted text-muted-foreground')}> Shade</button>
+                {user && (
+                    <div className="bg-card rounded-[2.5rem] p-6 mb-10 shadow-xl border border-border">
+                        <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
+                            <div className="flex gap-2">
+                                <button onClick={() => setVibeType('celebration')} className={cn("px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all", vibeType === 'celebration' ? 'bg-amber-100 text-amber-700 shadow-sm ring-2 ring-amber-500/20' : 'bg-muted text-muted-foreground')}> Victory</button>
+                                <button onClick={() => setVibeType('shade')} className={cn("px-4 py-2 rounded-xl text-[10px] font-black flex items-center gap-2 transition-all", vibeType === 'shade' ? 'bg-red-100 text-red-700 shadow-sm ring-2 ring-red-500/20' : 'bg-muted text-muted-foreground')}> Shade</button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Select onValueChange={setTargetCampus} value={targetCampus}>
+                                    <SelectTrigger className="w-[180px] rounded-xl font-bold border-none bg-muted h-10 text-[10px]">
+                                        <SelectValue placeholder="All Rivals" />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl border-none shadow-2xl">
+                                        <SelectItem value="all">🌍 All Rivals</SelectItem>
+                                        {staticCampuses.filter(c => c.id !== user.campusId).map(c => (
+                                            <SelectItem key={c.id} value={c.id}>{c.acronym} Hub</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Select onValueChange={setTargetCampus} value={targetCampus}>
-                                <SelectTrigger className="w-[180px] rounded-xl font-bold border-none bg-muted h-10 text-[10px]">
-                                    <SelectValue placeholder="All Rivals" />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-xl border-none shadow-2xl">
-                                    <SelectItem value="all">🌍 All Rivals</SelectItem>
-                                    {staticCampuses.filter(c => c.id !== user.campusId).map(c => (
-                                        <SelectItem key={c.id} value={c.id}>{c.acronym} Hub</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                        <form onSubmit={handlePost} className="flex gap-2">
+                            <Input value={content} onChange={e => setContent(e.target.value)} placeholder="Dropping some national heat..." className="rounded-2xl border-none bg-muted font-bold" />
+                            <Button disabled={isPosting} className="rounded-2xl bg-slate-900 text-white h-12 px-8">
+                                {isPosting ? <Loader2 className="animate-spin" /> : <Zap size={18} />}
+                            </Button>
+                        </form>
                     </div>
-                    <form onSubmit={handlePost} className="flex gap-2">
-                        <Input value={content} onChange={e => setContent(e.target.value)} placeholder="Dropping some national heat..." className="rounded-2xl border-none bg-muted font-bold" />
-                        <Button disabled={isPosting} className="rounded-2xl bg-slate-900 text-white h-12 px-8">
-                            {isPosting ? <Loader2 className="animate-spin" /> : <Zap size={18} />}
-                        </Button>
-                    </form>
+                )}
+
+                <div className="space-y-8 max-w-2xl mx-auto">
+                    {isLoadingPosts ? (
+                        <Skeleton className="h-64 w-full rounded-[2.5rem]" />
+                    ) : posts?.map(post => <ArenaPostCard key={post.id} post={post} />)}
                 </div>
-            )}
 
-            <div className="space-y-8 max-w-2xl mx-auto">
-                {isLoadingPosts ? (
-                    <Skeleton className="h-64 w-full rounded-[2.5rem]" />
-                ) : posts?.map(post => <ArenaPostCard key={post.id} post={post} />)}
+                <HallOfFame />
             </div>
-
-            <HallOfFame />
 
             {/* BATTLE MODALS */}
             <CreateBattleModal open={isBattleModalOpen} onOpenChange={setIsBattleModalOpen} />

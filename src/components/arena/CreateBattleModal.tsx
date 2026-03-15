@@ -9,8 +9,8 @@ import { Label } from '@/components/ui/label';
 import { useFirebase, addDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { collection, serverTimestamp, doc, getDoc } from 'firebase/firestore';
-import { Loader2, Swords, Zap, Search, UserPlus, X } from 'lucide-react';
+import { collection, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { Loader2, Swords, Zap, Search, X } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { campuses } from '@/lib/data';
 
@@ -30,11 +30,11 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
     if (!opponentEmail || !firestore) return;
     setSearching(true);
     try {
-      const q = (await import('firebase/firestore')).query(
+      const q = query(
         collection(firestore, 'users'), 
-        (await import('firebase/firestore')).where('email', '==', opponentEmail.toLowerCase())
+        where('email', '==', opponentEmail.toLowerCase().trim())
       );
-      const snap = await (await import('firebase/firestore')).getDocs(q);
+      const snap = await getDocs(q);
       if (!snap.empty) {
         const d = snap.docs[0];
         setOpponent({ id: d.id, ...d.data() });
@@ -98,20 +98,20 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-[2.5rem] sm:max-w-md border-none shadow-2xl">
-        <DialogHeader>
+      <DialogContent className="rounded-[2.5rem] sm:max-w-md border-none shadow-2xl p-0 overflow-hidden">
+        <DialogHeader className="p-8 bg-slate-900 text-white">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-3 bg-red-600 text-white rounded-2xl shadow-lg">
               <Swords size={24} />
             </div>
             <div>
               <DialogTitle className="text-2xl font-black italic">Launch Live Battle</DialogTitle>
-              <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-muted-foreground">National inter-uni showdown</DialogDescription>
+              <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400">National inter-uni showdown</DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="p-8 space-y-6 bg-background">
           <div className="space-y-2">
             <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Battle Headline</Label>
             <Input 
@@ -154,12 +154,12 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           {opponent && (
             <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border-2 border-blue-100 dark:border-blue-800 flex items-center justify-between animate-in zoom-in-95 duration-200">
               <div className="flex items-center gap-3">
-                <Avatar className="border-2 border-white shadow-sm">
+                <Avatar className="border-2 border-white shadow-sm h-10 w-10">
                   <AvatarImage src={opponent.avatarUrl} />
-                  <AvatarFallback>{opponent.name.charAt(0)}</AvatarFallback>
+                  <AvatarFallback>{opponent.name?.charAt(0)}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-black text-sm">{opponent.name}</p>
+                  <p className="font-black text-sm text-foreground">{opponent.name}</p>
                   <p className="text-[10px] font-bold text-blue-500 uppercase">{opponent.campusId}</p>
                 </div>
               </div>
@@ -168,7 +168,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           )}
         </div>
 
-        <DialogFooter className="bg-muted/30 p-6 -mx-6 -mb-6 border-t">
+        <DialogFooter className="bg-muted/30 p-6 border-t">
           <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-xl font-bold">Cancel</Button>
           <Button 
             onClick={handleLaunch} 

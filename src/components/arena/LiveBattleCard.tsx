@@ -38,7 +38,7 @@ export function LiveBattleCard({ battle, onClick }: { battle: ArenaBattle, onCli
             <div className="relative">
               <Avatar className="h-20 w-20 border-4 shadow-2xl" style={{ borderColor: p1?.primaryColor }}>
                 <AvatarImage src={p1?.avatarUrl} />
-                <AvatarFallback>{p1?.name.charAt(0)}</AvatarFallback>
+                <AvatarFallback>{p1?.name?.charAt(0)}</AvatarFallback>
               </Avatar>
               <div className="absolute -bottom-2 -right-2 bg-slate-900 px-2 py-0.5 rounded-lg border border-white/10 text-[8px] font-black uppercase">
                 {p1?.campusAcronym}
@@ -59,7 +59,7 @@ export function LiveBattleCard({ battle, onClick }: { battle: ArenaBattle, onCli
             <div className="relative">
               <Avatar className="h-20 w-20 border-4 shadow-2xl" style={{ borderColor: p2?.primaryColor }}>
                 <AvatarImage src={p2?.avatarUrl} />
-                <AvatarFallback>{p2?.name.charAt(0)}</AvatarFallback>
+                <AvatarFallback>{p2?.name?.charAt(0)}</AvatarFallback>
               </Avatar>
               <div className="absolute -bottom-2 -right-2 bg-slate-900 px-2 py-0.5 rounded-lg border border-white/10 text-[8px] font-black uppercase">
                 {p2?.campusAcronym}

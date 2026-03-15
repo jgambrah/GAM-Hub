@@ -54,6 +54,7 @@
         "status": { "type": "string", "enum": ["live", "ended"] },
         "streamUrl": { "type": "string" },
         "votes": { "type": "object", "additionalProperties": { "type": "number" } },
+        "viewerCount": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" },
         "endsAt": { "type": "string", "format": "date-time" }
       },

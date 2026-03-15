@@ -3,12 +3,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { doc, onSnapshot, collection, query, orderBy, limitToLast, serverTimestamp, addDoc, updateDoc, increment, setDoc, getDoc } from 'firebase/firestore';
-import { useFirebase, useCollection, useMemoFirebase, updateDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import type { ArenaBattle, BattleMessage } from '@/lib/types';
 import { 
-  X, Swords, Users, Send, Zap, Trophy, 
-  Loader2, Mic, Volume2, MessageSquare, Flame, Star, ShieldCheck
+  X, Swords, Users, Send, Zap, 
+  Loader2, MessageSquare
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -41,7 +41,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   , [firestore, battleId]);
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // 3. VOTE AUDIT: Check if user already voted
+  // 3. VOTE AUDIT: Check if user already voted (Single Vote Protocol)
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
     const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
@@ -162,8 +162,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           {messages?.map((m) => (
             <div key={m.id} className="animate-in slide-in-from-bottom-2">
               <p className="text-[10px] font-black text-red-500 uppercase tracking-tighter">{m.userName}</p>
-              <div className="bg-white/5 p-3 rounded-2xl rounded-tl-none border border-white/5 mt-1">
-                <p className="text-sm text-slate-200 font-medium">{m.text}</p>
+              <div className="bg-white/5 p-3 rounded-2xl rounded-tl-none border border-white/5 mt-1 text-slate-200 text-sm font-medium">
+                <p>{m.text}</p>
               </div>
             </div>
           ))}
