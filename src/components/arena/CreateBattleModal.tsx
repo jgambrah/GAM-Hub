@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -13,6 +12,7 @@ import { collection, serverTimestamp, query, where, getDocs } from 'firebase/fir
 import { Loader2, Swords, Zap, Search, X, Info, Video, AlertCircle } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { campuses } from '@/lib/data';
+import { cn } from '@/lib/utils';
 
 /**
  * CreateBattleModal Component
@@ -144,7 +144,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border-2 border-dashed border-blue-100 dark:border-blue-800 flex items-start gap-3">
             <Info className="text-blue-600 shrink-0 mt-1" size={16} />
             <div className="space-y-1">
-              <p className="text-[10px] font-black text-blue-800 dark:text-blue-300 uppercase tracking-widest">Social Anchor Instructions</p>
+              <p className="text-[11px] font-black text-blue-800 dark:text-blue-300 uppercase tracking-widest">Social Anchor Instructions</p>
               <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed font-medium italic">
                 1. Start a Live Stream on <b>TikTok</b> or <b>YouTube</b>.<br/>
                 2. Copy the public link.<br/>
