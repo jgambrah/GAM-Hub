@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -6,6 +5,7 @@
  * -----------------------
  * Elite National Arena Stage.
  * Updated Flow: WAITING (Challenge Mode) -> LIVE (Showdown Mode) -> ENDED (Verdict Mode)
+ * Includes Creator Selection logic to pick rivals from the challenger queue.
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -68,6 +68,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [selectingOpponentId, setSelectingOpponentId] = useState<string | null>(null);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   
   const [prevVotes, setPrevVotes] = useState({ A: 0, B: 0 });
   const [momentum, setMomentum] = useState<'A' | 'B' | 'neutral'>('neutral');
@@ -255,11 +256,21 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar">
                 <div className="max-w-2xl w-full space-y-8 py-20">
                     <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black">
-                        <ReactPlayer url={battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
+                        <ReactPlayer url={previewVideoUrl || battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
                         <div className="absolute bottom-6 left-6 z-20 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
-                            <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">{p1?.campusAcronym}</p>
-                            <p className="text-xs font-black">{p1?.name}</p>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">
+                                {previewVideoUrl ? 'PREVIEWING CONTENDER' : p1?.campusAcronym}
+                            </p>
+                            <p className="text-xs font-black">{previewVideoUrl ? 'Contender Clip' : p1?.name}</p>
                         </div>
+                        {previewVideoUrl && (
+                            <button 
+                                onClick={() => setPreviewVideoUrl(null)}
+                                className="absolute top-6 right-6 p-2 bg-red-600 text-white rounded-lg shadow-lg hover:bg-red-700 transition-colors"
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
                     </div>
 
                     <div className="text-center space-y-4">
@@ -291,14 +302,24 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                                 <p className="text-[9px] font-bold text-indigo-400 uppercase">{c.campusAcronym}</p>
                                             </div>
                                         </div>
-                                        <Button 
-                                            size="sm"
-                                            disabled={!!selectingOpponentId}
-                                            onClick={() => handleSelectOpponent(c)}
-                                            className="rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase shadow-lg"
-                                        >
-                                            {selectingOpponentId === c.id ? <Loader2 className="animate-spin" /> : "FIGHT"}
-                                        </Button>
+                                        <div className="flex gap-2">
+                                            <Button 
+                                                size="sm" 
+                                                variant="ghost" 
+                                                className="text-[9px] font-black uppercase text-slate-400 hover:text-white"
+                                                onClick={() => setPreviewVideoUrl(c.videoUrl)}
+                                            >
+                                                Preview
+                                            </Button>
+                                            <Button 
+                                                size="sm"
+                                                disabled={!!selectingOpponentId}
+                                                onClick={() => handleSelectOpponent(c)}
+                                                className="rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase shadow-lg"
+                                            >
+                                                {selectingOpponentId === c.id ? <Loader2 className="animate-spin" /> : "FIGHT"}
+                                            </Button>
+                                        </div>
                                     </div>
                                 ))}
                                 {(!challengers || challengers.length === 0) && (
@@ -401,7 +422,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             {inputMode === 'chat' ? (
                 <form onSubmit={handleSendMessage} className="flex gap-2">
                     <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Drop a shade..." className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none focus:ring-2 focus:ring-blue-600 transition-all font-bold" />
-                    <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-2xl active:scale-90 transition-all"><Send size={20} /></button>
+                    <button type="submit" disabled={!message.trim()} className="p-4 bg-blue-600 text-white rounded-full active:scale-90 transition-all"><Send size={20} /></button>
                 </form>
             ) : (
                 <div className="space-y-4 animate-in slide-in-from-bottom-4">
