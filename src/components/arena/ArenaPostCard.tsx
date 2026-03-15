@@ -262,7 +262,23 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                         
                         {(post.mediaType === 'video' || post.mediaType === 'native') && videoSource && (
                             <div className="aspect-video">
-                                <ReactPlayer url={videoSource} controls playing={false} width="100%" height="100%" playsinline />
+                                <ReactPlayer 
+                                    url={videoSource} 
+                                    controls 
+                                    playing={false} 
+                                    width="100%" 
+                                    height="100%" 
+                                    playsinline 
+                                    config={{ 
+                                        file: { 
+                                            attributes: { 
+                                                preload: "metadata", 
+                                                playsInline: true 
+                                            }, 
+                                            forceHLS: !!post.hlsUrl 
+                                        } 
+                                    }} 
+                                />
                             </div>
                         )}
 
