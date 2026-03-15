@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -43,6 +42,12 @@ const getCategoryLabel = (category: string) => {
     }
 }
 
+/**
+ * ArenaPostCard Component
+ * -----------------------
+ * Elite visual node for Arena vibrations. 
+ * Optimized with React.memo to drastically reduce re-renders in heavy feeds.
+ */
 export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post: ArenaPost }) {
     const { user, isAdmin } = useAuth();
     const { firestore } = useFirebase();
@@ -231,7 +236,6 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                     </p>
                 )}
                 
-                {/* 🎙️ SHOUTOUT HERO STAGE (ARENA MODE) */}
                 {post.mediaType === 'audio' && post.mediaUrl && (
                     <div className="p-10 bg-slate-900 rounded-[3rem] border-4 border-white/5 relative overflow-hidden flex flex-col items-center justify-center gap-6 cursor-pointer hover:bg-slate-850 transition-all group/audio shadow-2xl">
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(220,38,38,0.1),transparent)] animate-pulse" />

@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -172,7 +171,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    // Upgrade 1 & 2: Added size guard and implementation
     if (selectedFile.size > 10 * 1024 * 1024) {
         toast({
             variant: "destructive",
@@ -190,7 +188,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     e.preventDefault();
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
 
-    // Upgrade 4: Added content moderation guard
     const bannedWords = ["slur1", "slur2"];
     if (bannedWords.some(word => text.toLowerCase().includes(word))) {
         toast({
@@ -201,7 +198,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         return;
     }
 
-    // Upgrade 3: Added anti-spam cooldown logic
     const lastReplyRef = doc(firestore, "users", userProfile.id, "rateLimits", "arenaReply");
     const lastSnap = await getDoc(lastReplyRef);
 
@@ -241,7 +237,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         const filePath = `arena_media/${post.id}/${Date.now()}_${file.name}`;
         const fileRef = ref(storage, filePath);
         
-        // Upgrade 2: Implemented resumable upload with progress tracking
         const uploadTask = uploadBytesResumable(fileRef, file);
 
         await new Promise((resolve, reject) => {
@@ -266,7 +261,6 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       await addDocumentNonBlocking(collection(firestore, 'campus_pulse', post.id, 'comebacks'), comebackData);
       await updateDocumentNonBlocking(doc(firestore, 'campus_pulse', post.id), { comebackCount: increment(1) });
       
-      // Upgrade 3: Save last reply time
       await setDoc(lastReplyRef, { time: serverTimestamp() });
 
       toast({ title: 'Comeback Vibe Shared!' });
@@ -279,8 +273,15 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   };
 
   const handleRequestVerdict = async () => {
-    // Upgrade 6: Improved AI Referee trigger condition
     const realReplies = comebacks?.filter(c => !c.isBot) || [];
+    
+    // 🚫 PROTECTION: Prevent duplicate verdicts
+    const alreadyJudged = comebacks?.some(c => c.isBot);
+    if (alreadyJudged) {
+      toast({ title: "Verdict already delivered." });
+      return;
+    }
+
     if (!firestore || realReplies.length < 3) {
         toast({ variant: 'destructive', title: "More comebacks needed", description: "The AI Referee needs more vibrations to analyze this battle." });
         return;
@@ -389,7 +390,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
           <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*,video/*" />
           <input ref={textInputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder="Drop your battle response..." className="flex-1 bg-transparent border-none outline-none text-sm font-black text-foreground placeholder:text-muted-foreground/60" disabled={isPosting} />
           <button type="submit" disabled={isPosting || (!text.trim() && !videoUrl.trim() && !file)} className="p-5 bg-slate-900 text-white rounded-full active:scale-90 transition-transform shadow-xl disabled:opacity-30">
-            {isPosting ? <Loader2 className="animate-spin" size={24}/> : <Send size={24} />}
+            {isPosting ? <Loader2 className="animate-spin" size={24} /> : <Send size={24} />}
           </button>
         </div>
       </form>
