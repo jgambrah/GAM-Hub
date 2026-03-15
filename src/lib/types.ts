@@ -50,9 +50,9 @@ export type ArenaBattle = {
     userId: string;
     videoUrl: string;
     votes: number;
-  };
+  } | null;
   participantInfo: Record<string, { name: string; avatarUrl: string; campusAcronym: string; primaryColor: string }>;
-  status: 'live' | 'ended';
+  status: 'waiting' | 'live' | 'ended';
   votes: Record<string, number>; 
   viewerCount: number;
   aiVerdict?: {
@@ -63,6 +63,16 @@ export type ArenaBattle = {
   };
   createdAt: any;
   endsAt: any;
+};
+
+export type ArenaChallenger = {
+  id: string;
+  userId: string;
+  userName: string;
+  avatarUrl: string;
+  campusAcronym: string;
+  videoUrl: string;
+  createdAt: any;
 };
 
 export type CampusWar = {

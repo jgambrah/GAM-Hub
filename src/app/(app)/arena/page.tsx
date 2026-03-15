@@ -49,10 +49,10 @@ export default function ArenaPage() {
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
-    // 📡 1. RETRIEVE LIVE BATTLES
+    // 📡 1. RETRIEVE ACTIVE BATTLES (Waiting or Live)
     const battlesQuery = useMemoFirebase(() => {
         if (!firestore) return null;
-        return query(collection(firestore, 'arena_battles'), where('status', '==', 'live'), limit(5));
+        return query(collection(firestore, 'arena_battles'), where('status', 'in', ['waiting', 'live']), limit(10));
     }, [firestore]);
     const { data: liveBattles, isLoading: isLoadingBattles } = useCollection<ArenaBattle>(battlesQuery);
 
@@ -131,7 +131,7 @@ export default function ArenaPage() {
                             </div>
                             <div>
                                 <h2 className="text-3xl font-black italic tracking-tighter text-foreground uppercase">Campus Wars</h2>
-                                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em] mt-1">National University Conflict</p>
+                                <p className="text-[10px] font-black text-indigo-50 uppercase tracking-[0.3em] mt-1">National University Conflict</p>
                             </div>
                         </div>
                         {isSRC && (
@@ -164,7 +164,7 @@ export default function ArenaPage() {
                         onClick={() => setIsBattleModalOpen(true)}
                         className="rounded-2xl bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest px-6 h-12 shadow-xl active:scale-95 transition-all"
                     >
-                        Launch Battle
+                        Launch Challenge
                     </Button>
                 </div>
 
@@ -179,7 +179,7 @@ export default function ArenaPage() {
                         <div className="col-span-full py-16 bg-white dark:bg-card border-4 border-dashed rounded-[3.5rem] flex flex-col items-center justify-center text-center opacity-40">
                             <Zap size={48} className="mb-4 text-slate-300" />
                             <p className="font-black uppercase tracking-widest text-xs">The Ring is Open</p>
-                            <p className="text-[10px] italic mt-2">Launch a live battle to challenge a rival campus.</p>
+                            <p className="text-[10px] italic mt-2">Launch a challenge to start a live battle.</p>
                         </div>
                     )}
                 </div>

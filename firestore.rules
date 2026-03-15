@@ -24,8 +24,9 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
       allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.creatorId ||
         request.auth.uid in resource.data.participants ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'status', 'opponentA', 'opponentB', 'aiVerdict'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'status', 'opponentA', 'opponentB', 'aiVerdict', 'participants', 'participantInfo'])
       );
 
       match /messages/{msgId} {
@@ -46,6 +47,12 @@ service cloud.firestore {
       match /user_votes/{userId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /challengers/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.auth.uid == userId;
+        allow delete: if isSignedIn() && (request.auth.uid == userId || request.auth.uid == get(/databases/$(database)/documents/arena_battles/$(battleId)).data.creatorId);
       }
     }
 

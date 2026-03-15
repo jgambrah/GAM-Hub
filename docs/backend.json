@@ -50,7 +50,7 @@
         "id": { "type": "string" },
         "title": { "type": "string" },
         "creatorId": { "type": "string" },
-        "status": { "type": "string", "enum": ["live", "ended"] },
+        "status": { "type": "string", "enum": ["waiting", "live", "ended"] },
         "opponentA": {
           "type": "object",
           "properties": {
@@ -81,6 +81,19 @@
         "viewerCount": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" },
         "endsAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ArenaChallenger": {
+      "title": "ArenaChallenger",
+      "type": "object",
+      "description": "A student who has requested to join a waiting battle.",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "campusAcronym": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
       }
     },
     "CampusWar": {
@@ -119,6 +132,7 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
+    "/arena_battles/{battleId}/challengers/{userId}": { "schema": "#/backend/entities/ArenaChallenger", "description": "Queue of potential rivals for a waiting battle." },
     "/campus_wars/{warId}": { "schema": "#/backend/entities/CampusWar", "description": "Large-scale University vs University wars." },
     "/campus_wars/{warId}/messages/{msgId}": { "description": "Live chat for campus wars." },
     "/campus_wars/{warId}/votes/{userId}": { "description": "Unique student votes per war (Integrity Protocol)." },
