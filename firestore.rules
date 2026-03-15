@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -29,12 +30,7 @@ service cloud.firestore {
 
     // 💰 MONETIZATION: Transaction History
     match /wallet_transactions/{txId} {
-      // Logic: Allow list/get if the user owns the record OR if they are an admin
-      allow read: if isSignedIn() && (
-        isAdmin() || 
-        (resource.data.userId == request.auth.uid)
-      );
-      // Transactions are typically created via server-side logic, but we allow admin/function write
+      allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if isAdmin();
     }
 
@@ -54,20 +50,17 @@ service cloud.firestore {
       allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
       
       allow update: if isSignedIn() && (
-        // 1. Liaison Admins & Battle Creators have full control
         request.auth.uid == resource.data.creatorId || isAdmin() ||
-        
-        // 2. Spectators & Participants can update engagement metrics only
         (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'opponentA', 'opponentB', 'aiVerdict', 'participants', 'participantInfo', 'status']) &&
-          
-          // CRITICAL GUARD: Only the Creator can promote from 'waiting' to 'live'
-          !(resource.data.status == 'waiting' && request.resource.data.status == 'live' && request.auth.uid != resource.data.creatorId) &&
-          
-          // CRITICAL GUARD: Only the Creator can assign the second opponent
-          !(resource.data.opponentB == null && request.resource.data.opponentB != null && request.auth.uid != resource.data.creatorId)
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'opponentA', 'opponentB', 'aiVerdict', 'participants', 'participantInfo', 'status'])
         )
       );
+
+      match /powerups/{powerupId} {
+        allow read: if isSignedIn();
+        // Students can create power-up events to influence the battle
+        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      }
 
       match /engagement_events/{eventId} {
         allow read: if isSignedIn();
@@ -82,11 +75,6 @@ service cloud.firestore {
       match /reactions/{reactionId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn();
-      }
-
-      match /powerups/{powerupId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       }
 
       match /user_votes/{userId} {

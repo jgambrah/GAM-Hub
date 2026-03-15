@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -5,10 +6,10 @@
  * -----------------------
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
- * Now integrated with future monetized Power-Ups.
+ * Now integrated with Step 2: Paid Audience Power-Ups.
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
@@ -29,15 +30,18 @@ import { useToast } from '@/hooks/use-toast';
 import YouTube from 'react-youtube';
 import { Button } from '@/components/ui/button';
 import { JoinBattleModal } from './JoinBattleModal';
+import { spendCoins } from '@/lib/monetization';
 
+// ⚡ LIAISON POWER-UP CONFIGURATION
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },
-    { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 25, cost: 50 },
-    { type: 'crown', label: 'National Crown', emoji: '👑', weight: 100, cost: 200 },
+    { type: 'mic_drop', label: 'Mic Drop', emoji: '🎤', weight: 10, cost: 25 },
+    { type: 'crown', label: 'Crown Boost', emoji: '👑', weight: 20, cost: 50 },
+    { type: 'knockout', label: 'Knockout', emoji: '⚡', weight: 50, cost: 120 },
 ];
 
 export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClose: () => void }) {
-  const { firestore } = useFirebase();
+  const { firestore, storage, auth } = useFirebase();
   const { user, campus } = useAuth();
   const { soundOn, toggleSound } = useSound();
   const { toast } = useToast();
@@ -175,20 +179,42 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
     
     if (wallet.coins < powerup.cost) {
-        toast({ variant: 'destructive', title: 'Insufficient Coins', description: 'Visit the wallet to refill your artillery.' });
+        toast({ variant: 'destructive', title: 'Insufficient Coins', description: 'Refill your Hub artillery to deploy this vibe.' });
         return;
     }
 
     try {
-        // Step 2 Logic: This will eventually call spendCoins via a secure function
-        // For now, we simulate the engagement impact
+        // 1. DEDUCT COINS: The National Handshake
+        await spendCoins(firestore, user.id, powerup.cost, 'powerup_used', {
+            battleId,
+            targetSide: target,
+            powerupType: powerup.type
+        });
+
+        // 2. INJECT VOTES: Atomic increment
+        const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
         await updateDoc(doc(firestore, 'arena_battles', battleId), { 
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
-            [`votes.${target === 'A' ? battle.opponentA.userId : battle.opponentB?.userId}`]: increment(powerup.weight) 
+            [`votes.${targetUserId}`]: increment(powerup.weight) 
         });
+
+        // 3. LOG BATTLE EVENT: For highlight detection
+        await addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), {
+            userId: user.id,
+            userName: user.name,
+            target: target === 'A' ? 'opponentA' : 'opponentB',
+            type: powerup.type,
+            votesAdded: powerup.weight,
+            coinsSpent: powerup.cost,
+            createdAt: serverTimestamp()
+        });
+
         logEngagementEvent('powerup', target, powerup.weight);
         toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
-    } catch (err) { toast({ variant: 'destructive', title: 'Power-Up Refused' }); }
+
+    } catch (err: any) { 
+        toast({ variant: 'destructive', title: 'Deployment Failed', description: err.message }); 
+    }
   };
 
   useEffect(() => {
@@ -242,7 +268,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                     )}
 
                     <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black">
-                        <ReactPlayer url={previewVideoUrl || battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
+                        <ReactPlayer 
+                            url={previewVideoUrl || battle.opponentA.videoUrl} 
+                            playing={!isEnded} 
+                            muted={!soundOn} 
+                            width="100%" 
+                            height="100%" 
+                            config={{ file: { attributes: { preload: "metadata" } } }}
+                        />
                         <div className="absolute bottom-6 left-6 z-20 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
                             <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">
                                 {previewVideoUrl ? 'CONTENDER PREVIEW' : p1?.campusAcronym}
@@ -319,10 +352,24 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1 md:gap-4 p-1 md:p-4 bg-slate-900">
                     <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
-                        <ReactPlayer url={battle.opponentA.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" />
+                        <ReactPlayer 
+                            url={battle.opponentA.videoUrl} 
+                            playing={isLive} 
+                            muted={!soundOn} 
+                            width="100%" 
+                            height="100%" 
+                            config={{ file: { attributes: { preload: "metadata" } } }}
+                        />
                     </div>
                     <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
-                        <ReactPlayer url={battle.opponentB?.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" />
+                        <ReactPlayer 
+                            url={battle.opponentB?.videoUrl} 
+                            playing={isLive} 
+                            muted={!soundOn} 
+                            width="100%" 
+                            height="100%" 
+                            config={{ file: { attributes: { preload: "metadata" } } }}
+                        />
                     </div>
                 </div>
 
@@ -397,7 +444,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             <span className="text-[10px] font-black text-amber-500">{wallet?.coins || 0}</span>
                         </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                         {POWER_UPS.map(up => (
                             <button 
                                 key={up.type} 
@@ -405,10 +452,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                 className="flex flex-col items-center gap-1 p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all active:scale-95 group"
                             >
                                 <span className="text-2xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
-                                <p className="text-[8px] font-black text-white uppercase">{up.label}</p>
-                                <div className="mt-1 flex items-center gap-1">
-                                    <Zap size={8} className="text-amber-500" fill="currentColor" />
-                                    <span className="text-[8px] font-black text-slate-400">{up.cost}</span>
+                                <div className="text-center">
+                                    <p className="text-[8px] font-black text-white uppercase">{up.label}</p>
+                                    <div className="mt-1 flex items-center justify-center gap-1">
+                                        <Zap size={8} className="text-amber-500" fill="currentColor" />
+                                        <span className="text-[8px] font-black text-slate-400">{up.cost}</span>
+                                    </div>
                                 </div>
                             </button>
                         ))}
