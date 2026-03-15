@@ -24,7 +24,7 @@ const getYouTubeId = (url: string) => {
     return (match && match[2].length === 11) ? match[2] : null;
 }
 
-export function ArenaPostCard({ post }: { post: ArenaPost }) {
+export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post: ArenaPost }) {
     const { user, isAdmin } = useAuth();
     const { firestore } = useFirebase();
     const { toast } = useToast();
@@ -211,7 +211,6 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                         </p>
                     )}
                     
-                    {/* 🎙️ SHOUTOUT HERO STAGE (ARENA MODE) */}
                     {post.mediaType === 'audio' && post.mediaUrl && (
                         <div className="p-10 bg-slate-900 rounded-[3rem] border-4 border-white/5 relative overflow-hidden flex flex-col items-center justify-center gap-6 cursor-pointer hover:bg-slate-850 transition-all group/audio shadow-2xl">
                             <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(220,38,38,0.1),transparent)] animate-pulse" />
@@ -239,8 +238,21 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
                             {(post.mediaType === 'video' || post.mediaType === 'native') && videoSource && (
                                 <div className="aspect-video">
                                     <ReactPlayer 
-                                        url={videoSource} controls width="100%" height="100%" playsinline
-                                        config={{ file: { attributes: { playsInline: true }, forceHLS: !!post.hlsUrl } }}
+                                        url={videoSource} 
+                                        controls 
+                                        playing={false}
+                                        width="100%" 
+                                        height="100%" 
+                                        playsinline
+                                        config={{ 
+                                            file: { 
+                                                attributes: { 
+                                                    playsInline: true,
+                                                    preload: "metadata" 
+                                                }, 
+                                                forceHLS: !!post.hlsUrl 
+                                            } 
+                                        }}
                                     />
                                 </div>
                             )}
@@ -303,4 +315,4 @@ export function ArenaPostCard({ post }: { post: ArenaPost }) {
             )}
         </div>
     )
-}
+});

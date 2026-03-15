@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef, useMemo } from 'react';
@@ -139,21 +140,22 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const { toast } = useToast();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    if (!selectedFile) return
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
 
+    // Size guard (10MB max)
     if (selectedFile.size > 10 * 1024 * 1024) {
       toast({
         variant: "destructive",
         title: "File too large",
         description: "Maximum upload size is 10MB"
-      })
-      return
+      });
+      return;
     }
 
-    setFile(selectedFile)
-    setPreviewUrl(URL.createObjectURL(selectedFile))
-  }
+    setFile(selectedFile);
+    setPreviewUrl(URL.createObjectURL(selectedFile));
+  };
 
   const comebacksQuery = useMemoFirebase(() => {
     if (!firestore) return null;
@@ -176,6 +178,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
     e.preventDefault();
     if ((!text.trim() && !videoUrl.trim() && !file) || !firestore || !storage || !userProfile) return;
 
+    // 4. Content Moderation Guard
     const bannedWords = ["slur1", "slur2"];
     if (bannedWords.some(word => text.toLowerCase().includes(word))) {
       toast({
@@ -186,6 +189,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       return;
     }
 
+    // 3. Rate Limiting Logic
     const lastReplyRef = doc(firestore, "users", userProfile.id, "rateLimits", "arenaReply");
     const lastSnap = await getDoc(lastReplyRef);
 
@@ -224,19 +228,20 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
         const filePath = `arena_media/${post.id}/${Date.now()}_${file.name}`;
         const fileRef = ref(storage, filePath);
         
-        const uploadTask = uploadBytesResumable(fileRef, file)
+        // 2. Real-time Upload Progress
+        const uploadTask = uploadBytesResumable(fileRef, file);
 
         await new Promise((resolve, reject) => {
           uploadTask.on(
             "state_changed",
             (snapshot) => {
-              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+              const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
               setUploadProgress(progress);
             },
             reject,
             () => resolve(null)
-          )
-        })
+          );
+        });
 
         comebackData.mediaUrl = await getDownloadURL(fileRef);
         comebackData.mediaType = file.type.startsWith('image') ? 'image' : 'video';
@@ -261,6 +266,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
   const handleRequestVerdict = async () => {
     if (!firestore || !comebacks) return;
 
+    // 7. Duplicate Prevention
     const alreadyJudged = comebacks.some(c => c.isBot);
     if (alreadyJudged) {
       toast({
@@ -270,6 +276,7 @@ export default function ArenaComebacks({ post }: { post: ArenaPost }) {
       return;
     }
 
+    // 6. Intensity Threshold
     const realReplies = comebacks.filter(c => !c.isBot);
     if (realReplies.length < 3) {
         toast({ 
