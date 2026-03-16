@@ -7,7 +7,7 @@ import { collection, query, orderBy, serverTimestamp, doc, setDoc } from 'fireba
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
     Swords, Megaphone, Plus, Trophy, Globe, 
-    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck, Banknote, DollarSign, Target, TrendingUp, Crown, Calendar
+    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck, Banknote, DollarSign, Target, TrendingUp, Crown, Calendar, Users, Coins
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,20 +16,20 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { ArenaSponsor, ArenaBattle, ArenaPricingTier, ArenaSeason } from '@/lib/types';
+import type { ArenaSponsor, ArenaBattle, ArenaPricingTier, ArenaSeason, ArenaTournament } from '@/lib/types';
 import Image from 'next/image';
 
 /**
  * SponsoredBattleManager Component
  * ------------------------------
  * Official tool for the National Liaison to manage brand partnerships.
- * Now expanded with Season Sponsorship management.
+ * Now expanded with Tournament Architect view (Step 6).
  */
 export default function SponsoredBattleManager() {
   const { firestore, storage, auth } = useFirebase();
   const { toast } = useToast();
   
-  const [view, setView] = useState<'overview' | 'create_sponsor' | 'launch_battle' | 'season'>('overview');
+  const [view, setView] = useState<'overview' | 'create_sponsor' | 'launch_battle' | 'season' | 'create_tournament'>('overview');
   const [loading, setLoading] = useState(false);
 
   // --- SPONSOR STATE ---
@@ -46,6 +46,13 @@ export default function SponsoredBattleManager() {
   // --- SEASON STATE ---
   const [seasonData, setSeasonData] = useState({ title: '', sponsorName: '', logoUrl: '', isActive: true });
 
+  // --- TOURNAMENT STATE ---
+  const [tournamentForm, setTournamentForm] = useState({
+      name: '',
+      entryFee: '200',
+      maxPlayers: '64'
+  });
+
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   // 1. LIVE DATA SYNC
@@ -60,6 +67,9 @@ export default function SponsoredBattleManager() {
 
   const sponsorsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'arena_sponsors'), orderBy('createdAt', 'desc')) : null, [firestore]);
   const { data: sponsors, isLoading: isLoadingSponsors } = useCollection<ArenaSponsor>(sponsorsQuery);
+
+  const tournamentsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'arena_tournaments'), orderBy('createdAt', 'desc')) : null, [firestore]);
+  const { data: tournaments, isLoading: isLoadingTournaments } = useCollection<ArenaTournament>(tournamentsQuery);
 
   useEffect(() => {
     if (currentSeason) {
@@ -198,6 +208,32 @@ export default function SponsoredBattleManager() {
     }
   };
 
+  const handleCreateTournament = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!firestore || !tournamentForm.name) return;
+      setLoading(true);
+      try {
+          const tData = {
+              name: tournamentForm.name,
+              entryFeeCoins: parseInt(tournamentForm.entryFee),
+              maxPlayers: parseInt(tournamentForm.maxPlayers),
+              currentPlayers: 0,
+              prizePool: 0,
+              status: 'registration',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+          };
+          await addDocumentNonBlocking(collection(firestore, 'arena_tournaments'), tData);
+          toast({ title: "Tournament Announced!", description: "Enlistment is now open for all citizens." });
+          setView('overview');
+          setTournamentForm({ name: '', entryFee: '200', maxPlayers: '64' });
+      } catch (err) {
+          toast({ variant: 'destructive', title: "Deployment Failed" });
+      } finally {
+          setLoading(false);
+      }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
@@ -212,11 +248,14 @@ export default function SponsoredBattleManager() {
           </div>
           <p className="text-sm text-muted-foreground font-medium italic">Manage national brand partnerships and high-stakes tournaments.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
           {view !== 'overview' ? (
             <Button variant="ghost" onClick={() => setView('overview')} className="rounded-xl font-bold">Back</Button>
           ) : (
             <>
+              <Button onClick={() => setView('create_tournament')} variant="outline" className="rounded-xl font-black text-[10px] uppercase tracking-widest border-2">
+                <Trophy size={14} className="mr-2" /> New Tournament
+              </Button>
               <Button onClick={() => setView('season')} variant="outline" className="rounded-xl font-black text-[10px] uppercase tracking-widest border-2">
                 Season Sponsor
               </Button>
@@ -230,6 +269,44 @@ export default function SponsoredBattleManager() {
           )}
         </div>
       </div>
+
+      {/* ── TOURNAMENT ARCHITECT VIEW ─────────────────────────────────────── */}
+      {view === 'create_tournament' && (
+        <Card className="max-w-2xl mx-auto rounded-[3rem] border-2 border-indigo-500/20 shadow-2xl animate-in zoom-in-95 duration-300">
+          <CardHeader className="p-10 border-b bg-indigo-500/10">
+            <CardTitle className="text-2xl font-black text-indigo-600">Tournament Architect</CardTitle>
+            <CardDescription className="font-bold uppercase text-[10px] tracking-widest text-indigo-500/60">Configure structured national competition</CardDescription>
+          </CardHeader>
+          <CardContent className="p-10">
+            <form onSubmit={handleCreateTournament} className="space-y-6">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Tournament Name</Label>
+                <Input required value={tournamentForm.name} onChange={e => setTournamentForm({...tournamentForm, name: e.target.value})} placeholder="e.g. National Campus Roast Championship" className="h-14 rounded-2xl border-none bg-muted font-bold text-lg shadow-inner" />
+              </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Entry Fee (Hub Coins)</Label>
+                    <Input required type="number" value={tournamentForm.entryFee} onChange={e => setTournamentForm({...tournamentForm, entryFee: e.target.value})} className="h-14 rounded-2xl border-none bg-muted font-black text-lg shadow-inner" />
+                </div>
+                <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Max Warriors</Label>
+                    <Select value={tournamentForm.maxPlayers} onValueChange={v => setTournamentForm({...tournamentForm, maxPlayers: v})}>
+                        <SelectTrigger className="h-14 rounded-2xl border-none bg-muted font-black shadow-inner">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                            {['16', '32', '64', '128'].map(n => <SelectItem key={n} value={n}>{n} Players</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
+              </div>
+              <Button disabled={loading} type="submit" className="w-full py-8 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-xl active:scale-95 transition-all">
+                {loading ? <Loader2 className="animate-spin" /> : <><Trophy size={20} className="mr-2"/> Launch National Competition</>}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── SEASON SPONSOR VIEW ───────────────────────────────────────────── */}
       {view === 'season' && (
@@ -408,16 +485,16 @@ export default function SponsoredBattleManager() {
             </Card>
           </div>
 
-          {/* Sponsors List */}
-          <div className="lg:col-span-1">
-            <Card className="rounded-[3rem] border-none shadow-xl overflow-hidden h-full">
+          {/* Sponsors & Tournaments List */}
+          <div className="lg:col-span-1 space-y-6">
+            <Card className="rounded-[3rem] border-none shadow-xl overflow-hidden h-fit">
                 <CardHeader className="p-8 border-b bg-muted/20">
                 <CardTitle className="text-xl font-black flex items-center gap-2">
                     <ShieldCheck className="text-blue-600" /> Partner Registry
                 </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                <div className="divide-y max-h-[500px] overflow-y-auto no-scrollbar">
+                <div className="divide-y max-h-[300px] overflow-y-auto no-scrollbar">
                     {isLoadingSponsors ? (
                     <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-blue-600"/></div>
                     ) : sponsors && sponsors.length > 0 ? (
@@ -441,6 +518,36 @@ export default function SponsoredBattleManager() {
                 </div>
                 </CardContent>
             </Card>
+
+            <Card className="rounded-[3rem] border-none shadow-xl overflow-hidden h-fit">
+                <CardHeader className="p-8 border-b bg-indigo-50">
+                <CardTitle className="text-xl font-black flex items-center gap-2 text-indigo-600">
+                    <Trophy className="text-indigo-600" /> Active Competitions
+                </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                <div className="divide-y max-h-[300px] overflow-y-auto no-scrollbar">
+                    {isLoadingTournaments ? (
+                    <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-indigo-600"/></div>
+                    ) : tournaments && tournaments.length > 0 ? (
+                    tournaments.map(t => (
+                        <div key={t.id} className="p-6 flex items-center justify-between hover:bg-muted/30 transition-all">
+                            <div>
+                                <p className="font-black text-foreground">{t.name}</p>
+                                <div className="flex items-center gap-3 mt-1">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{t.status}</span>
+                                    <span className="flex items-center gap-1 text-[10px] font-black text-indigo-600 uppercase"><Users size={10}/> {t.currentPlayers}/{t.maxPlayers}</span>
+                                </div>
+                            </div>
+                            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Zap size={18}/></div>
+                        </div>
+                    ))
+                    ) : (
+                    <div className="p-20 text-center text-muted-foreground italic">No tournaments launched.</div>
+                    )}
+                </div>
+                </CardContent>
+            </Card>
           </div>
 
           {/* Logistics Summary */}
@@ -450,17 +557,17 @@ export default function SponsoredBattleManager() {
               <div className="relative z-10">
                 <h3 className="text-2xl font-black mb-4">Yard Monetization</h3>
                 <p className="text-sm text-indigo-100 leading-relaxed font-medium">
-                  Sponsored battles drive national visibility for brands while providing professional rewards for campus creators. Every battle launched here is prioritized across all university feeds.
+                  Sponsored battles and tournaments drive national visibility for brands while providing professional rewards for campus creators. Entry fees from structured wars directly fuel high-stakes prize pools.
                 </p>
                 
                 <div className="mt-8 space-y-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-white/10 rounded-lg"><Zap size={14} className="text-amber-400" /></div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">Sponsored Highlights Tagged</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">Tournament Fees Logged</p>
                     </div>
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-white/10 rounded-lg"><Megaphone size={14} className="text-blue-300" /></div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">Push Notifications Deployed</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">National Prize Pools Active</p>
                     </div>
                 </div>
               </div>

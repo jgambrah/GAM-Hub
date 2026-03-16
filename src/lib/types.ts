@@ -54,6 +54,18 @@ export type WalletTransaction = {
   createdAt: any;
 };
 
+export type ArenaTournament = {
+  id: string;
+  name: string;
+  entryFeeCoins: number;
+  maxPlayers: number;
+  currentPlayers: number;
+  prizePool: number;
+  status: 'registration' | 'ongoing' | 'finished';
+  startTime: any;
+  createdAt: any;
+};
+
 export type SponsorStats = {
   id: string;
   battleId: string;

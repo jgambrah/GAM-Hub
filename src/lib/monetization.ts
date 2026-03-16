@@ -3,17 +3,16 @@
 
 /**
  * @fileOverview Liaison Monetization Engine: Wallet Transactions.
- * Implements Step 2, 3 & 5: Spam Prevention, Revenue Split & Paid Boosting.
- * Now synchronized with the National Leaderboard and Post Promotion registry.
+ * Implements Step 2, 3, 5 & 6: Spam Prevention, Revenue Split, Paid Boosting & Tournament Entry.
  */
 
-import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+import type { ArenaTournament } from './types';
 
 /**
  * 💎 PROMOTION PACKAGES (Step 5)
- * Defines the commercial tiers for pushing highlights to more citizens.
  */
 export const PROMOTION_PACKAGES = {
   small: { cost: 100, target: 5000, label: 'Small: 5,000 Views' },
@@ -23,8 +22,6 @@ export const PROMOTION_PACKAGES = {
 
 /**
  * addCoins
- * --------
- * Standardized handshake to increase a user's balance.
  */
 export async function addCoins(db: Firestore, userId: string, coins: number, amountPaidGHS?: number) {
   if (!db || !userId || coins <= 0) return;
@@ -65,8 +62,6 @@ export async function addCoins(db: Firestore, userId: string, coins: number, amo
 
 /**
  * spendCoins
- * ----------
- * High-integrity transaction with 50/50 Creator Split logic.
  */
 export async function spendCoins(
   db: Firestore, 
@@ -79,6 +74,7 @@ export async function spendCoins(
     userName?: string;
     userAvatarUrl?: string;
     boostTier?: string;
+    tournamentId?: string;
   } = {}
 ) {
   if (!db || !userId || amount <= 0) return Promise.reject("Invalid amount");
@@ -89,25 +85,21 @@ export async function spendCoins(
   const battleId = metadata.battleId;
 
   return runTransaction(db, async (transaction) => {
-    // 1. Audit Viewer Balance
     const walletDoc = await transaction.get(walletRef);
     if (!walletDoc.exists()) throw new Error("Wallet node not found.");
     
     const currentCoins = walletDoc.data().coins || 0;
     if (currentCoins < amount) throw new Error("Insufficient Hub Coins artillery.");
 
-    // 2. Viewer Deduction (100% of cost)
     transaction.update(walletRef, {
       coins: currentCoins - amount,
       totalSpent: increment(amount),
       updatedAt: serverTimestamp()
     });
 
-    // 3. Creator Achievement Handshake (50/50 Revenue Split)
-    if (creatorId && type !== 'highlight_boost') {
-      // A. Wallet Payout (Earned Income Vault)
+    if (creatorId && type !== 'highlight_boost' && type !== 'tournament_entry') {
       const creatorWalletRef = doc(db, 'creator_wallets', creatorId);
-      const earnedAmount = Math.floor(amount * 0.5); // platform keeps 50%
+      const earnedAmount = Math.floor(amount * 0.5); 
       
       transaction.set(creatorWalletRef, {
         earnedCoins: increment(earnedAmount),
@@ -115,7 +107,6 @@ export async function spendCoins(
         updatedAt: serverTimestamp()
       }, { merge: true });
 
-      // B. Leaderboard Impact Tracking
       const leaderRef = doc(db, 'arena_leaderboard', creatorId);
       transaction.set(leaderRef, {
         boostsReceived: type === 'powerup_used' ? increment(1) : increment(0),
@@ -125,7 +116,6 @@ export async function spendCoins(
       }, { merge: true });
     }
 
-    // 4. Battle Supporter Leaderboard Handshake
     if (battleId && metadata.userName) {
         const battleSupporterRef = doc(db, 'arena_battles', battleId, 'gift_leaderboard', userId);
         transaction.set(battleSupporterRef, {
@@ -136,7 +126,6 @@ export async function spendCoins(
         }, { merge: true });
     }
 
-    // 5. Log History
     const historyData = {
       userId,
       type,
@@ -161,9 +150,6 @@ export async function spendCoins(
 
 /**
  * boostVibe
- * ---------
- * Step 5: Professional Paid Promotion Handshake.
- * Deducts coins and flags the post for algorithm prioritization.
  */
 export async function boostVibe(
   db: Firestore,
@@ -173,13 +159,11 @@ export async function boostVibe(
 ) {
   const pack = PROMOTION_PACKAGES[tier];
   
-  // 1. First spend the coins (Transactionally secure)
   await spendCoins(db, userId, pack.cost, 'highlight_boost', {
     boostTier: tier,
-    targetCreatorId: userId // Boosting self
+    targetCreatorId: userId 
   });
 
-  // 2. Update the Pulse document to trigger neural prioritization
   const postRef = doc(db, 'campus_pulse', postId);
   return updateDoc(postRef, {
     isPromoted: true,
@@ -187,5 +171,55 @@ export async function boostVibe(
     promotionViewsTarget: pack.target,
     promotionViewsDelivered: 0,
     promotedAt: serverTimestamp()
+  });
+}
+
+/**
+ * joinTournament (Step 6)
+ * ---------------------
+ * Orchestrates structured competition entry.
+ */
+export async function joinTournament(
+  db: Firestore,
+  userId: string,
+  userName: string,
+  avatarUrl: string,
+  tournamentId: string
+) {
+  const tournamentRef = doc(db, 'arena_tournaments', tournamentId);
+  const participantRef = doc(db, 'arena_tournaments', tournamentId, 'participants', userId);
+
+  return runTransaction(db, async (transaction) => {
+    // 1. Verify Entry Eligibility
+    const tourneySnap = await transaction.get(tournamentRef);
+    if (!tourneySnap.exists()) throw new Error("Tournament not found.");
+    
+    const tourney = tourneySnap.data() as ArenaTournament;
+    if (tourney.status !== 'registration') throw new Error("Registration is closed.");
+    if (tourney.currentPlayers >= tourney.maxPlayers) throw new Error("Tournament is full.");
+
+    const participantSnap = await transaction.get(participantRef);
+    if (participantSnap.exists()) throw new Error("Already registered.");
+
+    // 2. Spend entry fee (Wallet Audit)
+    await spendCoins(db, userId, tourney.entryFeeCoins, 'tournament_entry', {
+        tournamentId,
+        userName
+    });
+
+    // 3. Register & Update National Hub
+    transaction.set(participantRef, {
+        userId,
+        userName,
+        avatarUrl,
+        joinedAt: serverTimestamp()
+    });
+
+    transaction.update(tournamentRef, {
+        currentPlayers: increment(1),
+        prizePool: increment(tourney.entryFeeCoins), // Entry fees feed the prize pool
+        updatedAt: serverTimestamp()
+    });
+
   });
 }

@@ -5,8 +5,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking, useDoc } from '@/firebase';
 import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp, getDoc, setDoc, increment } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry, ArenaSeason } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target, Smile, ImagePlus, Youtube, PlusCircle, Star, Megaphone, Calendar } from 'lucide-react';
+import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry, ArenaSeason, ArenaTournament } from '@/lib/types';
+import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target, Smile, ImagePlus, Youtube, PlusCircle, Star, Megaphone, Calendar, Users, Coins } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -30,6 +30,7 @@ import { CampusWarCard } from '@/components/arena/CampusWarCard';
 import { CampusWarRoom } from '@/components/arena/CampusWarRoom';
 import { CreateWarModal } from '@/components/arena/CreateWarModal';
 import { CampusWarLeaderboard } from '@/components/arena/CampusWarLeaderboard';
+import { TournamentSection } from '@/components/arena/TournamentSection';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import HallOfFame from '@/components/social/HallOfFame';
 import ArenaLeaderboard from '@/components/social/ArenaLeaderboard';
@@ -64,14 +65,17 @@ export default function ArenaPage() {
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
-    // 0. NATIONAL SEASON SYNC (TOP PRIORITY)
+    // 0. NATIONAL SEASON SYNC
     const seasonRef = useMemoFirebase(() => {
         if (!firestore) return null;
         return doc(firestore, 'platform_stats', 'arena_season');
     }, [firestore]);
     const { data: season } = useDoc<ArenaSeason>(seasonRef);
 
-    // 1. SPONSORED BATTLES (PRIORITY HUB)
+    // 1. NATIONAL TOURNAMENTS (NEW)
+    // Managed in its own section via the TournamentSection component
+
+    // 2. SPONSORED BATTLES (PRIORITY HUB)
     const featuredBattlesQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(
@@ -83,7 +87,7 @@ export default function ArenaPage() {
     }, [firestore]);
     const { data: featuredBattles, isLoading: isLoadingFeatured } = useCollection<ArenaBattle>(featuredBattlesQuery);
 
-    // 2. LIVE SHOWDOWNS (REGULAR RING)
+    // 3. LIVE SHOWDOWNS (REGULAR RING)
     const battlesQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(
@@ -95,7 +99,7 @@ export default function ArenaPage() {
     }, [firestore]);
     const { data: liveBattles, isLoading: isLoadingBattles } = useCollection<ArenaBattle>(battlesQuery);
 
-    // 3. AUTO-MATCH POOL
+    // 4. AUTO-MATCH POOL
     const poolQuery = useMemoFirebase(() => {
         if (!firestore || !user?.id) return null;
         return query(collection(firestore, 'arena_waiting_pool'), where('userId', '==', user.id), limit(1));
@@ -197,14 +201,14 @@ export default function ArenaPage() {
         }
     };
 
-    // 4. CAMPUS WARS
+    // 5. CAMPUS WARS
     const warsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(collection(firestore, 'campus_wars'), where('status', '==', 'live'), limit(2));
     }, [firestore]);
     const { data: liveWars, isLoading: isLoadingWars } = useCollection<CampusWar>(warsQuery);
 
-    // 5. HIGHLIGHTS & VIBES
+    // 6. HIGHLIGHTS & VIBES
     const postsQuery = useMemoFirebase(() => {
         if (!firestore || !user || !isTokenReady) return null;
         return query(
@@ -265,7 +269,6 @@ export default function ArenaPage() {
                 storageTier: 'hot'
             };
 
-            // Multimedia processing...
             if (file && storage && firestore) {
                 const isVideo = file.type.startsWith('video');
                 if (isVideo) {
@@ -389,7 +392,7 @@ export default function ArenaPage() {
                 </div>
             )}
 
-            {/* 🛡️ NATIONAL SEASON BANNER (RECURRING SPONSORSHIP) */}
+            {/* 🛡️ NATIONAL SEASON BANNER */}
             {season && season.isActive && (
                 <section className="max-w-5xl mx-auto mb-12 animate-in slide-in-from-top-4 duration-1000">
                     <div className="bg-gradient-to-r from-slate-900 to-indigo-900 rounded-[3rem] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl border-b-8 border-indigo-500">
@@ -423,6 +426,9 @@ export default function ArenaPage() {
 
             <ArenaLeaderboard />
             <CampusWarLeaderboard />
+
+            {/* 🏆 NATIONAL TOURNAMENTS SECTION */}
+            <TournamentSection />
 
             {/* 🛡️ NATIONAL FEATURED SECTION (SPONSORED) */}
             {featuredBattles && featuredBattles.length > 0 && (

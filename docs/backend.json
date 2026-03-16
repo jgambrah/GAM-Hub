@@ -63,6 +63,22 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
+    "ArenaTournament": {
+      "title": "ArenaTournament",
+      "type": "object",
+      "description": "Structured competition with entry fees and brackets.",
+      "properties": {
+        "name": { "type": "string" },
+        "entryFeeCoins": { "type": "number" },
+        "maxPlayers": { "type": "number" },
+        "currentPlayers": { "type": "number" },
+        "prizePool": { "type": "number" },
+        "status": { "type": "string", "enum": ["registration", "ongoing", "finished"] },
+        "startTime": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "entryFeeCoins", "maxPlayers", "status"]
+    },
     "SocialPost": {
       "title": "SocialPost",
       "type": "object",
@@ -95,6 +111,7 @@
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
+    "/arena_tournaments/{tournamentId}": { "schema": "#/backend/entities/ArenaTournament", "description": "Organized competitions." },
     "/sponsor_stats/{battleId}": { "schema": "#/backend/entities/SponsorStats", "description": "ROI metrics for brand partners." },
     "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts and promoted highlights." },
     "/highlight_stats/{highlightId}": { "schema": "#/backend/entities/HighlightStats", "description": "Detailed ROI analytics for promoted vibrations." }
