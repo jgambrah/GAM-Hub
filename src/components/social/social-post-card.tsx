@@ -82,10 +82,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const dwellStartTimeRef = React.useRef<number | null>(null);
   const ytPlayerRef = React.useRef<any>(null);
   const ytReadyRef = React.useRef(false);
-  const [ytMounted, setYtMounted] = React.useState(false);
-  const [reactPlayerMounted, setReactPlayerMounted] = React.useState(false);
-  const [countdown, setCountdown] = React.useState<number | null>(null);
-  const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cardRef = React.useRef<HTMLDivElement>(null);
   const hasRecordedPlay = React.useRef(false); 
@@ -104,6 +100,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [isProcessingFollow, setIsProcessingFollow] = React.useState(false);
 
   const videoSource = post.hlsUrl || post.mediaUrl;
+  const youtubeId = React.useMemo(() => getYouTubeId(post.mediaUrl || ''), [post.mediaUrl]);
 
   React.useEffect(() => {
     addToQueue([post]);
@@ -147,13 +144,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   }, [post.id, post.isPromoted, post.promotionViewsDelivered, post.promotionViewsTarget, firestore, isAuthor]);
 
   React.useEffect(() => {
-    if (isActiveVibe) {
-      if (post.mediaType === 'video') setReactPlayerMounted(true);
-      if (post.mediaType === 'youtube') setYtMounted(true);
-    }
-  }, [isActiveVibe, post.mediaType]);
-
-  React.useEffect(() => {
     if (isActiveVibe && cardRef.current) {
       setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     }
@@ -192,27 +182,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       hasRecordedPlay.current = false;
     }
   }, [isActiveVibe, post, recordPlay]);
-
-  React.useEffect(() => {
-    if (countdownRef.current) clearInterval(countdownRef.current);
-    if (isActiveVibe && isContinuous && mediaCategory !== 'video' && mediaCategory !== 'audio') {
-      const totalSecs = DISPLAY_DURATIONS[mediaCategory] / 1000;
-      setCountdown(totalSecs);
-      countdownRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev === null || prev <= 1) {
-            if (countdownRef.current) clearInterval(countdownRef.current);
-            recordWatchedToEnd(post);
-            return null;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      setCountdown(null);
-    }
-    return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-  }, [isActiveVibe, isContinuous, mediaCategory, post, recordWatchedToEnd]);
 
   React.useEffect(() => {
     if (isActiveVibe && isSkippingRestricted && skipCountdown === 0) {
@@ -341,10 +310,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     ytReadyRef.current = true;
   }, []);
 
-  const onYoutubePlay = React.useCallback(() => {
-    setActivePost(post);
-  }, [setActivePost, post]);
-
   const handleYoutubeError = React.useCallback((e: { data: number }) => {
     if (e.data === 101 || e.data === 150) {
         setIsRestricted(true);
@@ -359,10 +324,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     }
   }, [isContinuous]);
 
-  const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
   const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
-
-  const promotionProgress = post.promotionViewsTarget ? Math.min(((post.promotionViewsDelivered || 0) / post.promotionViewsTarget) * 100, 100) : 0;
 
   // Filter: Hide content if it's under review and user is not admin/author
   if (post.status === 'under_review' && !isAdmin && !isAuthor) return null;
@@ -405,6 +367,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}
       >
+        {/* AUDIO STAGE */}
         {post.mediaType === 'audio' && post.mediaUrl && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 p-12">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(220,38,38,0.1),transparent)] animate-pulse" />
@@ -414,29 +377,72 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </div>
         )}
 
-        {(mediaCategory === 'video' || mediaCategory === 'image') && !isActiveVibe && (
-          post.imageUrl ? (
-            <Image src={post.imageUrl} alt="vibe" fill className={cn('object-cover transition-transform duration-700', 'group-hover/media:scale-105')} />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white/40 gap-3">
-                <Video size={48} className="opacity-20" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Vibration Standby</span>
-            </div>
-          )
+        {/* PREVIEW STAGE (Inactive) */}
+        {!isActiveVibe && (mediaCategory === 'video' || mediaCategory === 'image') && (
+          <>
+            {post.imageUrl ? (
+              <Image src={post.imageUrl} alt="vibe" fill className={cn('object-cover transition-transform duration-700', 'group-hover/media:scale-105')} />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white/40 gap-3">
+                  <Video size={48} className="opacity-20" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Vibration Standby</span>
+              </div>
+            )}
+            {mediaCategory === 'video' && (
+              <div className="absolute inset-0 bg-black/20 flex items-center justify-center transition-opacity">
+                  <div className="p-4 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/media:scale-110 transition-transform">
+                      <PlayCircle size={48} className="text-white drop-shadow-xl" />
+                  </div>
+              </div>
+            )}
+          </>
         )}
 
-        {isActiveVibe && post.mediaType === 'video' && videoSource && (
-            <ReactPlayer
-                url={videoSource} controls={false} width="100%" height="100%" playing={isActiveVibe} playsinline muted={!soundOn} onStart={() => setActivePost(post)} onEnd={handleEnd}
-                config={{ file: { attributes: { playsInline: true, preload: 'auto' }, forceHLS: !!post.hlsUrl } }}
-            />
-        )}
+        {/* PLAYER STAGE (Active) */}
+        {isActiveVibe && mediaCategory === 'video' && (
+            <div className="w-full h-full relative">
+                {(post.mediaType === 'video' || post.mediaType === 'native') && videoSource && (
+                    <ReactPlayer
+                        url={videoSource} 
+                        controls={false} 
+                        width="100%" 
+                        height="100%" 
+                        playing={isActiveVibe} 
+                        playsinline 
+                        muted={!soundOn} 
+                        onEnd={handleEnd}
+                        config={{ file: { attributes: { playsInline: true, preload: 'auto' }, forceHLS: !!post.hlsUrl } }}
+                    />
+                )}
 
-        {!isActiveVibe && mediaCategory === 'video' && (
-            <div className="absolute inset-0 bg-black/20 flex items-center justify-center transition-opacity">
-                <div className="p-4 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/media:scale-110 transition-transform">
-                    <PlayCircle size={48} className="text-white drop-shadow-xl" />
-                </div>
+                {post.mediaType === 'youtube' && youtubeId && (
+                    <div className="w-full h-full">
+                        {isRestricted ? (
+                            <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center p-8 text-center">
+                                <AlertTriangle className="text-amber-500 mb-4" size={48} />
+                                <h4 className="text-white font-black text-xs uppercase tracking-[0.2em]">Restricted Signal</h4>
+                                <a href={post.mediaUrl || '#'} target="_blank" rel="noopener noreferrer" className="mt-4 bg-red-600 text-white px-6 py-3 rounded-2xl font-black text-[10px] uppercase shadow-xl flex items-center gap-2">
+                                    <Youtube size={16} fill="white" /> Open on YouTube
+                                </a>
+                            </div>
+                        ) : (
+                            <YouTube 
+                                videoId={youtubeId} 
+                                opts={{ width: '100%', height: '100%', playerVars: { rel: 0, modestbranding: 1, autoplay: 1 } }} 
+                                className="w-full h-full" 
+                                onReady={onYoutubeReady}
+                                onError={handleYoutubeError} 
+                                onEnd={handleEnd}
+                            />
+                        )}
+                    </div>
+                )}
+
+                {post.mediaType === 'tiktok' && (
+                    <div className="bg-black h-full flex items-center justify-center py-4">
+                        <TikTokEmbed url={post.mediaUrl || ''} />
+                    </div>
+                )}
             </div>
         )}
       </div>
