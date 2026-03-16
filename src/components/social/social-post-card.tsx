@@ -106,49 +106,25 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     addToQueue([post]);
   }, [post.id, addToQueue]);
 
+  // SCROLL TO PLAY LOGIC: TikTok-style activation
   React.useEffect(() => {
-    if (!post.isPromoted || hasTrackedPromotionImpression.current || !firestore || isAuthor) return;
+    if (!cardRef.current || !isContinuous) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && !hasTrackedPromotionImpression.current) {
-          hasTrackedPromotionImpression.current = true;
-          
-          const postRef = doc(firestore, 'campus_pulse', post.id);
-          const statsRef = doc(firestore, 'highlight_stats', post.id);
-          
-          const delivered = (post.promotionViewsDelivered || 0) + 1;
-          const target = post.promotionViewsTarget || 0;
-          
-          const updates: any = {
-            promotionViewsDelivered: increment(1)
-          };
-          
-          if (delivered >= target && target > 0) {
-            updates.isPromoted = false;
-          }
-          
-          updateDoc(postRef, updates).catch(e => console.warn("Liaison Analytics: Promo track drifted.", e));
-          
-          setDoc(statsRef, {
-              views: increment(1),
-              updatedAt: serverTimestamp()
-          }, { merge: true }).catch(() => {});
+        if (entry.isIntersecting && !isActiveVibe) {
+          // If 70% visible, make this the active vibe
+          setActivePost(post);
         }
       },
-      { threshold: 0.5 }
+      { threshold: 0.7 }
     );
 
-    if (cardRef.current) observer.observe(cardRef.current);
+    observer.observe(cardRef.current);
     return () => observer.disconnect();
-  }, [post.id, post.isPromoted, post.promotionViewsDelivered, post.promotionViewsTarget, firestore, isAuthor]);
+  }, [post, isContinuous, isActiveVibe, setActivePost]);
 
-  React.useEffect(() => {
-    if (isActiveVibe && cardRef.current) {
-      setTimeout(() => cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    }
-  }, [isActiveVibe]);
-
+  // DWELL & VIEW TRACKING
   React.useEffect(() => {
     if (!cardRef.current) return;
 
@@ -159,7 +135,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         } else {
           if (dwellStartTimeRef.current) {
             const timeVisible = Date.now() - dwellStartTimeRef.current;
-            if (timeVisible < 2000 && !isActiveVibe) {
+            // If skip logic applies
+            if (timeVisible < 2000 && !isActiveVibe && !isContinuous) {
               recordSkip(post);
             }
             dwellStartTimeRef.current = null;
@@ -171,7 +148,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
     observer.observe(cardRef.current);
     return () => observer.disconnect();
-  }, [post, recordSkip, isActiveVibe]);
+  }, [post, recordSkip, isActiveVibe, isContinuous]);
 
   React.useEffect(() => {
     if (isActiveVibe && !hasRecordedPlay.current) {
@@ -300,8 +277,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const handleEnd = () => {
     recordWatchedToEnd(post);
     if (isContinuous) {
-      toast({ title: 'AI Match Found', description: 'Continuing the narative...' });
-      setTimeout(() => playNext(), 500);
+      playNext();
     }
   };
 
@@ -326,7 +302,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
 
-  // Filter: Hide content if it's under review and user is not admin/author
   if (post.status === 'under_review' && !isAdmin && !isAuthor) return null;
 
   return (
@@ -341,20 +316,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         post.status === 'under_review' && 'border-red-500 bg-red-50/10'
       )}
     >
-      {post.isPromoted && (
-          <div className="absolute top-6 left-6 z-20 animate-in zoom-in duration-500">
-              <div className="bg-red-600 text-white px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
-                  <TrendingUp size={12} fill="white" /> Promoted Highlight
-              </div>
-          </div>
-      )}
-
-      {post.status === 'under_review' && (
-          <div className="absolute top-6 right-6 z-30 bg-red-600 text-white px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
-              <AlertTriangle size={14} /> Under Security Review
-          </div>
-      )}
-
       <div 
         onClick={(e) => { 
           if(isActiveVibe && mediaCategory === 'video') {
@@ -390,7 +351,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             )}
             {mediaCategory === 'video' && (
               <div className="absolute inset-0 bg-black/20 flex items-center justify-center transition-opacity">
-                  <div className="p-4 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/media:scale-110 transition-transform">
+                  <div className="p-4 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover:scale-110 transition-transform">
                       <PlayCircle size={48} className="text-white drop-shadow-xl" />
                   </div>
               </div>

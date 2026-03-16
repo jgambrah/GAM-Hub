@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -120,7 +121,12 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     return () => unsubTrends();
   }, [firestore]);
 
-  const clearDisplayTimer = useCallback(() => { if (displayTimerRef.current) { clearTimeout(displayTimerRef.current); displayTimerRef.current = null; } }, []);
+  const clearDisplayTimer = useCallback(() => { 
+    if (displayTimerRef.current) { 
+      clearTimeout(displayTimerRef.current); 
+      displayTimerRef.current = null; 
+    } 
+  }, []);
 
   const rebuildQueue = useCallback(async (current: SocialPost, pool: SocialPost[], mood: VibeMood) => {
     if (!current || pool.length === 0) return;
@@ -157,7 +163,6 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         } catch (e) { console.warn("Liaison AI Re-Ranking drifted."); }
     }
 
-    // LIAISON PROTOCOL: Diverse pool must be large enough to contain "all" videos if requested
     const diversePool = enforceDiversity(finalPosts).slice(0, 100);
     
     setQueue([current, ...diversePool]);
@@ -187,6 +192,64 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     }, 1000); 
     return () => clearTimeout(prefetchTimer);
   }, [activePostId, upNext, activePost]);
+
+  const pushToHistory = useCallback((post: SocialPost) => { 
+    setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX)); 
+  }, []);
+
+  const playNext = useCallback(() => {
+    const q = queueRef.current;
+    const id = activePostIdRef.current;
+    if (q.length <= 1) return;
+    const idx = q.findIndex(p => p.id === id);
+    const next = q[idx === -1 ? 0 : (idx + 1) % q.length];
+    if (next) { 
+      clearDisplayTimer(); 
+      setActivePostId(next.id); 
+      setActivePostState(next); 
+      pushToHistory(next); 
+    }
+  }, [pushToHistory, clearDisplayTimer]);
+
+  const startDisplayTimer = useCallback((post: SocialPost) => {
+    const cat = getMediaCategory(post.mediaType);
+    let duration = DISPLAY_DURATIONS[cat];
+    if (cat === 'audio') duration = (post.duration || 10) * 1000 + 1000;
+
+    if (duration > 0 && isContinuousRef.current) {
+      if (displayTimerRef.current) clearTimeout(displayTimerRef.current);
+      displayTimerRef.current = setTimeout(() => {
+        playNext();
+      }, duration);
+    }
+  }, [playNext]);
+
+  const setActivePost = useCallback((post: SocialPost | null) => {
+    if (!post) { 
+      if (activePostIdRef.current) { 
+        clearDisplayTimer(); 
+        setActivePostId(null); 
+        setActivePostState(null); 
+      } 
+      return; 
+    }
+    if (activePostIdRef.current === post.id) return;
+    
+    clearDisplayTimer(); 
+    setActivePostId(post.id); 
+    setActivePostState(post); 
+    pushToHistory(post);
+    startDisplayTimer(post);
+  }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
+
+  // AUTO-START logic for Continuous toggle
+  useEffect(() => {
+    if (isContinuous && activePost) {
+      startDisplayTimer(activePost);
+    } else {
+      clearDisplayTimer();
+    }
+  }, [isContinuous, activePost, startDisplayTimer, clearDisplayTimer]);
 
   const recordPlay = useCallback((p: SocialPost) => {
     recordSignal(p, 'watch');
@@ -220,62 +283,20 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     return [...posts].sort((a, b) => getPersonalScore(b) - getPersonalScore(a));
   }, [isProfileLoaded, getPersonalScore]);
 
-  const pushToHistory = useCallback((post: SocialPost) => { setHistory(prev => [post, ...prev.filter(p => p.id !== post.id)].slice(0, HISTORY_MAX)); }, []);
-
-  const startDisplayTimer = useCallback((post: SocialPost) => {
-    const cat = getMediaCategory(post.mediaType);
-    let duration = DISPLAY_DURATIONS[cat];
-    if (cat === 'audio') duration = (post.duration || 10) * 1000 + 1000;
-
-    if (duration > 0 && isContinuousRef.current) {
-      if (displayTimerRef.current) clearTimeout(displayTimerRef.current);
-      displayTimerRef.current = setTimeout(() => {
-        const q = queueRef.current; const id = activePostIdRef.current;
-        if (q.length <= 1) return;
-        const idx = q.findIndex(p => p.id === id);
-        const next = q[idx === -1 ? 0 : (idx + 1) % q.length];
-        if (next) { setActivePostId(next.id); setActivePostState(next); pushToHistory(next); }
-      }, duration);
-    }
-  }, [pushToHistory]);
-
-  const setActivePost = useCallback((post: SocialPost | null) => {
-    if (!post) { 
-      if (activePostIdRef.current) { 
-        clearDisplayTimer(); 
-        setActivePostId(null); 
-        setActivePostState(null); 
-      } 
-      return; 
-    }
-    if (activePostIdRef.current === post.id) return;
-    clearDisplayTimer(); 
-    setActivePostId(post.id); 
-    setActivePostState(post); 
-    pushToHistory(post);
-    startDisplayTimer(post);
-  }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
-
   const setActiveMood = useCallback((mood: VibeMood) => { 
     setActiveMoodState(mood); 
   }, []);
 
-  const playNext = useCallback(() => {
-    const q = queueRef.current; const id = activePostIdRef.current;
-    if (q.length <= 1) return;
-    const idx = q.findIndex(p => p.id === id);
-    const next = q[idx === -1 ? 0 : (idx + 1) % q.length];
-    if (next) { 
-      clearDisplayTimer(); 
-      setActivePostId(next.id); 
-      setActivePostState(next); 
-      pushToHistory(next); 
-      startDisplayTimer(next); 
-    }
-  }, [pushToHistory, clearDisplayTimer, startDisplayTimer]);
-
   const playPrev = useCallback(() => {
-    setHistory(prev => { if (prev.length < 2) return prev; const prevPost = prev[1]; clearDisplayTimer(); setActivePostId(prevPost.id); setActivePostState(prevPost); startDisplayTimer(prevPost); return prev.slice(1); });
+    setHistory(prev => { 
+      if (prev.length < 2) return prev; 
+      const prevPost = prev[1]; 
+      clearDisplayTimer(); 
+      setActivePostId(prevPost.id); 
+      setActivePostState(prevPost); 
+      startDisplayTimer(prevPost); 
+      return prev.slice(1); 
+    });
   }, [clearDisplayTimer, startDisplayTimer]);
 
   const addToQueue = useCallback((posts: SocialPost[]) => {
