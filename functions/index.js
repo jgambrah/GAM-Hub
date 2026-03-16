@@ -414,6 +414,9 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
  */
 exports.resetWeeklyWins = onSchedule("every monday 00:00", async (event) => {
   const db = admin.firestore();
+  const now = new Date();
+  const weekId = `${now.getFullYear()}_week${Math.ceil(now.getDate() / 7)}`;
+
   const leaderboardSnap = await db.collection("arena_leaderboard")
     .where("weeklyWins", ">", 0)
     .get();
@@ -421,8 +424,25 @@ exports.resetWeeklyWins = onSchedule("every monday 00:00", async (event) => {
   if (leaderboardSnap.empty) return null;
 
   const batch = db.batch();
-  leaderboardSnap.forEach(doc => {
-    batch.update(doc.ref, { weeklyWins: 0, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  
+  leaderboardSnap.forEach(docSnap => {
+    const data = docSnap.data();
+    
+    // 1. Archive to Weekly Leaderboard History
+    const archiveRef = db.collection("weekly_leaderboard").doc(weekId).collection("creators").doc(docSnap.id);
+    batch.set(archiveRef, {
+        creatorId: docSnap.id,
+        name: data.name,
+        wins: data.weeklyWins,
+        campusAcronym: data.campusAcronym,
+        archivedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // 2. Reset Current Weekly Wins
+    batch.update(docSnap.ref, { 
+        weeklyWins: 0, 
+        updatedAt: admin.firestore.FieldValue.serverTimestamp() 
+    });
   });
 
   return batch.commit();
