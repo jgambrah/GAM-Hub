@@ -38,7 +38,8 @@
         "momoName": { "type": "string" },
         "lead_credits": { "type": "number" },
         "isVerified": { "type": "boolean" },
-        "idVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "approved"] }
+        "idVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "approved"] },
+        "subscribedCreators": { "type": "array", "items": { "type": "string" }, "description": "Cached list of active creator subscriptions for the user." }
       },
       "required": ["id", "email", "role"]
     },
@@ -77,7 +78,7 @@
     "CreatorSubscription": {
       "title": "CreatorSubscription",
       "type": "object",
-      "description": "Monthly recurring support from a fan to a creator.",
+      "description": "Monthly recurring support from a fan to a creator (Billing Record).",
       "properties": {
         "creatorId": { "type": "string" },
         "subscriberId": { "type": "string" },
@@ -87,6 +88,14 @@
         "renewalDate": { "type": "string", "format": "date-time" }
       },
       "required": ["creatorId", "subscriberId", "status"]
+    },
+    "CreatorSubscriber": {
+      "title": "CreatorSubscriber",
+      "type": "object",
+      "description": "Inner Circle membership record for gating benefits.",
+      "properties": {
+        "subscriberSince": { "type": "string", "format": "date-time" }
+      }
     },
     "ArenaTournament": {
       "title": "ArenaTournament",
@@ -103,44 +112,6 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "entryFeeCoins", "maxPlayers", "status"]
-    },
-    "ArenaMatch": {
-      "title": "ArenaMatch",
-      "type": "object",
-      "description": "A single head-to-head match within a tournament round.",
-      "properties": {
-        "playerA": { "type": "string" },
-        "playerB": { "type": "string" },
-        "playerAName": { "type": "string" },
-        "playerBName": { "type": "string" },
-        "winner": { "type": "string" },
-        "round": { "type": "number" },
-        "battleId": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "live", "completed"] }
-      }
-    },
-    "SocialPost": {
-      "title": "SocialPost",
-      "type": "object",
-      "description": "A vibration shared in the Yard or an Arena highlight.",
-      "properties": {
-        "isPromoted": { "type": "boolean", "description": "Flag for paid highlight boosting." },
-        "promotionLevel": { "type": "string", "enum": ["none", "small", "medium", "large"] },
-        "promotionViewsTarget": { "type": "number" },
-        "promotionViewsDelivered": { "type": "number" }
-      }
-    },
-    "HighlightStats": {
-      "title": "HighlightStats",
-      "type": "object",
-      "description": "Granular engagement metrics for a promoted highlight.",
-      "properties": {
-        "views": { "type": "number" },
-        "likes": { "type": "number" },
-        "shares": { "type": "number" },
-        "followersGained": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
     }
   },
   "auth": {
@@ -151,12 +122,9 @@
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
     "/creator_settings/{userId}": { "schema": "#/backend/entities/CreatorSettings", "description": "Subscription and commercial settings for creators." },
-    "/creator_subscriptions/{subId}": { "schema": "#/backend/entities/CreatorSubscription", "description": "Recurring fan support." },
-    "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
+    "/creator_subscriptions/{subId}": { "schema": "#/backend/entities/CreatorSubscription", "description": "Recurring fan support audit trail." },
+    "/creator_subscribers/{creatorId}/subscribers/{subscriberId}": { "schema": "#/backend/entities/CreatorSubscriber", "description": "Inner Circle membership list for benefit gating." },
     "/arena_tournaments/{tournamentId}": { "schema": "#/backend/entities/ArenaTournament", "description": "Organized competitions." },
-    "/arena_tournaments/{tournamentId}/matches/{matchId}": { "schema": "#/backend/entities/ArenaMatch", "description": "Individual matches within a tournament round." },
-    "/sponsor_stats/{battleId}": { "schema": "#/backend/entities/SponsorStats", "description": "ROI metrics for brand partners." },
-    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts and promoted highlights." },
-    "/highlight_stats/{highlightId}": { "schema": "#/backend/entities/HighlightStats", "description": "Detailed ROI analytics for promoted vibrations." }
+    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts and promoted highlights." }
   }
 }

@@ -25,6 +25,23 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
+    // 💎 RECURRING: Creator Subscriptions (Audit Trail)
+    match /creator_subscriptions/{subId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.subscriberId || 
+        request.auth.uid == resource.data.creatorId || 
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.subscriberId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // 💎 RECURRING: Inner Circle Benefits (Gating Path)
+    match /creator_subscribers/{creatorId}/subscribers/{subscriberId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == subscriberId);
+    }
+
     // 💰 MONETIZATION: Coin Wallet Registry
     match /wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
@@ -37,94 +54,12 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
-    // 💎 RECURRING: Creator Subscriptions
-    match /creator_subscriptions/{subId} {
-      allow read: if isSignedIn() && (
-        request.auth.uid == resource.data.subscriberId || 
-        request.auth.uid == resource.data.creatorId || 
-        isAdmin()
-      );
-      allow create: if isSignedIn() && request.resource.data.subscriberId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    // 💰 MONETIZATION: Transaction History
     match /wallet_transactions/{txId} {
       allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow write: if isAdmin();
     }
 
-    match /arena_waiting_pool/{entryId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-    }
-
-    match /arena_highlights/{highlightId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /arena_sponsors/{sponsorId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /arena_battles/{battleId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      
-      allow update: if isSignedIn() && (
-        request.auth.uid == resource.data.creatorId || isAdmin() ||
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes', 'viewerCount', 'opponentA', 'opponentB', 'aiVerdict', 'participants', 'participantInfo', 'status'])
-        )
-      );
-
-      match /powerups/{powerupId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      }
-
-      match /gifts/{giftId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.senderId == request.auth.uid;
-      }
-
-      match /gift_leaderboard/{userId} {
-        allow read: if isSignedIn();
-        allow write: if isSignedIn() && request.auth.uid == userId;
-      }
-
-      match /engagement_events/{eventId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn();
-      }
-
-      match /messages/{msgId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn();
-      }
-
-      match /reactions/{reactionId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn();
-      }
-
-      match /user_votes/{userId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.auth.uid == userId;
-      }
-
-      match /challengers/{userId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.auth.uid == userId;
-        allow delete: if isSignedIn() && (request.auth.uid == userId || request.auth.uid == get(/databases/$(database)/documents/arena_battles/$(battleId)).data.creatorId);
-      }
-    }
-
-    // 🏆 ARENA TOURNAMENTS
     match /arena_tournaments/{tournamentId} {
       allow read: if isSignedIn();
       allow create: if isAdmin();
@@ -145,52 +80,6 @@ service cloud.firestore {
       }
     }
 
-    match /campus_wars/{warId} {
-      allow read: if isSignedIn();
-      allow create: if isAdmin() || (isSignedIn() && request.auth.token.role == 'src');
-      allow update: if isSignedIn() && (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votesA', 'votesB', 'viewerCount', 'status', 'aiVerdict'])
-      );
-
-      match /messages/{msgId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn();
-      }
-
-      match /votes/{userId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.auth.uid == userId;
-      }
-
-      match /vote_shards/{shardId} {
-        allow read: if isSignedIn();
-        allow update: if isSignedIn() && (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votesA', 'votesB'])
-        );
-        allow create: if isAdmin();
-      }
-
-      match /boosts/{boostId} {
-        allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      }
-    }
-
-    match /arena_leaderboard/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
-    match /campus_leaderboard/{campusId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /video_hashes/{hash} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
-    }
-
     match /campus_pulse/{postId} {
       allow read, list, get: if isSignedIn();
       allow create: if isSignedIn();
@@ -201,24 +90,8 @@ service cloud.firestore {
       allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
     }
 
-    match /products/{productId} {
-      allow read, list: if isSignedIn();
-      allow write: if isAdmin() || (isSignedIn() && request.auth.token.role == 'vendor');
-    }
-
-    match /orders/{orderId} {
-      allow read: if isSignedIn() && (isAdmin() || resource.data.buyerId == request.auth.uid || resource.data.vendorId == request.auth.uid);
-      allow create: if isSignedIn();
-      allow update: if isSignedIn() && (isAdmin() || resource.data.buyerId == request.auth.uid || resource.data.vendorId == request.auth.uid);
-    }
-
     match /user_intelligence/{userId} {
       allow read, write: if isAdmin() || request.auth.uid == userId;
-    }
-
-    match /trend_scores/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
     }
 
     match /{document=**} {

@@ -149,29 +149,73 @@ export async function spendCoins(
 }
 
 /**
- * boostVibe
+ * subscribeToCreator (Step 7)
+ * --------------------------
+ * Establishes a recurring monthly relationship between a fan and a creator.
+ * Implements the requested 'creator_subscribers' sub-collection for benefit gating.
  */
-export async function boostVibe(
-  db: Firestore,
-  userId: string,
-  postId: string,
-  tier: keyof typeof PROMOTION_PACKAGES
+export async function subscribeToCreator(
+    db: Firestore,
+    subscriberId: string,
+    creatorId: string,
+    amountGHS: number,
+    paystackRef: string
 ) {
-  const pack = PROMOTION_PACKAGES[tier];
-  
-  await spendCoins(db, userId, pack.cost, 'highlight_boost', {
-    boostTier: tier,
-    targetCreatorId: userId 
-  });
+    if (!db || !subscriberId || !creatorId) return;
 
-  const postRef = doc(db, 'campus_pulse', postId);
-  return updateDoc(postRef, {
-    isPromoted: true,
-    promotionLevel: tier,
-    promotionViewsTarget: pack.target,
-    promotionViewsDelivered: 0,
-    promotedAt: serverTimestamp()
-  });
+    const subId = `${subscriberId}_${creatorId}`;
+    const auditRef = doc(db, 'creator_subscriptions', subId);
+    const benefitRef = doc(db, 'creator_subscribers', creatorId, 'subscribers', subscriberId);
+    const userRef = doc(db, 'users', subscriberId);
+    const settingsRef = doc(db, 'creator_settings', creatorId);
+
+    const now = new Date();
+    const renewalDate = new Date();
+    renewalDate.setDate(now.getDate() + 30); 
+
+    const subData = {
+        creatorId,
+        subscriberId,
+        priceMonthly: amountGHS,
+        status: 'active',
+        paystackReference: paystackRef,
+        startDate: serverTimestamp(),
+        renewalDate: renewalDate.toISOString(),
+        updatedAt: serverTimestamp()
+    };
+
+    return runTransaction(db, async (transaction) => {
+        // 1. Audit Trail (Billing Node)
+        transaction.set(auditRef, subData, { merge: true });
+
+        // 2. Benefit Node (For content gating)
+        transaction.set(benefitRef, {
+            subscriberSince: serverTimestamp(),
+            status: 'active'
+        });
+
+        // 3. User Profile Cache (Zero-latency UI check)
+        transaction.update(userRef, {
+            subscribedCreators: arrayUnion(creatorId)
+        });
+
+        // 4. Update Creator Stats
+        transaction.set(settingsRef, {
+            subscriberCount: increment(1),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 5. Log notification for creator
+        const notifRef = doc(collection(db, 'users', creatorId, 'notifications'));
+        transaction.set(notifRef, {
+            type: 'subscription',
+            title: "New Inner Circle Member! 💎",
+            message: `A fan has subscribed to your channel for GHS ${amountGHS}/mo.`,
+            link: `/chat`,
+            read: false,
+            createdAt: serverTimestamp()
+        });
+    });
 }
 
 /**
@@ -218,69 +262,6 @@ export async function joinTournament(
         updatedAt: serverTimestamp()
     });
   });
-}
-
-/**
- * subscribeToCreator (Step 7)
- * --------------------------
- * Establishes a recurring monthly relationship between a fan and a creator.
- * Handshake: Paystack GHS Payment -> Active Subscription Document.
- */
-export async function subscribeToCreator(
-    db: Firestore,
-    subscriberId: string,
-    creatorId: string,
-    amountGHS: number,
-    paystackRef: string
-) {
-    if (!db || !subscriberId || !creatorId) return;
-
-    const subId = `${subscriberId}_${creatorId}`;
-    const subRef = doc(db, 'creator_subscriptions', subId);
-    const userRef = doc(db, 'users', subscriberId);
-    const settingsRef = doc(db, 'creator_settings', creatorId);
-
-    const now = new Date();
-    const renewalDate = new Date();
-    renewalDate.setDate(now.getDate() + 30); // 30-day billing cycle
-
-    const subData = {
-        creatorId,
-        subscriberId,
-        priceMonthly: amountGHS,
-        status: 'active',
-        paystackReference: paystackRef,
-        startDate: serverTimestamp(),
-        renewalDate: renewalDate.toISOString(),
-        updatedAt: serverTimestamp()
-    };
-
-    return runTransaction(db, async (transaction) => {
-        // 1. Create the subscription node
-        transaction.set(subRef, subData, { merge: true });
-
-        // 2. Cache subscription status on user profile for fast UI checks
-        transaction.update(userRef, {
-            subscribedCreators: arrayUnion(creatorId)
-        });
-
-        // 3. Log notification for creator
-        const notifRef = doc(collection(db, 'users', creatorId, 'notifications'));
-        transaction.set(notifRef, {
-            type: 'subscription',
-            title: "New Inner Circle Member! 💎",
-            message: `A fan has subscribed to your channel for GHS ${amountGHS}/mo.`,
-            link: `/chat`,
-            read: false,
-            createdAt: serverTimestamp()
-        });
-
-        // 4. Update Creator Stats
-        transaction.set(settingsRef, {
-            subscriberCount: increment(1),
-            updatedAt: serverTimestamp()
-        }, { merge: true });
-    });
 }
 
 /**

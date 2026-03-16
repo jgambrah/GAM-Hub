@@ -104,7 +104,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const mediaCategory = getMediaCategory(post.mediaType);
 
   const isFollowing = user?.followedUsers?.includes(post.authorId) || false;
+  
+  // 💎 INNER CIRCLE CHECK: Optimized via profile cache
   const isSubscribed = user?.subscribedCreators?.includes(post.authorId) || false;
+  
   const [isProcessingFollow, setIsProcessingFollow] = React.useState(false);
 
   const videoSource = post.hlsUrl || post.mediaUrl;
@@ -113,7 +116,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     addToQueue([post]);
   }, [post.id, addToQueue]);
 
-  // 🚀 PROMOTION TRACKING PROTOCOL (STEP 5)
+  // 🚀 PROMOTION TRACKING PROTOCOL 
   React.useEffect(() => {
     if (!post.isPromoted || hasTrackedPromotionImpression.current || !firestore || isAuthor) return;
 

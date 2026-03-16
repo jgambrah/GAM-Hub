@@ -30,6 +30,12 @@ interface CreatorSubscribeDialogProps {
   onClose: () => void;
 }
 
+/**
+ * CreatorSubscribeDialog Component
+ * ------------------------------
+ * Finalized payment processing for Step 7.
+ * Orchestrates the "Inner Circle" enlistment using Paystack GHS protocol.
+ */
 export function CreatorSubscribeDialog({ creator, isOpen, onClose }: CreatorSubscribeDialogProps) {
   const { firestore, auth } = useFirebase();
   const { user } = useAuth();
@@ -47,6 +53,7 @@ export function CreatorSubscribeDialog({ creator, isOpen, onClose }: CreatorSubs
   const monthlyPrice = settings?.subscriptionPrice || 3;
   const isEnabled = settings?.subscriptionsEnabled !== false;
 
+  // 2. Paystack Orchestration
   const paystackConfig = {
     reference: `SUB_${creator.id}_${Date.now()}`,
     email: user?.email || '',
@@ -78,6 +85,7 @@ export function CreatorSubscribeDialog({ creator, isOpen, onClose }: CreatorSubs
             setIsProcessing(true);
             try {
                 if (firestore && user) {
+                    // SECURE HANDSHAKE: Transition payment into active membership
                     await subscribeToCreator(firestore, user.id, creator.id, monthlyPrice, ref.reference);
                     toast({
                         title: "Subscribed! 💎",
@@ -137,10 +145,10 @@ export function CreatorSubscribeDialog({ creator, isOpen, onClose }: CreatorSubs
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Supporter Benefits</p>
                     <div className="grid grid-cols-1 gap-3">
                         {[
-                            { icon: Gem, label: "Supporter Badge", desc: "Show your status in comments" },
-                            { icon: Swords, label: "Exclusive Battles", desc: "Access to private showdowns" },
-                            { icon: MessageSquare, label: "Priority Chat", desc: "Your messages stay on top" },
-                            { icon: Zap, label: "Early Access", desc: "See victory archives first" }
+                            { icon: Gem, label: "Subscriber Badge", desc: "Show your status in the Yard scroller" },
+                            { icon: Swords, label: "Subscriber Battles", desc: "Access to private competition archives" },
+                            { icon: MessageSquare, label: "Private Creator Chat", desc: "Exclusive direct line to the talent" },
+                            { icon: Zap, label: "Early Highlights", desc: "See victory archives 24h before others" }
                         ].map((benefit, i) => (
                             <div key={i} className="flex items-center gap-4 p-4 bg-muted/30 rounded-2xl border border-transparent hover:border-blue-100 transition-all group">
                                 <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl shadow-sm text-blue-600 group-hover:scale-110 transition-transform">
