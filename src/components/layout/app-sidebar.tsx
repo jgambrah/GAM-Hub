@@ -5,7 +5,7 @@ import {
   FlameKindling, Flame, LayoutDashboard, ShoppingBag, Users, Building, Settings, UserCheck, 
   Link, CreditCard, MessagesSquare, ShieldAlert, Landmark, Banknote, Sparkles, MapPin, 
   Globe, BookOpen, PackageCheck, Wallet, History, Zap, Star, Gavel, Key, FileCheck, TrendingUp, Rss,
-  Megaphone, ChevronRight, Coins, Plus
+  Megaphone, ChevronRight, Coins, Plus, Swords
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
@@ -54,6 +54,7 @@ const adminNavGroups = [
     icon: ShieldAlert,
     items: [
       { href: '/admin/analytics', label: 'Analytics Hub', icon: Globe },
+      { href: '/admin/arena', label: 'Arena Command', icon: Swords },
       { href: '/admin/exit-poll', label: 'Exit Polls', icon: TrendingUp },
       { href: '/admin/handover', label: 'Handover Command', icon: Key },
       { href: '/admin/spotlight', label: 'Spotlight Manager', icon: Sparkles },
@@ -202,7 +203,6 @@ export function AppSidebar() {
           </SidebarMenu>
         ) : viewMode === 'admin' ? (
           <>
-            {/* LIAISON APP VIEW GROUP (Collapsible) */}
             <Collapsible className="group/collapsible" defaultOpen={true}>
               <SidebarGroup>
                 <SidebarGroupLabel asChild>
@@ -231,7 +231,6 @@ export function AppSidebar() {
               </SidebarGroup>
             </Collapsible>
 
-            {/* LIAISON COMMAND GROUPS (Collapsible) */}
             {adminNavGroups.map((group) => (
               <Collapsible key={group.title} className="group/collapsible" defaultOpen={false}>
                 <SidebarGroup>
