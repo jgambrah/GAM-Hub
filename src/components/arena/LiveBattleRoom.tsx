@@ -8,6 +8,7 @@
  * Orchestrates Engagement Spike Logging for Replay Highlights.
  * Implements Step 3: Cinematic Gift Animations & Support Leaderboard.
  * Now expanded with Step 7: SUBSCRIBER BADGE & PROMOTION PROTOCOL 💎
+ * STEP 8: Layer 1 Anti-Fraud Vote Rate Limiting Active 🛡️
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -124,14 +125,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [inputMode, setInputMode] = useState<'chat' | 'boost' | 'gift'>('chat');
   const [message, setMessage] = useState('');
   const [isVoting, setIsVoting] = useState(false);
-  const [hasVoted, setHasVoted] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [selectingOpponentId, setSelectingOpponentId] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null);
   const [recentPowerUp, setRecentPowerUp] = useState<any>(null);
   const [recentGift, setRecentGift] = useState<ArenaGift | null>(null);
-  
-  // STEP 7: Subscription Promotion State
   const [subscribingTo, setSubscribingTo] = useState<any | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -215,14 +213,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     return () => { unsubP(); unsubG(); };
   }, [firestore, battleId, isLive, battle?.isSponsored]);
 
-  useEffect(() => {
-    if (!firestore || !user || !battleId) return;
-    const voteRef = doc(firestore, 'arena_battles', battleId, 'user_votes', user.id);
-    getDoc(voteRef).then(snap => { 
-        if (snap.exists()) setHasVoted(true); 
-    });
-  }, [firestore, user?.id, battleId]);
-
   const handleSelectOpponent = async (challenger: ArenaChallenger) => {
     if (!firestore || !battle || !user || battle.creatorId !== user.id) return;
     setSelectingOpponentId(challenger.id);
@@ -268,26 +258,61 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     setMessage('');
   };
 
+  /**
+   * 🛡️ STEP 8: Layer 1 - Vote Rate Limiting
+   * Checks the last vote time in the audit node before processing.
+   */
   const handleVote = async (target: 'A' | 'B') => {
-    if (!firestore || !user || hasVoted || isVoting || !battle || battle.status !== 'live') return;
-    setIsVoting(true);
+    if (!firestore || !user || isVoting || !battle || battle.status !== 'live') return;
+    
     const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
     if (!targetUserId) return;
 
+    setIsVoting(true);
+
     try {
-      await setDoc(doc(firestore, 'arena_battles', battleId, 'user_votes', user.id), { 
-          votedFor: targetUserId, targetSide: target, timestamp: serverTimestamp() 
-      });
-      await updateDoc(doc(firestore, 'arena_battles', battleId), { 
+      // 1. SECURITY AUDIT: Check frequency
+      const voteAuditRef = doc(firestore, 'battle_votes', battleId, 'users', user.id);
+      const auditSnap = await getDoc(voteAuditRef);
+      const now = Date.now();
+
+      if (auditSnap.exists()) {
+          const lastVote = auditSnap.data().lastVoteTime?.toMillis?.() || 0;
+          if (now - lastVote < 10000) {
+              toast({ variant: 'destructive', title: 'Voting too fast!', description: 'Please wait 10s between energy contributions.' });
+              setIsVoting(false);
+              return;
+          }
+      }
+
+      // 2. LOG AUDIT & INCREMENT TALLY
+      const batch = writeBatch(firestore);
+      batch.set(voteAuditRef, {
+          lastVoteTime: serverTimestamp(),
+          voteCount: increment(1)
+      }, { merge: true });
+
+      const battleRef = doc(firestore, 'arena_battles', battleId);
+      batch.update(battleRef, { 
           [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(1), 
           [`votes.${targetUserId}`]: increment(1) 
       });
+
       if (battle.isSponsored) {
-          setDoc(doc(firestore, 'sponsor_stats', battleId), { votes: increment(1) }, { merge: true });
+          const sponsorStatsRef = doc(firestore, 'sponsor_stats', battleId);
+          batch.set(sponsorStatsRef, { votes: increment(1) }, { merge: true });
       }
+
+      await batch.commit();
       setHasVoted(true);
-    } catch(err) { toast({ variant: 'destructive', title: 'Action Refused' }); }
-    finally { setIsVoting(false); }
+      toast({ title: "Energy Contributed! ⚡" });
+
+    } catch(err) { 
+        console.error(err);
+        toast({ variant: 'destructive', title: 'Action Refused' }); 
+    } finally { 
+        setIsVoting(false); 
+    }
   };
 
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
@@ -507,7 +532,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                         <div className="pt-4 flex flex-col items-center gap-4">
                             <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-50 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all w-full max-w-sm">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
                             
-                            {/* STEP 7: PROMOTION IN WAITING ROOM */}
                             {!isSubscribedA && !isCreator && (
                                 <button 
                                     onClick={() => setSubscribingTo({ id: battle.opponentA.userId, name: p1.name, avatarUrl: p1.avatarUrl, campusAcronym: p1.campusAcronym })}
@@ -546,7 +570,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             <p className="text-[8px] font-black text-blue-400 uppercase">{p1?.campusAcronym}</p>
                             <p className="text-2xl font-black text-white tabular-nums">{battle.opponentA.votes || 0}</p>
                             
-                            {/* STEP 7: PROMOTION IN LIVE HUD (A) */}
                             {!isSubscribedA && user?.id !== battle.opponentA.userId && (
                                 <button onClick={() => setSubscribingTo({ id: battle.opponentA.userId, name: p1.name, avatarUrl: p1.avatarUrl, campusAcronym: p1.campusAcronym })} className="mt-1 bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md text-[7px] font-black uppercase tracking-tighter shadow-lg hover:scale-105 transition-transform">
                                     Subscribe
@@ -558,7 +581,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             <p className="text-[8px] font-black text-amber-400 uppercase">{p2?.campusAcronym}</p>
                             <p className="text-2xl font-black text-white tabular-nums">{battle.opponentB?.votes || 0}</p>
                             
-                            {/* STEP 7: PROMOTION IN LIVE HUD (B) */}
                             {!isSubscribedB && p2 && user?.id !== battle.opponentB?.userId && (
                                 <button onClick={() => setSubscribingTo({ id: battle.opponentB!.userId, name: p2.name, avatarUrl: p2.avatarUrl, campusAcronym: p2.campusAcronym })} className="mt-1 bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md text-[7px] font-black uppercase tracking-tighter shadow-lg hover:scale-105 transition-transform">
                                     Subscribe
@@ -583,16 +605,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                             <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(37,99,235,0.5)]" style={{ width: `${p1Pct}%` }} />
                             <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(245,158,11,0.5)]" style={{ width: `${p2Pct}%` }} />
                         </div>
-                        {!hasVoted ? (
-                            <div className="grid grid-cols-2 gap-4">
-                                <button onClick={() => handleVote('A')} disabled={isVoting} className="py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all active:scale-95">VOTE {p1?.campusAcronym}</button>
-                                <button onClick={() => handleVote('B')} disabled={isVoting} className="py-5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all active:scale-95">VOTE {p2?.campusAcronym}</button>
-                            </div>
-                        ) : (
-                            <div className="text-center py-5 bg-white/5 rounded-2xl border border-white/5">
-                                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center justify-center gap-2"><CheckCircle2 size={14} /> National Vote Logged</p>
-                            </div>
-                        )}
+                        <div className="grid grid-cols-2 gap-4">
+                            <button onClick={() => handleVote('A')} disabled={isVoting} className="py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all active:scale-95">VOTE {p1?.campusAcronym}</button>
+                            <button onClick={() => handleVote('B')} disabled={isVoting} className="py-5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all active:scale-95">VOTE {p2?.campusAcronym}</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -751,7 +767,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
       <JoinBattleModal battle={battle} isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
       
-      {/* STEP 7: LIVE PROMOTION DIALOG */}
       {subscribingTo && (
           <CreatorSubscribeDialog 
             creator={subscribingTo}

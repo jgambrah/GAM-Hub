@@ -124,6 +124,15 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "entryFeeCoins", "maxPlayers", "status"]
+    },
+    "BattleVote": {
+      "title": "BattleVote",
+      "type": "object",
+      "description": "Anti-fraud audit node for battle voting rate limits.",
+      "properties": {
+        "lastVoteTime": { "type": "string", "format": "date-time" },
+        "voteCount": { "type": "number" }
+      }
     }
   },
   "auth": {
@@ -138,6 +147,7 @@
     "/creator_subscriptions/{subId}": { "schema": "#/backend/entities/CreatorSubscription", "description": "Recurring fan support audit trail." },
     "/creator_subscribers/{creatorId}/subscribers/{subscriberId}": { "schema": "#/backend/entities/CreatorSubscriber", "description": "Inner Circle membership list for benefit gating." },
     "/arena_tournaments/{tournamentId}": { "schema": "#/backend/entities/ArenaTournament", "description": "Organized competitions." },
+    "/battle_votes/{battleId}/users/{userId}": { "schema": "#/backend/entities/BattleVote", "description": "Voting frequency audit nodes." },
     "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts and promoted highlights." }
   }
 }

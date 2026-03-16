@@ -7,6 +7,7 @@
  * National Hub Stage for University vs University Wars.
  * Orchestrates massive spectator loads using Distributed Counters (Sharding).
  * Implements "One Vote Per Student" integrity protocol.
+ * STEP 8: Layer 1 Anti-Fraud Vote Rate Limiting Active 🛡️
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -45,7 +46,6 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 1. SCALABLE SYNC: Listen to the main war document
   const warRef = useMemoFirebase(() => {
     if (!firestore || !warId) return null;
     return doc(firestore, 'campus_wars', warId);
@@ -53,7 +53,6 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
   const { data: war, isLoading } = useDoc<CampusWar>(warRef);
 
-  // 2. DISTRIBUTED COUNTER SYNC
   const shardsQuery = useMemoFirebase(() => {
       if (!firestore || !warId) return null;
       return query(collection(firestore, 'campus_wars', warId, 'vote_shards'));
@@ -69,18 +68,17 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       }), { A: 0, B: 0 });
   }, [shards, war]);
 
-  // 3. VOTE AUDIT
+  // 🛡️ STEP 8: Check for initial vote status (optional for multi-vote system)
   useEffect(() => {
     if (!firestore || !user || !warId) return;
     const checkVote = async () => {
-        const voteRef = doc(firestore, 'campus_wars', warId, 'votes', user.id);
-        const snap = await getDoc(voteRef);
+        const auditRef = doc(firestore, 'battle_votes', warId, 'users', user.id);
+        const snap = await getDoc(auditRef);
         if (snap.exists()) setHasVoted(true);
     };
     checkVote();
   }, [firestore, user?.id, warId]);
 
-  // 4. LIVE CHAT STREAM
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
       collection(firestore, "campus_wars", warId, "messages"),
@@ -104,32 +102,55 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     });
   };
 
+  /**
+   * 🛡️ STEP 8: Layer 1 - Vote Rate Limiting (Campus War Edition)
+   * Enforces 10s cooldown across distributed shards.
+   */
   const handleVote = async (side: 'A' | 'B') => {
-    if (!firestore || !user || isVoting || hasVoted || !war || war.status === 'ended') return;
+    if (!firestore || !user || isVoting || !war || war.status === 'ended') return;
     setIsVoting(true);
     
-    const voteRef = doc(firestore, 'campus_wars', warId, 'votes', user.id);
-    const shardId = Math.floor(Math.random() * 10).toString();
-    const shardRef = doc(firestore, 'campus_wars', warId, 'vote_shards', shardId);
-
     try {
+      // 1. SECURITY AUDIT: Frequency Check
+      const voteAuditRef = doc(firestore, 'battle_votes', warId, 'users', user.id);
+      const auditSnap = await getDoc(voteAuditRef);
+      const now = Date.now();
+
+      if (auditSnap.exists()) {
+          const lastVote = auditSnap.data().lastVoteTime?.toMillis?.() || 0;
+          if (now - lastVote < 10000) {
+              toast({ variant: 'destructive', title: 'Energy Recharging...', description: 'Please wait 10s between war contributions.' });
+              setIsVoting(false);
+              return;
+          }
+      }
+
+      // 2. DISTRIBUTED HANDSHAKE
+      const shardId = Math.floor(Math.random() * 10).toString();
+      const shardRef = doc(firestore, 'campus_wars', warId, 'vote_shards', shardId);
       const batch = writeBatch(firestore);
-      batch.set(voteRef, {
-          campus: side === 'A' ? war.campusAId : war.campusBId,
-          userId: user.id,
-          userName: user.name,
-          createdAt: serverTimestamp()
-      });
+
+      batch.set(voteAuditRef, {
+          lastVoteTime: serverTimestamp(),
+          voteCount: increment(1),
+          side: side === 'A' ? war.campusAId : war.campusBId
+      }, { merge: true });
+
       batch.set(shardRef, { 
           [side === 'A' ? 'votesA' : 'votesB']: increment(1) 
       }, { merge: true });
+
       await batch.commit();
       setHasVoted(true);
       sendReaction('🗳️');
-      toast({ title: "National Energy Contributed! ⚡" });
+      toast({ title: "War Energy Contributed! ⚔️" });
+
     } catch(err) {
-        toast({ variant: 'destructive', title: 'Action Refused' });
-    } finally { setIsVoting(false); }
+        console.error(err);
+        toast({ variant: 'destructive', title: 'Deployment Refused' });
+    } finally { 
+        setIsVoting(false); 
+    }
   };
 
   const handlePowerUp = async (up: typeof POWER_UPS[0], side: 'A' | 'B') => {
@@ -246,15 +267,14 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
         <div className="p-10 bg-gradient-to-t from-black/80 to-transparent flex justify-center gap-10">
             <div className="flex flex-col gap-4 w-full max-w-md">
-                {!hasVoted ? (
-                    <div className="grid grid-cols-2 gap-4">
-                        <button onClick={() => handleVote('A')} disabled={isVoting} className="py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95 border-2 border-white/10 hover:brightness-110" style={{ backgroundColor: war.campusAInfo?.primaryColor }}>VOTE {war.campusAInfo?.acronym}</button>
-                        <button onClick={() => handleVote('B')} disabled={isVoting} className="py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95 border-2 border-white/10 hover:brightness-110" style={{ backgroundColor: war.campusBInfo?.primaryColor }}>VOTE {war.campusBInfo?.acronym}</button>
-                    </div>
-                ) : (
-                    <div className="bg-white/5 border border-white/10 p-4 rounded-[2rem] text-center animate-in zoom-in duration-500">
+                <div className="grid grid-cols-2 gap-4">
+                    <button onClick={() => handleVote('A')} disabled={isVoting} className="py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95 border-2 border-white/10 hover:brightness-110" style={{ backgroundColor: war.campusAInfo?.primaryColor }}>VOTE {war.campusAInfo?.acronym}</button>
+                    <button onClick={() => handleVote('B')} disabled={isVoting} className="py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95 border-2 border-white/10 hover:brightness-110" style={{ backgroundColor: war.campusBInfo?.primaryColor }}>VOTE {war.campusBInfo?.acronym}</button>
+                </div>
+                {hasVoted && (
+                    <div className="text-center animate-in zoom-in duration-500">
                         <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center justify-center gap-2">
-                            <CheckCircle2 size={14} /> National Vote Logged
+                            <CheckCircle2 size={14} /> National Contribution Logged
                         </p>
                     </div>
                 )}

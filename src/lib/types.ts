@@ -214,6 +214,11 @@ export type ArenaGift = {
   createdAt: any;
 };
 
+export type BattleVoteAudit = {
+  lastVoteTime: any;
+  voteCount: number;
+};
+
 export type SocialPost = {
   id: string;
   authorId: string;

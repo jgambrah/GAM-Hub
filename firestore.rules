@@ -85,6 +85,12 @@ service cloud.firestore {
       }
     }
 
+    // 🛡️ ANTI-FRAUD: Vote Audit Nodes
+    match /battle_votes/{battleId}/users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
     match /campus_pulse/{postId} {
       allow read, list, get: if isSignedIn();
       allow create: if isSignedIn();
