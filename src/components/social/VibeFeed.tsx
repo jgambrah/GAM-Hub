@@ -105,12 +105,9 @@ export default function VibeFeed({
     return posts.find(p => p.id === activePostId);
   }, [activePostId, posts]);
 
-  const discoveryItems = useMemo(() => {
-    return feedItems.filter(item => {
-      if (item.type === 'post' && item.post.id === activePostId) return false;
-      return true;
-    });
-  }, [feedItems, activePostId]);
+  // LIAISON FIX: Remove deduplication filter to ensure the full inventory is visible in the grid.
+  // The user expects to see all their shared content, even if one is currently the "Active" stage.
+  const discoveryItems = feedItems;
 
   const hasActive = !!activePostId;
 

@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useFirebase } from '@/firebase';
-import { collection, query, where, orderBy, limit, onSnapshot, startAfter, type DocumentSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import type { SocialPost, SrcPost } from '@/lib/types';
 import { Skeleton } from '../ui/skeleton';
 import VibeFeed from './VibeFeed';
@@ -17,13 +17,14 @@ import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
 import { recordBanditTrial } from '@/lib/bandit-learning';
 import { computeVibeScore } from '@/lib/vibe-scoring';
 
-const BATCH_SIZE = 20;
+// LIAISON PROTOCOL: Increase batch size to ensure all recent vibes are visible
+const BATCH_SIZE = 100;
 
 /**
  * CampusPulseFeed Component
  * ------------------------
  * The main scroller orchestrator.
- * Upgraded to REAL-TIME synchronization using onSnapshot.
+ * Upgraded to handle explicit tab filtering and high-capacity retrieval.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -44,7 +45,6 @@ export default function CampusPulseFeed({
     const { products: marketProducts } = useMarketRecommendations(searchQuery);
     
     const [posts, setPosts] = useState<SocialPost[]>([]);
-    const [srcPosts, setSrcPosts] = useState<SrcPost[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isEmbedding, setIsEmbedding] = useState(false);
@@ -70,7 +70,13 @@ export default function CampusPulseFeed({
             baseQuery = query(baseQuery, where('tags', 'array-contains', tagToFilter));
         }
 
-        // 3. Final Ordering and Limits
+        // 3. TAB FILTERING: Ensure the query matches the user's discovery intent
+        if (tab === 'vlogs' || tab === 'shoppable') {
+            // Priority: Surface all video types first
+            baseQuery = query(baseQuery, where('mediaType', 'in', ['video', 'native', 'youtube', 'tiktok']));
+        }
+
+        // 4. Final Ordering and Limits (Expanded for high visibility)
         const finalQuery = query(baseQuery, orderBy('createdAt', 'desc'), limit(BATCH_SIZE));
 
         // 🧠 SEMANTIC AI: Generate query vector for search if needed
@@ -90,7 +96,6 @@ export default function CampusPulseFeed({
             
             // Auto-Start first vibe if nothing playing
             if (newPosts.length > 0 && !activePostId) {
-                // We delay slightly to let the first render stabilize
                 setTimeout(() => setActivePost(newPosts[0]), 500);
             }
             
@@ -101,24 +106,23 @@ export default function CampusPulseFeed({
             setIsLoading(false);
         });
 
-        // Log strategy usage
         if (currentStrategy) {
             recordBanditTrial(firestore, currentStrategy);
         }
 
         return () => unsubscribe();
-    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag, searchQuery, tab, currentStrategy]);
+    }, [firestore, activeCampusId, user?.id, isTokenReady, activeTag, searchQuery, tab, currentStrategy, addToQueue, setActivePost, activePostId]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
-        // Refresh is handled by the useEffect dependency reset if needed, 
-        // but onSnapshot handles live updates automatically.
+        // onSnapshot handles live updates automatically, this just triggers local visual reset if needed
     };
 
     const filteredPosts = useMemo(() => {
         if (!posts || posts.length === 0) return [];
 
         // 🎰 STAGE 1: NEURAL RANKING
+        // We calculate scores but preserve the total set to ensure nothing is missing
         return posts
             .map(p => ({ 
                 ...p, 
@@ -182,19 +186,19 @@ export default function CampusPulseFeed({
                 </div>
             </div>
 
-            <VibeFeed 
-                posts={filteredPosts} 
-                products={marketProducts}
-                hasMore={false} // onSnapshot manages the stream now
-                isLoadingMore={false}
-            />
-
-            {isLoading && posts.length === 0 && (
+            {isLoading && posts.length === 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Skeleton className="h-[500px] rounded-[3rem]" />
                     <Skeleton className="h-[500px] rounded-[3rem]" />
                     <Skeleton className="h-[500px] rounded-[3rem]" />
                 </div>
+            ) : (
+                <VibeFeed 
+                    posts={filteredPosts} 
+                    products={marketProducts}
+                    hasMore={false} 
+                    isLoadingMore={false}
+                />
             )}
         </div>
     );

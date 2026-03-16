@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -63,7 +62,8 @@ export interface ReactionBurst {
 }
 
 export interface QueueEntry { post: SocialPost; score: number; reason: string; }
-export const HISTORY_MAX = 30; export const MAX_POOL_SIZE = 800;
+export const HISTORY_MAX = 50; 
+export const MAX_POOL_SIZE = 1000;
 
 interface VibePlayerContextType {
   activePostId: string | null; activePost: SocialPost | null; queue: SocialPost[]; upNext: QueueEntry[];
@@ -148,7 +148,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
             const aiReRank = await getRecommendedVibes({ 
               currentPostContent: current.content, 
               userInterests: getTopInterests(10), 
-              availablePosts: finalPosts.slice(0, 15).map(p => ({ id: p.id, content: p.content, tags: p.tags })) 
+              availablePosts: finalPosts.slice(0, 20).map(p => ({ id: p.id, content: p.content, tags: p.tags })) 
             });
             const aiOrder = new Map(aiReRank.recommendedPostIds.map((id, i) => [id, i]));
             const topTier = finalPosts.filter(p => aiOrder.has(p.id)).sort((a, b) => aiOrder.get(a.id)! - aiOrder.get(b.id)!);
@@ -157,10 +157,11 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
         } catch (e) { console.warn("Liaison AI Re-Ranking drifted."); }
     }
 
-    const diversePool = enforceDiversity(finalPosts).slice(0, 30);
+    // LIAISON PROTOCOL: Diverse pool must be large enough to contain "all" videos if requested
+    const diversePool = enforceDiversity(finalPosts).slice(0, 100);
     
     setQueue([current, ...diversePool]);
-    setUpNext(diversePool.slice(0, 15).map(p => ({ 
+    setUpNext(diversePool.slice(0, 20).map(p => ({ 
       post: p, 
       score: 0, 
       reason: 'AI Orchestrated Match' 
@@ -192,9 +193,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     if (firestore && user?.id) {
         recordEngagement(firestore, p.id, 'view', p.authorId, p.createdAt);
         logTrendEvent(firestore, { type: 'video_view', entityId: p.id, campusId: p.campusId, tag: p.tags?.[0] });
-        
-        // 🛡️ BOT DETECTION: Increment watch time node
-        trackUserBehavior(firestore, user.id, 'watch', 5); // Assumed average play check
+        trackUserBehavior(firestore, user.id, 'watch', 5);
     }
   }, [recordSignal, firestore, user?.id]);
 
@@ -202,7 +201,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
     recordSignal(p, 'watch');
     if (firestore && user?.id) {
         recordEngagement(firestore, p.id, 'completion', p.authorId, p.createdAt);
-        trackUserBehavior(firestore, user.id, 'watch', 15); // Bonus for completion
+        trackUserBehavior(firestore, user.id, 'watch', 15);
     }
   }, [recordSignal, firestore, user?.id]);
 
@@ -226,11 +225,7 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
   const startDisplayTimer = useCallback((post: SocialPost) => {
     const cat = getMediaCategory(post.mediaType);
     let duration = DISPLAY_DURATIONS[cat];
-    
-    // For audio, use the actual duration + 1s buffer
-    if (cat === 'audio') {
-        duration = (post.duration || 10) * 1000 + 1000;
-    }
+    if (cat === 'audio') duration = (post.duration || 10) * 1000 + 1000;
 
     if (duration > 0 && isContinuousRef.current) {
       if (displayTimerRef.current) clearTimeout(displayTimerRef.current);
