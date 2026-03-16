@@ -5,7 +5,7 @@
  * LiveBattleRoom Component
  * -----------------------
  * Elite National Arena Stage.
- * Finalized with STEP 12: ARENA GIFT COMBO SYSTEM & ACHIEVEMENTS ⚡🔥
+ * Finalized with STEP 12: ARENA GIFT COMBO SYSTEM & FINALE BOOST ⚡🔥
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -47,7 +47,7 @@ const POWER_UPS = [
 ];
 
 const MAX_BOOSTS_PER_USER = 10;
-const COMBO_WINDOW_MS = 4000; // Step 12: 4-second reset rule
+const COMBO_WINDOW_MS = 4000; 
 
 function StreakBadge({ streak, losses }: { streak: number, losses?: number }) {
     if (streak < 2 && (losses || 0) > 0) return null;
@@ -169,6 +169,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [recentPowerUp, setRecentPowerUp] = useState<any>(null);
   const [subscribingTo, setSubscribingTo] = useState<any | null>(null);
   const [showReport, setShowReport] = useState(false);
+  
+  const [timeLeft, setTimeLeft] = useState<number>(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -221,6 +223,20 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
+  // ⏱️ FINAL FRENZY TIMER
+  useEffect(() => {
+    if (!battle?.endsAt || battle.status !== 'live') return;
+    const timer = setInterval(() => {
+      const end = new Date(battle.endsAt).getTime();
+      const now = Date.now();
+      const diff = Math.max(0, Math.floor((end - now) / 1000));
+      setTimeLeft(diff);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [battle?.endsAt, battle?.status]);
+
+  const isFinalFrenzy = isLive && timeLeft > 0 && timeLeft <= 20;
+
   useEffect(() => {
     if (!firestore || !battleId || !user?.id || !isLive) return;
     
@@ -249,7 +265,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     }
 
     const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
-    const isSubscriber = user.subscribedCreators?.includes(targetUserId);
 
     try {
         const comboId = `${battleId}_${user.id}`;
@@ -272,6 +287,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         else if (comboCount >= 20) multiplier = 2.0;
         else if (comboCount >= 10) multiplier = 1.5;
         else if (comboCount >= 5) multiplier = 1.2;
+
+        // ⚡ FINALE BOOST: Double multiplier in the last 20 seconds
+        if (isFinalFrenzy) {
+            multiplier *= 2.0;
+        }
 
         const votesWithMultiplier = Math.floor(powerup.weight * multiplier);
 
@@ -350,9 +370,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           if (now - lastVote < 10000) { toast({ variant: 'destructive', title: 'Energy Recharging...' }); setIsVoting(false); return; }
       }
 
+      const multiplier = isFinalFrenzy ? 2 : 1;
       const batch = writeBatch(firestore);
       batch.set(voteAuditRef, { lastVoteTime: serverTimestamp(), voteCount: increment(1) }, { merge: true });
-      batch.update(doc(firestore, 'arena_battles', battleId), { [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(1), [`votes.${targetUserId}`]: increment(1) });
+      batch.update(doc(firestore, 'arena_battles', battleId), { 
+          [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(multiplier), 
+          [`votes.${targetUserId}`]: increment(multiplier) 
+      });
       await batch.commit();
       trackUserBehavior(firestore, user.id, 'vote');
     } catch(err) { toast({ variant: 'destructive', title: 'Refused' }); }
@@ -398,14 +422,29 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             <button onClick={() => setShowReport(true)} className="p-3 bg-red-600/40 backdrop-blur-md rounded-full text-white border border-red-500/20 hover:bg-red-600 shadow-xl"><ShieldAlert size={24}/></button>
           </div>
           <div className={cn("px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10", isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-500")}>
-            {isWaiting ? "DEPLOYMENT OPEN" : isLive ? "LIVE SHOWDOWN" : "CONCLUDED"}
+            {isWaiting ? "DEPLOYMENT OPEN" : isLive ? `LIVE SHOWDOWN - ${timeLeft}s` : "CONCLUDED"}
           </div>
           <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 transition-all">{soundOn ? <Volume2 size={24} /> : <VolumeX size={24} />}</button>
         </div>
 
         {isLive && (
             <div className="flex-1 flex flex-col pt-24">
-                <div className="absolute top-32 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
+                
+                {/* ⚡ FINAL FRENZY BANNER */}
+                <AnimatePresence>
+                    {isFinalFrenzy && (
+                        <motion.div 
+                            initial={{ scale: 0.9, opacity: 0, y: -20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 1.1, opacity: 0 }}
+                            className="absolute top-32 left-1/2 -translate-x-1/2 z-[60] bg-red-600 text-white px-8 py-3 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] shadow-[0_0_50px_rgba(220,38,38,0.6)] border-4 border-white/20 animate-pulse flex items-center gap-3"
+                        >
+                            <Zap size={18} fill="white" /> FINAL FRENZY: 2X COMBO POWER
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <div className="absolute top-48 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
                     <div className="bg-black/60 backdrop-blur-xl p-4 rounded-[2rem] border border-white/10 shadow-2xl flex items-center justify-between gap-8">
                         <div className="text-center flex-1 flex flex-col items-center"><p className="text-[8px] font-black text-blue-400 uppercase">{p1?.campusAcronym}</p><p className="text-2xl font-black text-white tabular-nums">{battle.opponentA.votes || 0}</p></div>
                         <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white/20"><Swords size={18} className="text-white" /></div>
@@ -426,7 +465,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                     <div className={cn("px-6 py-2 rounded-2xl font-black italic text-xl shadow-2xl flex items-center gap-2 border-2", activeCombo.comboCount >= 50 ? "bg-red-600 text-white border-white/30" : activeCombo.comboCount >= 25 ? "bg-purple-600 text-white" : activeCombo.comboCount >= 10 ? "bg-indigo-600 text-white" : "bg-amber-500 text-slate-950 border-white/20")}>
                                         <Zap className="animate-bounce" size={20} fill="currentColor" />
                                         {activeCombo.comboCount >= 50 ? "LEGENDARY COMBO" : activeCombo.comboCount >= 25 ? "GIFT MACHINE" : activeCombo.comboCount >= 10 ? "FIRE STORM" : "COMBO"} x{activeCombo.comboCount}
-                                        {activeCombo.comboMultiplier > 1 && <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">{activeCombo.comboMultiplier}x POWER</span>}
+                                        {(activeCombo.comboMultiplier > 1 || isFinalFrenzy) && <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">{isFinalFrenzy ? activeCombo.comboMultiplier * 2 : activeCombo.comboMultiplier}x POWER</span>}
                                     </div>
                                 </motion.div>
                             )}

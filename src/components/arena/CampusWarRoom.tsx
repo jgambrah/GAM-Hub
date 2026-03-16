@@ -5,7 +5,7 @@
  * CampusWarRoom Component
  * -----------------------
  * National Hub Stage for University vs University Wars.
- * Finalized with STEP 12: ARENA GIFT COMBO SYSTEM & ACHIEVEMENTS ⚡🔥
+ * Finalized with STEP 12: ARENA GIFT COMBO SYSTEM & FINALE BOOST ⚡🔥
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { registerUserDevice, isBotSuspicionCheck, trackUserBehavior } from '@/lib/fraud-protection';
 import { spendCoins } from '@/lib/monetization';
+import { cn } from '@/lib/utils';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Vibe Boost', emoji: '🔥', weight: 5, cost: 10 },
@@ -33,7 +34,7 @@ const POWER_UPS = [
     { type: 'national_crown', label: 'National Crown', emoji: '👑', weight: 50, cost: 100 },
 ];
 
-const COMBO_WINDOW_MS = 4000; // Step 12: 4-second rule
+const COMBO_WINDOW_MS = 4000; 
 
 interface LocalBurst { id: string; emoji: string; x: number; }
 
@@ -46,6 +47,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   const [isVoting, setIsVoting] = useState(false);
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
   const [activeCombo, setActiveCombo] = useState<GiftCombo | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const warRef = useMemoFirebase(() => {
@@ -60,6 +62,20 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     return doc(firestore, 'wallets', user.id);
   }, [firestore, user?.id]);
   const { data: wallet } = useDoc<any>(walletRef);
+
+  // ⏱️ FINAL FRENZY TIMER
+  useEffect(() => {
+    if (!war?.endsAt || war.status !== 'live') return;
+    const timer = setInterval(() => {
+      const end = new Date(war.endsAt).getTime();
+      const now = Date.now();
+      const diff = Math.max(0, Math.floor((end - now) / 1000));
+      setTimeLeft(diff);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [war?.endsAt, war?.status]);
+
+  const isFinalFrenzy = war?.status === 'live' && timeLeft > 0 && timeLeft <= 20;
 
   // ⚡ STEP 12: COMBO LISTENER
   useEffect(() => {
@@ -147,8 +163,9 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
           voteCount: increment(1)
       }, { merge: true });
 
+      const multiplier = isFinalFrenzy ? 2 : 1;
       batch.set(shardRef, { 
-          [side === 'A' ? 'votesA' : 'votesB']: increment(1) 
+          [side === 'A' ? 'votesA' : 'votesB']: increment(multiplier) 
       }, { merge: true });
 
       await batch.commit();
@@ -187,6 +204,11 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     else if (comboCount >= 20) multiplier = 2.0;
     else if (comboCount >= 10) multiplier = 1.5;
     else if (comboCount >= 5) multiplier = 1.2;
+
+    // ⚡ FINALE BOOST: Double multiplier in the last 20 seconds
+    if (isFinalFrenzy) {
+        multiplier *= 2.0;
+    }
 
     const finalWeight = Math.floor(up.weight * multiplier);
     const shardId = Math.floor(Math.random() * 10).toString();
@@ -271,7 +293,9 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
         <div className="absolute top-0 left-0 right-0 z-50 p-8 flex justify-between items-start bg-gradient-to-b from-black/80 to-transparent">
           <button onClick={onClose} className="p-4 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md border border-white/10 transition-all"><X size={24}/></button>
           <div className="text-center">
-            <div className="bg-indigo-600 px-8 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.4em] shadow-2xl animate-pulse">Live National War</div>
+            <div className={cn("px-8 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.4em] shadow-2xl animate-pulse", war.status === 'live' ? "bg-red-600" : "bg-indigo-600")}>
+                {war.status === 'live' ? `Live National War - ${timeLeft}s` : 'National War Hub'}
+            </div>
             <h1 className="text-2xl font-black italic text-white mt-4 tracking-tighter uppercase">"{war.title}"</h1>
           </div>
           <div className="bg-white/10 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 text-white flex items-center gap-3">
@@ -279,6 +303,20 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
             <span className="text-sm font-black tabular-nums">{war.viewerCount || 0}</span>
           </div>
         </div>
+
+        {/* ⚡ FINAL FRENZY BANNER */}
+        <AnimatePresence>
+            {isFinalFrenzy && (
+                <motion.div 
+                    initial={{ scale: 0.9, opacity: 0, y: -20 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 1.1, opacity: 0 }}
+                    className="absolute top-32 left-1/2 -translate-x-1/2 z-[60] bg-red-600 text-white px-8 py-3 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] shadow-[0_0_50px_rgba(220,38,38,0.6)] border-4 border-white/20 animate-pulse flex items-center gap-3"
+                >
+                    <Zap size={18} fill="white" /> FINAL FRENZY: 2X COMBO POWER
+                </motion.div>
+            )}
+        </AnimatePresence>
 
         <div className="flex-1 flex flex-col justify-center items-center p-8 gap-12">
             <div className="w-full max-w-5xl flex justify-between items-center gap-10">
@@ -305,7 +343,9 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
                     {activeCombo && activeCombo.comboCount >= 2 && (
                         <motion.div initial={{ scale: 0.5, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="flex justify-center mb-4">
                             <div className={cn("px-6 py-2 rounded-2xl font-black italic text-xl shadow-2xl flex items-center gap-2 border-2", activeCombo.comboCount >= 50 ? "bg-red-600 text-white" : activeCombo.comboCount >= 25 ? "bg-purple-600 text-white" : activeCombo.comboCount >= 10 ? "bg-indigo-600 text-white" : "bg-amber-500 text-slate-950")}>
-                                <Zap size={20} fill="currentColor" /> {activeCombo.comboCount >= 50 ? "LEGENDARY COMBO" : activeCombo.comboCount >= 25 ? "GIFT MACHINE" : activeCombo.comboCount >= 10 ? "FIRE STORM" : "COMBO"} x{activeCombo.comboCount}
+                                <Zap size={20} fill="currentColor" /> 
+                                {activeCombo.comboCount >= 50 ? "LEGENDARY COMBO" : activeCombo.comboCount >= 25 ? "GIFT MACHINE" : activeCombo.comboCount >= 10 ? "FIRE STORM" : "COMBO"} x{activeCombo.comboCount}
+                                {isFinalFrenzy && <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">2X FRENZY</span>}
                             </div>
                         </motion.div>
                     )}
@@ -319,7 +359,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
                     {POWER_UPS.map(up => (
                         <button key={up.type} onClick={() => handlePowerUp(up, user?.campusId === war.campusAId ? 'A' : 'B')} className="group flex flex-col items-center gap-1">
                             <div className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all active:scale-90"><span className="text-2xl">{up.emoji}</span></div>
-                            <span className="text-[8px] font-black text-slate-500 uppercase">+{up.weight}</span>
+                            <span className="text-[8px] font-black text-slate-500 uppercase">+{up.weight * (isFinalFrenzy ? 2 : 1)}</span>
                         </button>
                     ))}
                 </div>
