@@ -3,14 +3,20 @@
 
 import React from 'react';
 import type { ArenaBattle } from '@/lib/types';
-import { Swords, Users, Trophy, Zap, ChevronRight, Clock, ShieldCheck, Plus, Megaphone, Gem } from 'lucide-react';
+import { Swords, Users, Trophy, Zap, ChevronRight, Clock, ShieldCheck, Plus, Megaphone, Gem, Star } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth';
 
 export function LiveBattleCard({ battle, onClick }: { battle: ArenaBattle, onClick: () => void }) {
+  const { user } = useAuth();
   const isWaiting = battle.status === 'waiting';
   const p1 = battle.participantInfo[battle.creatorId];
   const p2 = battle.opponentB ? battle.participantInfo[battle.opponentB.userId] : null;
+
+  // STEP 7: Subscriber Status Hints
+  const isSubscribedA = user?.subscribedCreators?.includes(battle.opponentA.userId);
+  const isSubscribedB = battle.opponentB ? user?.subscribedCreators?.includes(battle.opponentB.userId) : false;
 
   return (
     <div 
@@ -68,8 +74,9 @@ export function LiveBattleCard({ battle, onClick }: { battle: ArenaBattle, onCli
                 <AvatarImage src={p1?.avatarUrl} />
                 <AvatarFallback>{p1?.name?.charAt(0)}</AvatarFallback>
               </Avatar>
-              <div className="absolute -bottom-2 -right-2 bg-slate-900 px-2 py-0.5 rounded-lg border border-white/10 text-[8px] font-black uppercase">
+              <div className="absolute -bottom-2 -right-2 bg-slate-900 px-2 py-0.5 rounded-lg border border-white/10 text-[8px] font-black uppercase flex items-center gap-1">
                 {p1?.campusAcronym}
+                {isSubscribedA && <Star size={8} className="text-amber-500 fill-amber-500" />}
               </div>
             </div>
             <p className="font-black text-sm truncate w-full text-center">{p1?.name}</p>
@@ -95,8 +102,9 @@ export function LiveBattleCard({ battle, onClick }: { battle: ArenaBattle, onCli
                         <AvatarImage src={p2?.avatarUrl} />
                         <AvatarFallback>{p2?.name?.charAt(0)}</AvatarFallback>
                     </Avatar>
-                    <div className="absolute -bottom-2 -right-2 bg-slate-900 px-2 py-0.5 rounded-lg border border-white/10 text-[8px] font-black uppercase">
+                    <div className="absolute -bottom-2 -right-2 bg-slate-900 px-2 py-0.5 rounded-lg border border-white/10 text-[8px] font-black uppercase flex items-center gap-1">
                         {p2?.campusAcronym}
+                        {isSubscribedB && <Star size={8} className="text-amber-500 fill-amber-500" />}
                     </div>
                 </>
               ) : (

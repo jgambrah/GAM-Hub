@@ -7,10 +7,10 @@
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
  * Implements Step 3: Cinematic Gift Animations & Support Leaderboard.
- * Now expanded with Step 7: SUBSCRIBER BADGE PROTOCOL ⭐
+ * Now expanded with Step 7: SUBSCRIBER BADGE & PROMOTION PROTOCOL 💎
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
@@ -36,7 +36,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollArea, ScrollBar } from '../ui/scroll-area';
 import { Badge } from '../ui/badge';
 import { Label } from '../ui/label';
-import { Skeleton } from '../ui/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
+import { CreatorSubscribeDialog } from '../social/CreatorSubscribeDialog';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },
@@ -130,6 +131,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [recentPowerUp, setRecentPowerUp] = useState<any>(null);
   const [recentGift, setRecentGift] = useState<ArenaGift | null>(null);
   
+  // STEP 7: Subscription Promotion State
+  const [subscribingTo, setSubscribingTo] = useState<any | null>(null);
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const battleRef = useMemoFirebase(() => {
@@ -180,7 +184,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   useEffect(() => {
     if (!firestore || !battleId || !isLive) return;
     
-    // Track Battle View for Sponsors
     if (battle?.isSponsored) {
         setDoc(doc(firestore, 'sponsor_stats', battleId), { views: increment(1), updatedAt: serverTimestamp() }, { merge: true });
     }
@@ -251,7 +254,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     e.preventDefault();
     if (!message.trim() || !firestore || !user || !battle || battle.status === 'ended') return;
     
-    // STEP 7: Check if sender is a subscriber of the participants
     const isSubA = user.subscribedCreators?.includes(battle.opponentA.userId);
     const isSubB = battle.opponentB ? user.subscribedCreators?.includes(battle.opponentB.userId) : false;
     const isSubscriber = isSubA || isSubB;
@@ -260,7 +262,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         userId: user.id, 
         userName: user.name, 
         text: message.trim(), 
-        isSubscriber, // Conversion badge flag
+        isSubscriber, 
         createdAt: serverTimestamp() 
     });
     setMessage('');
@@ -302,8 +304,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     }
 
     const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
-    
-    // STEP 7: Check if sender is a subscriber
     const isSubscriber = user.subscribedCreators?.includes(targetUserId);
 
     try {
@@ -327,7 +327,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             userName: user.name,
             target: target === 'A' ? 'opponentA' : 'opponentB',
             type: powerup.type,
-            isSubscriber, // Display badge in alert
+            isSubscriber, 
             votesAdded: powerup.weight,
             coinsSpent: powerup.cost,
             createdAt: serverTimestamp()
@@ -393,6 +393,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const p1Pct = totalVotes > 0 ? ((battle.opponentA.votes || 0) / totalVotes) * 100 : 50;
   const p2Pct = 100 - p1Pct;
 
+  const isSubscribedA = user?.subscribedCreators?.includes(battle.opponentA.userId);
+  const isSubscribedB = battle.opponentB ? user?.subscribedCreators?.includes(battle.opponentB.userId) : false;
+
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
       
@@ -452,7 +455,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
         
-        {/* SPONSOR HUD (STEP 4) */}
         {battle.isSponsored && (
             <div className="absolute top-0 left-0 right-0 z-[100] px-8 pt-4 pb-12 bg-gradient-to-b from-slate-950/90 to-transparent pointer-events-none">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -502,8 +504,18 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                 <Gem size={14} /> EXCLUSIVE SUBSCRIBER BATTLE
                             </div>
                         )}
-                        <div className="pt-4">
-                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-50 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
+                        <div className="pt-4 flex flex-col items-center gap-4">
+                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-50 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all w-full max-w-sm">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
+                            
+                            {/* STEP 7: PROMOTION IN WAITING ROOM */}
+                            {!isSubscribedA && !isCreator && (
+                                <button 
+                                    onClick={() => setSubscribingTo({ id: battle.opponentA.userId, name: p1.name, avatarUrl: p1.avatarUrl, campusAcronym: p1.campusAcronym })}
+                                    className="flex items-center gap-2 text-[10px] font-black text-amber-500 uppercase tracking-widest hover:underline"
+                                >
+                                    <Gem size={12} /> Subscribe to {p1.name} for Benefits
+                                </button>
+                            )}
                         </div>
                     </div>
                     {isCreator && (
@@ -530,14 +542,28 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             <div className="flex-1 flex flex-col pt-24">
                 <div className="absolute top-32 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
                     <div className="bg-black/60 backdrop-blur-xl p-4 rounded-[2rem] border border-white/10 shadow-2xl flex items-center justify-between gap-8">
-                        <div className="text-center flex-1">
+                        <div className="text-center flex-1 flex flex-col items-center">
                             <p className="text-[8px] font-black text-blue-400 uppercase">{p1?.campusAcronym}</p>
                             <p className="text-2xl font-black text-white tabular-nums">{battle.opponentA.votes || 0}</p>
+                            
+                            {/* STEP 7: PROMOTION IN LIVE HUD (A) */}
+                            {!isSubscribedA && user?.id !== battle.opponentA.userId && (
+                                <button onClick={() => setSubscribingTo({ id: battle.opponentA.userId, name: p1.name, avatarUrl: p1.avatarUrl, campusAcronym: p1.campusAcronym })} className="mt-1 bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md text-[7px] font-black uppercase tracking-tighter shadow-lg hover:scale-105 transition-transform">
+                                    Subscribe
+                                </button>
+                            )}
                         </div>
                         <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white/20"><Swords size={18} className="text-white" /></div>
-                        <div className="text-center flex-1">
+                        <div className="text-center flex-1 flex flex-col items-center">
                             <p className="text-[8px] font-black text-amber-400 uppercase">{p2?.campusAcronym}</p>
                             <p className="text-2xl font-black text-white tabular-nums">{battle.opponentB?.votes || 0}</p>
+                            
+                            {/* STEP 7: PROMOTION IN LIVE HUD (B) */}
+                            {!isSubscribedB && p2 && user?.id !== battle.opponentB?.userId && (
+                                <button onClick={() => setSubscribingTo({ id: battle.opponentB!.userId, name: p2.name, avatarUrl: p2.avatarUrl, campusAcronym: p2.campusAcronym })} className="mt-1 bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md text-[7px] font-black uppercase tracking-tighter shadow-lg hover:scale-105 transition-transform">
+                                    Subscribe
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -724,6 +750,15 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       </div>
 
       <JoinBattleModal battle={battle} isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
+      
+      {/* STEP 7: LIVE PROMOTION DIALOG */}
+      {subscribingTo && (
+          <CreatorSubscribeDialog 
+            creator={subscribingTo}
+            isOpen={!!subscribingTo}
+            onClose={() => setSubscribingTo(null)}
+          />
+      )}
     </div>
   );
 }
