@@ -371,8 +371,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     <div
       ref={cardRef}
       data-post-id={post.id}
+      onClick={() => { if (!isActiveVibe) setActivePost(post); }}
       className={cn(
-        'group relative bg-card rounded-[3rem] border-2 overflow-hidden transition-all duration-500',
+        'group relative bg-card rounded-[3rem] border-2 overflow-hidden transition-all duration-500 cursor-pointer',
         !isActiveVibe ? 'border-border shadow-sm hover:shadow-xl' : 'border-blue-50 shadow-[0_0_80px_rgba(59,130,246,0.3)] ring-2 ring-blue-500/50 col-span-full z-10',
         isGlobalSeed && !isActiveVibe && 'border-amber-200',
         post.status === 'under_review' && 'border-red-500 bg-red-50/10'
@@ -393,9 +394,14 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       )}
 
       <div 
-        onClick={() => { if(isActiveVibe && mediaCategory === 'video') toggleSound(); }}
+        onClick={(e) => { 
+          if(isActiveVibe && mediaCategory === 'video') {
+            e.stopPropagation();
+            toggleSound(); 
+          }
+        }}
         className={cn(
-          'relative bg-slate-950 overflow-hidden flex-shrink-0 transition-all duration-700 ease-in-out cursor-pointer',
+          'relative bg-slate-950 overflow-hidden flex-shrink-0 transition-all duration-700 ease-in-out',
           isActiveVibe ? activeAspect : 'aspect-video group/media'
         )}
       >
@@ -408,8 +414,15 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </div>
         )}
 
-        {(post.mediaType === 'video' || post.mediaType === 'image') && post.imageUrl && !isActiveVibe && (
-          <Image src={post.imageUrl} alt="vibe" fill className={cn('object-cover transition-transform duration-700', !isActiveVibe && 'group-hover/media:scale-105')} />
+        {(mediaCategory === 'video' || mediaCategory === 'image') && !isActiveVibe && (
+          post.imageUrl ? (
+            <Image src={post.imageUrl} alt="vibe" fill className={cn('object-cover transition-transform duration-700', 'group-hover/media:scale-105')} />
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white/40 gap-3">
+                <Video size={48} className="opacity-20" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Vibration Standby</span>
+            </div>
+          )
         )}
 
         {isActiveVibe && post.mediaType === 'video' && videoSource && (
@@ -419,9 +432,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             />
         )}
 
-        {!isActiveVibe && post.mediaType !== 'text' && post.mediaType !== 'audio' && (
-            <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover/media:opacity-100 transition-opacity">
-                <PlayCircle size={48} className="text-white drop-shadow-xl" />
+        {!isActiveVibe && mediaCategory === 'video' && (
+            <div className="absolute inset-0 bg-black/20 flex items-center justify-center transition-opacity">
+                <div className="p-4 bg-white/20 backdrop-blur-md rounded-full border-2 border-white/50 text-white shadow-2xl group-hover/media:scale-110 transition-transform">
+                    <PlayCircle size={48} className="text-white drop-shadow-xl" />
+                </div>
             </div>
         )}
       </div>
@@ -457,22 +472,22 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
         <div className={cn('flex items-center justify-between transition-all duration-300', isActiveVibe ? 'md:flex-col md:items-end md:gap-6 pt-0' : 'pt-6 border-t border-border mt-6')}>
           <div className="flex items-center gap-6">
-            <button onClick={handleLike} disabled={!user || isProcessingLike} className="flex flex-col items-center gap-1">
+            <button onClick={(e) => { e.stopPropagation(); handleLike(); }} disabled={!user || isProcessingLike} className="flex flex-col items-center gap-1">
               <ThumbsUp size={20} className={cn(isLiked && 'fill-orange-600 text-orange-600')} />
               <span className="text-[10px] font-black text-foreground">{likeCount}</span>
             </button>
-            <button onClick={() => setShowComments(!showComments)} className="flex flex-col items-center gap-1">
+            <button onClick={(e) => { e.stopPropagation(); setShowComments(!showComments); }} className="flex flex-col items-center gap-1">
               <MessageCircle size={20} className="text-muted-foreground" />
               <span className="text-[10px] font-black text-foreground">{post.commentCount}</span>
             </button>
           </div>
           <div className="flex items-center gap-3">
             {!isAuthor && (
-                <button onClick={() => setShowReport(true)} className="p-3 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-2xl">
+                <button onClick={(e) => { e.stopPropagation(); setShowReport(true); }} className="p-3 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-2xl">
                     <ShieldAlert size={20} />
                 </button>
             )}
-            <button onClick={handleShare} className="bg-slate-900 text-white rounded-2xl p-4 transition-all active:scale-90 shadow-xl">
+            <button onClick={(e) => { e.stopPropagation(); handleShare(); }} className="bg-slate-900 text-white rounded-2xl p-4 transition-all active:scale-90 shadow-xl">
               <Share2 size={24} />
             </button>
           </div>
