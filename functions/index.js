@@ -290,7 +290,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     }
 
     if (!isDraw && winnerId && loserId) {
-        // ⚔️ STEP 10: Adjudicate Win Streaks via Transaction
+        // ⚔️ STEP 10 & 11: Adjudicate Win Streaks & Leaderboards via Transaction
         await db.runTransaction(async (transaction) => {
             const winnerRef = db.collection("arena_leaderboard").doc(winnerId);
             const loserRef = db.collection("arena_leaderboard").doc(loserId);
@@ -298,7 +298,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             const [winnerSnap, loserSnap] = await Promise.all([transaction.get(winnerRef), transaction.get(loserRef)]);
             
             // Winner Update
-            const winnerData = winnerSnap.exists ? winnerSnap.data() : { wins: 0, winStreak: 0, bestStreak: 0 };
+            const winnerData = winnerSnap.exists ? winnerSnap.data() : { wins: 0, winStreak: 0, bestStreak: 0, weeklyWins: 0 };
             const newStreak = (winnerData.winStreak || 0) + 1;
             const newBest = Math.max(winnerData.bestStreak || 0, newStreak);
             
@@ -306,7 +306,9 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
                 wins: admin.firestore.FieldValue.increment(1),
                 winStreak: newStreak,
                 bestStreak: newBest,
+                weeklyWins: admin.firestore.FieldValue.increment(1),
                 votes_received: admin.firestore.FieldValue.increment(Math.max(vA, vB)),
+                lastBattleAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
 
@@ -314,6 +316,7 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             transaction.set(loserRef, {
                 losses: admin.firestore.FieldValue.increment(1),
                 winStreak: 0,
+                lastBattleAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
         });
@@ -404,6 +407,25 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     }
   }
   return null;
+});
+
+/**
+ * 👑 WEEKLY CHAMPIONS: RESET WEEKLY WINS
+ */
+exports.resetWeeklyWins = onSchedule("every monday 00:00", async (event) => {
+  const db = admin.firestore();
+  const leaderboardSnap = await db.collection("arena_leaderboard")
+    .where("weeklyWins", ">", 0)
+    .get();
+
+  if (leaderboardSnap.empty) return null;
+
+  const batch = db.batch();
+  leaderboardSnap.forEach(doc => {
+    batch.update(doc.ref, { weeklyWins: 0, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  });
+
+  return batch.commit();
 });
 
 /**

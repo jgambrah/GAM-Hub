@@ -462,6 +462,7 @@ export type ArenaLeaderboard = {
   losses: number;
   winStreak: number;
   bestStreak: number;
+  weeklyWins: number;
   votes_received: number;
   highlightCount: number;
   boostsReceived: number;

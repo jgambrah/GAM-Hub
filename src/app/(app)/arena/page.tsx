@@ -24,13 +24,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CreateBattleModal } from '@/components/arena/CreateBattleModal';
 import { LiveBattleCard } from '@/components/arena/LiveBattleCard';
 import { LiveBattleRoom } from '@/components/arena/LiveBattleRoom';
-import { ArenaChampions } from '@/components/arena/ArenaChampions';
-import { ArenaLegends } from '@/components/arena/ArenaLegends';
 import { CampusWarCard } from '@/components/arena/CampusWarCard';
 import { CampusWarRoom } from '@/components/arena/CampusWarRoom';
 import { CreateWarModal } from '@/components/arena/CreateWarModal';
 import { CampusWarLeaderboard } from '@/components/arena/CampusWarLeaderboard';
 import { TournamentSection } from '@/components/arena/TournamentSection';
+import { ArenaGlobalLeaderboard } from '@/components/arena/ArenaGlobalLeaderboard';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import HallOfFame from '@/components/social/HallOfFame';
 import ArenaLeaderboard from '@/components/social/ArenaLeaderboard';
@@ -72,7 +71,7 @@ export default function ArenaPage() {
     }, [firestore]);
     const { data: season } = useDoc<ArenaSeason>(seasonRef);
 
-    // 1. NATIONAL TOURNAMENTS (NEW)
+    // 1. NATIONAL TOURNAMENTS
     // Managed in its own section via the TournamentSection component
 
     // 2. SPONSORED BATTLES (PRIORITY HUB)
@@ -430,6 +429,9 @@ export default function ArenaPage() {
             {/* 🏆 NATIONAL TOURNAMENTS SECTION */}
             <TournamentSection />
 
+            {/* 🏟️ NATIONAL GLOBAL LEADERBOARD (NEW) */}
+            <ArenaGlobalLeaderboard />
+
             {/* 🛡️ NATIONAL FEATURED SECTION (SPONSORED) */}
             {featuredBattles && featuredBattles.length > 0 && (
                 <section className="max-w-5xl mx-auto mb-16 animate-in fade-in duration-700">
@@ -551,9 +553,6 @@ export default function ArenaPage() {
                     </div>
                 </section>
             )}
-
-            <ArenaLegends />
-            <ArenaChampions />
 
             <div className="max-w-4xl mx-auto">
                 <ArenaRules />
