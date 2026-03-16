@@ -66,7 +66,7 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
             <div>
               <DialogTitle className="text-2xl font-black italic">Major Boost</DialogTitle>
               <DialogDescription className="font-bold uppercase text-[10px] tracking-widest text-slate-400">
-                Increase your highlight visibility across the Hub
+                Reach More People in the Yard
               </DialogDescription>
             </div>
           </div>
@@ -74,7 +74,7 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
 
         <div className="p-8 space-y-6 bg-background">
           <div className="flex justify-between items-center px-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Exposure Level</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Promotion Tier</p>
             <div className="flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-xl border border-amber-500/20">
                 <Coins size={12} className="text-amber-500" />
                 <span className="text-[10px] font-black text-amber-600">{wallet?.coins || 0} Available</span>
@@ -106,7 +106,7 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
                         <div className="flex-1 min-w-0">
                             <h4 className="font-black text-sm uppercase tracking-tight">{tier.label}</h4>
                             <p className="text-[10px] font-bold text-muted-foreground uppercase mt-0.5">
-                                Reach {tier.target.toLocaleString()} Citizens
+                                Guaranteed Audience Reach
                             </p>
                         </div>
                         <div className="text-right">
@@ -121,7 +121,7 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
           <div className="p-4 bg-muted/50 rounded-2xl border-2 border-dashed border-border flex items-start gap-3">
              <Rocket className="text-blue-500 mt-1" size={16} />
              <p className="text-[9px] text-muted-foreground leading-relaxed font-bold italic">
-                Liaison Handshake: Promoted highlights are prioritized in the Yard feed and the national scroller for 24 hours or until the view target is reached.
+                Liaison Handshake: Boosted highlights are prioritized in the scroller until your view target is reached. Transparency: Viewers will see a "Promoted" badge on your vibration.
              </p>
           </div>
         </div>
@@ -136,7 +136,7 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
                     selectedTier ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-400"
                 )}
             >
-                {isBoosting ? <Loader2 className="animate-spin" /> : <><Zap size={24} className="mr-2" fill="currentColor" /> DEPLOY BOOST</>}
+                {isBoosting ? <Loader2 className="animate-spin" /> : "BOOST NOW"}
             </Button>
         </DialogFooter>
       </DialogContent>

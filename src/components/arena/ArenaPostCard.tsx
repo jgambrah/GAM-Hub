@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -9,7 +8,7 @@ import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc }
 import { 
     Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, 
     AlertTriangle, Mic, Music, Target, Trophy, PlayCircle, Crown, Smile, Swords, 
-    Share2, Copy, Send as SendIcon, Star, Megaphone
+    Share2, Copy, Send as SendIcon, Star, Megaphone, TrendingUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -66,6 +65,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
     const isShade = post.vibeType === 'shade';
     const isHighlight = post.type === 'arena_highlight';
     const isSponsored = post.isSponsored || false;
+    const isPromoted = post.isPromoted || false;
 
     const videoSource = post.hlsUrl || post.mediaUrl;
     const youtubeId = useMemo(() => isBlocked ? null : getYouTubeId(post.mediaUrl || ''), [post.mediaUrl, isBlocked]);
@@ -186,6 +186,15 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                 </div>
             )}
 
+            {/* PAID PROMOTION TRANSPARENCY LABEL */}
+            {isPromoted && (
+                <div className={cn("absolute z-20 animate-in zoom-in duration-500", isSponsored ? "top-14 left-8" : "top-6 left-8")}>
+                    <div className="bg-red-600 text-white px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] shadow-xl flex items-center gap-2 border-2 border-white/20">
+                        <TrendingUp size={12} fill="white" /> Promoted Highlight
+                    </div>
+                </div>
+            )}
+
             {isHighlight && (
                 <div className={cn("absolute z-20 flex flex-col items-end gap-2 animate-in zoom-in duration-500", isSponsored ? "top-14 right-6" : "top-6 right-6")}>
                     <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
@@ -199,7 +208,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                 </div>
             )}
 
-            <div className={cn("flex justify-between items-start mb-6 relative z-10", isSponsored && "mt-10")}>
+            <div className={cn("flex justify-between items-start mb-6 relative z-10", (isSponsored || isPromoted) && "mt-10")}>
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl border-4 border-white dark:border-slate-800 shadow-xl overflow-hidden flex-shrink-0" 
                         style={{ backgroundColor: isBlocked ? "#dc2626" : post.authorColor }}>

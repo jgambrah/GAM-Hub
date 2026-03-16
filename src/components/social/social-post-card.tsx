@@ -329,8 +329,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       {/* STEP 5: PROMOTED INDICATOR */}
       {post.isPromoted && (
           <div className="absolute top-6 left-6 z-20 animate-in zoom-in duration-500">
-              <div className="bg-blue-600 text-white px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
-                  <TrendingUp size={12} fill="white" /> Promoted Victory
+              <div className="bg-red-600 text-white px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
+                  <TrendingUp size={12} fill="white" /> Promoted Highlight
               </div>
           </div>
       )}
@@ -516,7 +516,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                   
                   <div className="h-2 w-full bg-blue-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3 shadow-inner">
                       <div 
-                        className="h-full bg-blue-600 rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(37,99,235,0.4)]" 
+                        className="h-full bg-blue-600 rounded-full transition-all duration-1000 shadow-[0_0_100px_rgba(37,99,235,0.4)]" 
                         style={{ width: `${promotionProgress}%` }} 
                       />
                   </div>
