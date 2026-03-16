@@ -5,7 +5,7 @@
  * LiveBattleRoom Component
  * -----------------------
  * Elite National Arena Stage.
- * Now expanded with STEP 12: ARENA GIFT COMBO SYSTEM ⚡🔥
+ * Finalized with STEP 12: ARENA GIFT COMBO SYSTEM & ACHIEVEMENTS ⚡🔥
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -17,7 +17,7 @@ import {
 import { useFirebase, useCollection, useMemoFirebase, useDoc, updateDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
-import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry, ArenaLeaderboard, GiftCombo } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry, ArenaLeaderboard, GiftCombo, BattleComboLeader } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
   Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2, Megaphone, Gem, ShieldAlert, Flame, Coins
@@ -37,7 +37,7 @@ import { Label } from '../ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CreatorSubscribeDialog } from '../social/CreatorSubscribeDialog';
 import { ReportContentDialog } from '../social/ReportContentDialog';
-import { registerUserDevice, logSuspiciousActivity, trackUserBehavior, isBotSuspicionCheck } from '@/lib/fraud-protection';
+import { registerUserDevice, isBotSuspicionCheck, trackUserBehavior } from '@/lib/fraud-protection';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },
@@ -64,6 +64,36 @@ function StreakBadge({ streak, losses }: { streak: number, losses?: number }) {
             {streak >= 10 ? <Crown size={10} /> : streak > 0 ? <Flame size={10} fill="currentColor" /> : <ShieldCheck size={10} />}
             {streak >= 5 && losses === 0 ? "UNDEFEATED TODAY" : `${streak} WIN STREAK`}
         </motion.div>
+    );
+}
+
+function ComboLeaderboard({ battleId }: { battleId: string }) {
+    const { firestore } = useFirebase();
+    const comboLeadersQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'battle_combo_leaders', battleId, 'leaders'), orderBy('combo', 'desc'), limit(3));
+    }, [firestore, battleId]);
+    const { data: leaders } = useCollection<any>(comboLeadersQuery);
+
+    if (!leaders || leaders.length === 0) return null;
+
+    return (
+        <div className="bg-slate-950/50 p-4 rounded-2xl border border-white/5 mb-4 animate-in slide-in-from-right-2">
+            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <Flame size={10} className="text-red-500" /> Peak Combo Heat
+            </p>
+            <div className="space-y-2">
+                {leaders.map((l: any, i: number) => (
+                    <div key={l.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-600">#{i+1}</span>
+                            <span className="text-[10px] font-bold text-white truncate max-w-[80px]">{l.userName}</span>
+                        </div>
+                        <span className="text-[10px] font-black text-amber-500 italic">x{l.combo}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 }
 
@@ -137,7 +167,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [selectingOpponentId, setSelectingOpponentId] = useState<string | null>(null);
   const [activeCombo, setActiveCombo] = useState<GiftCombo | null>(null);
   const [recentPowerUp, setRecentPowerUp] = useState<any>(null);
-  const [recentGift, setRecentGift] = useState<ArenaGift | null>(null);
   const [subscribingTo, setSubscribingTo] = useState<any | null>(null);
   const [showReport, setShowReport] = useState(false);
 
@@ -150,7 +179,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
 
-  // 📈 STEP 10: Participant Streaks Sync
   const p1StreakRef = useMemoFirebase(() => {
       if (!firestore || !battle?.opponentA.userId) return null;
       return doc(firestore, 'arena_leaderboard', battle.opponentA.userId);
@@ -163,11 +191,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const { data: p1Stats } = useDoc<ArenaLeaderboard>(p1StreakRef);
   const { data: p2Stats } = useDoc<ArenaLeaderboard>(p2StreakRef);
 
-  const isCreator = user?.id === battle?.creatorId;
-  const isWaiting = battle?.status === 'waiting';
   const isLive = battle?.status === 'live';
+  const isWaiting = battle?.status === 'waiting';
   const isEnded = battle?.status === 'ended';
-  const isUnderReview = battle?.status === 'under_review';
 
   const walletRef = useMemoFirebase(() => {
     if (!firestore || !user?.id) return null;
@@ -185,13 +211,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const { data: myBoosts } = useCollection(myBoostsQuery);
   const boostsRemaining = Math.max(0, MAX_BOOSTS_PER_USER - (myBoosts?.length || 0));
 
-  const challengersQuery = useMemoFirebase(() => {
-    if (!firestore || !battleId) return null;
-    return query(collection(firestore, 'arena_battles', battleId, 'challengers'), orderBy('createdAt', 'desc'));
-  }, [firestore, battleId]);
-
-  const { data: challengers } = useCollection<ArenaChallenger>(challengersQuery);
-
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
       collection(firestore, "arena_battles", battleId, "messages"),
@@ -202,7 +221,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
-  // ⚡ STEP 12: COMBO TRACKING
   useEffect(() => {
     if (!firestore || !battleId || !user?.id || !isLive) return;
     
@@ -212,149 +230,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             const data = snap.data() as GiftCombo;
             const now = Date.now();
             const lastTime = data.lastGiftTime?.toMillis?.() || 0;
-            
-            // Auto-expire local combo if window passed (Step 12: 4s rule)
-            if (now - lastTime > COMBO_WINDOW_MS) {
-                setActiveCombo(null);
-            } else {
-                setActiveCombo(data);
-            }
-        } else {
-            setActiveCombo(null);
-        }
+            if (now - lastTime > COMBO_WINDOW_MS) setActiveCombo(null);
+            else setActiveCombo(data);
+        } else setActiveCombo(null);
     });
     return () => unsub();
   }, [firestore, battleId, user?.id, isLive]);
-
-  useEffect(() => {
-    if (firestore && user?.id) {
-        registerUserDevice(firestore, user.id);
-    }
-  }, [firestore, user?.id]);
-
-  useEffect(() => {
-    if (!firestore || !battleId || !isLive) return;
-    
-    if (battle?.isSponsored) {
-        setDoc(doc(firestore, 'sponsor_stats', battleId), { views: increment(1), updatedAt: serverTimestamp() }, { merge: true });
-    }
-
-    const qP = query(collection(firestore, 'arena_battles', battleId, 'powerups'), orderBy('createdAt', 'desc'), limit(1));
-    const unsubP = onSnapshot(qP, (snap) => {
-      if (!snap.empty) {
-        const data = snap.docs[0].data();
-        if (Date.now() - (data.createdAt?.toMillis?.() || 0) < 5000) {
-          setRecentPowerUp({ id: snap.docs[0].id, ...data });
-          const timer = setTimeout(() => setRecentPowerUp(null), 4500);
-          return () => clearTimeout(timer);
-        }
-      }
-    });
-
-    return () => { unsubP(); };
-  }, [firestore, battleId, isLive, battle?.isSponsored]);
-
-  const handleSelectOpponent = async (challenger: ArenaChallenger) => {
-    if (!firestore || !battle || !user || battle.creatorId !== user.id) return;
-    setSelectingOpponentId(challenger.id);
-
-    try {
-        const rivalRef = doc(firestore, "arena_leaderboard", challenger.userId);
-        const rivalSnap = await getDoc(rivalRef);
-        const rivalStreak = rivalSnap.exists() ? (rivalSnap.data()?.winStreak || 0) : 0;
-
-        const batch = writeBatch(firestore);
-        const bRef = doc(firestore, 'arena_battles', battleId);
-        batch.update(bRef, {
-            status: 'live',
-            opponentB: { userId: challenger.userId, videoUrl: challenger.videoUrl, votes: 0, winStreak: rivalStreak },
-            participants: [battle.creatorId, challenger.userId],
-            [`participantInfo.${challenger.userId}`]: {
-                name: challenger.userName,
-                avatarUrl: challenger.avatarUrl,
-                campusAcronym: challenger.campusAcronym,
-                primaryColor: '#ef4444',
-                winStreak: rivalStreak
-            },
-            [`votes.${challenger.userId}`]: 0,
-            createdAt: serverTimestamp(),
-            endsAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() 
-        });
-        await batch.commit();
-        toast({ title: "Battle Activated! ⚔️" });
-    } catch (err) { toast({ variant: 'destructive', title: 'Activation failed' }); }
-    finally { setSelectingOpponentId(null); }
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim() || !firestore || !user || !battle || battle.status === 'ended') return;
-    
-    const isSubA = user.subscribedCreators?.includes(battle.opponentA.userId);
-    const isSubB = battle.opponentB ? user.subscribedCreators?.includes(battle.opponentB.userId) : false;
-    const isSubscriber = isSubA || isSubB;
-
-    addDoc(collection(firestore, "arena_battles", battleId, "messages"), { 
-        userId: user.id, 
-        userName: user.name, 
-        text: message.trim(), 
-        isSubscriber, 
-        createdAt: serverTimestamp() 
-    });
-    setMessage('');
-  };
-
-  const handleVote = async (target: 'A' | 'B') => {
-    if (!firestore || !user || isVoting || !battle || battle.status !== 'live') return;
-    
-    const isBlocked = await isBotSuspicionCheck(firestore, user.id);
-    if (isBlocked) {
-        toast({ variant: 'destructive', title: 'Account Restricted', description: 'Suspicious patterns detected.' });
-        return;
-    }
-
-    const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
-    if (!targetUserId) return;
-
-    setIsVoting(true);
-
-    try {
-      const voteAuditRef = doc(firestore, 'battle_votes', battleId, 'users', user.id);
-      const auditSnap = await getDoc(voteAuditRef);
-      const now = Date.now();
-
-      if (auditSnap.exists()) {
-          const data = auditSnap.data();
-          const lastVote = data.lastVoteTime?.toMillis?.() || 0;
-          if (now - lastVote < 10000) {
-              toast({ variant: 'destructive', title: 'Voting too fast!', description: 'Please wait 10s.' });
-              setIsVoting(false);
-              return;
-          }
-      }
-
-      const batch = writeBatch(firestore);
-      batch.set(voteAuditRef, {
-          lastVoteTime: serverTimestamp(),
-          voteCount: increment(1)
-      }, { merge: true });
-
-      const battleRef = doc(firestore, 'arena_battles', battleId);
-      batch.update(battleRef, { 
-          [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(1), 
-          [`votes.${targetUserId}`]: increment(1) 
-      });
-
-      await batch.commit();
-      trackUserBehavior(firestore, user.id, 'vote');
-      toast({ title: "Energy Contributed! ⚡" });
-
-    } catch(err) { 
-        toast({ variant: 'destructive', title: 'Action Refused' }); 
-    } finally { 
-        setIsVoting(false); 
-    }
-  };
 
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
@@ -363,7 +244,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     if (isBlocked) return;
 
     if (wallet.coins < powerup.cost) {
-        toast({ variant: 'destructive', title: 'Insufficient Coins' });
+        toast({ variant: 'destructive', title: 'Insufficient Artillery', description: 'Refill your coins to deploy gifts.' });
         return;
     }
 
@@ -371,7 +252,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     const isSubscriber = user.subscribedCreators?.includes(targetUserId);
 
     try {
-        // ⚡ STEP 12: COMBO LOGIC (4-second window)
         const comboId = `${battleId}_${user.id}`;
         const comboRef = doc(firestore, 'gift_combos', comboId);
         const comboSnap = await getDoc(comboRef);
@@ -388,7 +268,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             }
         }
 
-        // Apply Step 12 Multipliers
         if (comboCount >= 50) multiplier = 3.0;
         else if (comboCount >= 20) multiplier = 2.0;
         else if (comboCount >= 10) multiplier = 1.5;
@@ -408,8 +287,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         });
 
         const batch = writeBatch(firestore);
-        const bRef = doc(firestore, 'arena_battles', battleId);
-        batch.update(bRef, { 
+        batch.update(doc(firestore, 'arena_battles', battleId), { 
             [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(votesWithMultiplier), 
             [`votes.${targetUserId}`]: increment(votesWithMultiplier) 
         });
@@ -423,47 +301,79 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             lastGiftTime: serverTimestamp()
         }, { merge: true });
 
-        const historyRef = doc(collection(firestore, 'arena_battles', battleId, 'powerups'));
-        batch.set(historyRef, {
-            userId: user.id,
-            userName: user.name,
-            target: target === 'A' ? 'opponentA' : 'opponentB',
-            type: powerup.type,
-            isSubscriber, 
-            votesAdded: votesWithMultiplier,
-            coinsSpent: powerup.cost,
-            comboCount,
-            multiplier,
-            createdAt: serverTimestamp()
-        });
+        // 🏆 COMBO LEADERBOARD HANDSHAKE
+        const comboLeaderRef = doc(firestore, 'battle_combo_leaders', battleId, 'leaders', user.id);
+        const leaderSnap = await getDoc(comboLeaderRef);
+        if (!leaderSnap.exists() || (leaderSnap.data().combo < comboCount)) {
+            batch.set(comboLeaderRef, { userId: user.id, userName: user.name, combo: comboCount, updatedAt: serverTimestamp() }, { merge: true });
+        }
+
+        // 💎 ACHIEVEMENTS HANDSHAKE
+        if (comboCount >= 10 || comboCount === 25 || comboCount === 50) {
+            const achievementRef = doc(firestore, 'user_achievements', user.id);
+            const achievementUpdate: any = { updatedAt: serverTimestamp() };
+            let milestoneMsg = "";
+            if (comboCount === 10) { achievementUpdate.fireStarter = true; milestoneMsg = "🔥 FIRE STORM x10! " + user.name + " is heating up!"; }
+            if (comboCount === 25) { achievementUpdate.giftMachine = true; milestoneMsg = "🚀 GIFT MACHINE x25! " + user.name + " is on a rampage!"; }
+            if (comboCount === 50) { achievementUpdate.arenaLegend = true; milestoneMsg = "👑 ARENA LEGEND x50! salute the King " + user.name + "!"; }
+            
+            if (milestoneMsg) {
+                batch.set(achievementRef, achievementUpdate, { merge: true });
+                batch.set(doc(collection(firestore, "arena_battles", battleId, "messages")), {
+                    userId: 'system', userName: 'NATIONAL HUB', text: milestoneMsg, createdAt: serverTimestamp()
+                });
+            }
+        }
 
         await batch.commit();
         trackUserBehavior(firestore, user.id, 'gift');
         
-        if (multiplier > 1) {
-            toast({ title: `COMBO x${comboCount}! ⚡`, description: `${multiplier}x Vote Multiplier Active` });
-        } else {
-            toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
-        }
-
-    } catch (err: any) { toast({ variant: 'destructive', title: 'Deployment Failed' }); }
+    } catch (err: any) { console.error(err); }
   };
 
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  const handleVote = async (target: 'A' | 'B') => {
+    if (!firestore || !user || isVoting || !battle || battle.status !== 'live') return;
+    const isBlocked = await isBotSuspicionCheck(firestore, user.id);
+    if (isBlocked) return;
 
-  if (isLoadingBattle || !battle) {
-    return <div className="fixed inset-0 z-[7000] bg-black flex items-center justify-center"><Loader2 className="animate-spin text-red-600" size={48} /></div>;
-  }
+    const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
+    if (!targetUserId) return;
+
+    setIsVoting(true);
+    try {
+      const voteAuditRef = doc(firestore, 'battle_votes', battleId, 'users', user.id);
+      const auditSnap = await getDoc(voteAuditRef);
+      const now = Date.now();
+
+      if (auditSnap.exists()) {
+          const lastVote = auditSnap.data().lastVoteTime?.toMillis?.() || 0;
+          if (now - lastVote < 10000) { toast({ variant: 'destructive', title: 'Energy Recharging...' }); setIsVoting(false); return; }
+      }
+
+      const batch = writeBatch(firestore);
+      batch.set(voteAuditRef, { lastVoteTime: serverTimestamp(), voteCount: increment(1) }, { merge: true });
+      batch.update(doc(firestore, 'arena_battles', battleId), { [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(1), [`votes.${targetUserId}`]: increment(1) });
+      await batch.commit();
+      trackUserBehavior(firestore, user.id, 'vote');
+    } catch(err) { toast({ variant: 'destructive', title: 'Refused' }); }
+    finally { setIsVoting(false); }
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim() || !firestore || !user || battle.status === 'ended') return;
+    const isSub = user.subscribedCreators?.includes(battle.opponentA.userId) || (battle.opponentB && user.subscribedCreators?.includes(battle.opponentB.userId));
+    addDoc(collection(firestore, "arena_battles", battleId, "messages"), { userId: user.id, userName: user.name, text: message.trim(), isSubscriber: !!isSub, createdAt: serverTimestamp() });
+    setMessage('');
+  };
+
+  if (isLoadingBattle || !battle) return <div className="fixed inset-0 z-[7000] bg-black flex items-center justify-center"><Loader2 className="animate-spin text-red-600" size={48} /></div>;
 
   const p1 = battle.participantInfo[battle.opponentA.userId];
   const p2 = battle.opponentB ? battle.participantInfo[battle.opponentB.userId] : null;
-
   const totalVotes = (battle.opponentA.votes || 0) + (battle.opponentB?.votes || 0);
   const p1Pct = totalVotes > 0 ? ((battle.opponentA.votes || 0) / totalVotes) * 100 : 50;
   const p2Pct = 100 - p1Pct;
-
-  const isSubscribedA = user?.subscribedCreators?.includes(battle.opponentA.userId);
-  const isSubscribedB = battle.opponentB ? user?.subscribedCreators?.includes(battle.opponentB.userId) : false;
 
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
@@ -474,18 +384,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             <div className="absolute top-0 left-0 right-0 z-[100] px-8 pt-4 pb-12 bg-gradient-to-b from-slate-950/90 to-transparent pointer-events-none">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <div className="relative w-12 h-12 rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-white shadow-lg">
-                            <img src={battle.sponsorLogo} alt="sponsor" className="w-full h-full object-contain p-1" />
-                        </div>
-                        <div>
-                            <p className="text-[8px] font-black text-amber-500 uppercase tracking-[0.3em]">Sponsored by</p>
-                            <h4 className="text-lg font-black text-white leading-none">{battle.sponsorName}</h4>
-                        </div>
+                        <div className="relative w-12 h-12 rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-white shadow-lg"><img src={battle.sponsorLogo} alt="sponsor" className="w-full h-full object-contain p-1" /></div>
+                        <div><p className="text-[8px] font-black text-amber-500 uppercase tracking-[0.3em]">Sponsored by</p><h4 className="text-lg font-black text-white">{battle.sponsorName}</h4></div>
                     </div>
-                    <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black shadow-[0_0_30px_rgba(245,158,11,0.4)] border-2 border-white/20 flex flex-col items-end">
-                        <span className="text-[8px] uppercase tracking-widest leading-none mb-1">Prize Pool</span>
-                        <span className="text-xl italic tracking-tighter leading-none">GHS {battle.prizeAmount?.toLocaleString()}</span>
-                    </div>
+                    <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black shadow-lg border-2 border-white/20 flex flex-col items-end"><span className="text-[8px] uppercase tracking-widest">Prize Pool</span><span className="text-xl italic tracking-tighter leading-none">GHS {battle.prizeAmount}</span></div>
                 </div>
             </div>
         )}
@@ -493,107 +395,43 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center mt-12 sm:mt-0">
           <div className="flex gap-2">
             <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl transition-all"><X size={24}/></button>
-            <button 
-                onClick={() => setShowReport(true)}
-                className="p-3 bg-red-600/40 backdrop-blur-md rounded-full text-white border border-red-500/20 hover:bg-red-600 transition-all shadow-xl"
-                title="Report Battle"
-            >
-                <ShieldAlert size={24}/>
-            </button>
+            <button onClick={() => setShowReport(true)} className="p-3 bg-red-600/40 backdrop-blur-md rounded-full text-white border border-red-500/20 hover:bg-red-600 shadow-xl"><ShieldAlert size={24}/></button>
           </div>
           <div className={cn("px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10", isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-500")}>
             {isWaiting ? "DEPLOYMENT OPEN" : isLive ? "LIVE SHOWDOWN" : "CONCLUDED"}
           </div>
-          <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 transition-all">
-            {soundOn ? <Volume2 size={24} /> : <VolumeX size={24} />}
-          </button>
+          <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 transition-all">{soundOn ? <Volume2 size={24} /> : <VolumeX size={24} />}</button>
         </div>
-
-        {isWaiting && (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar pt-24">
-                <div className="max-w-2xl w-full space-y-8 py-20">
-                    <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black group">
-                        <ReactPlayer url={battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
-                        <div className="absolute bottom-6 left-6 z-20 flex flex-col gap-2">
-                            <StreakBadge streak={p1Stats?.winStreak || 0} losses={p1Stats?.losses} />
-                            <div className="bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
-                                <p className="text-xs font-black">{p1?.name}</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="text-center space-y-4">
-                        <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">"{battle.title}"</h2>
-                        <div className="pt-4 flex flex-col items-center gap-4">
-                            <Button onClick={() => setIsJoinModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-50 text-white px-12 py-8 rounded-[2rem] font-black text-lg shadow-2xl active:scale-95 transition-all w-full max-w-sm">JOIN CHALLENGE <UserPlus className="ml-2" /></Button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )}
 
         {isLive && (
             <div className="flex-1 flex flex-col pt-24">
                 <div className="absolute top-32 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
                     <div className="bg-black/60 backdrop-blur-xl p-4 rounded-[2rem] border border-white/10 shadow-2xl flex items-center justify-between gap-8">
-                        <div className="text-center flex-1 flex flex-col items-center">
-                            <p className="text-[8px] font-black text-blue-400 uppercase">{p1?.campusAcronym}</p>
-                            <p className="text-2xl font-black text-white tabular-nums">{battle.opponentA.votes || 0}</p>
-                        </div>
+                        <div className="text-center flex-1 flex flex-col items-center"><p className="text-[8px] font-black text-blue-400 uppercase">{p1?.campusAcronym}</p><p className="text-2xl font-black text-white tabular-nums">{battle.opponentA.votes || 0}</p></div>
                         <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white/20"><Swords size={18} className="text-white" /></div>
-                        <div className="text-center flex-1 flex flex-col items-center">
-                            <p className="text-[8px] font-black text-amber-400 uppercase">{p2?.campusAcronym}</p>
-                            <p className="text-2xl font-black text-white tabular-nums">{battle.opponentB?.votes || 0}</p>
-                        </div>
+                        <div className="text-center flex-1 flex flex-col items-center"><p className="text-[8px] font-black text-amber-400 uppercase">{p2?.campusAcronym}</p><p className="text-2xl font-black text-white tabular-nums">{battle.opponentB?.votes || 0}</p></div>
                     </div>
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1 md:gap-4 p-1 md:p-4 bg-slate-900">
-                    <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
-                        <ReactPlayer url={battle.opponentA.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" />
-                        <div className="absolute bottom-6 left-6 z-20">
-                            <StreakBadge streak={p1Stats?.winStreak || 0} losses={p1Stats?.losses} />
-                        </div>
-                    </div>
-                    <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
-                        <ReactPlayer url={battle.opponentB?.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" />
-                        <div className="absolute bottom-6 right-6 z-20">
-                            <StreakBadge streak={p2Stats?.winStreak || 0} losses={p2Stats?.losses} />
-                        </div>
-                    </div>
+                    <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black"><ReactPlayer url={battle.opponentA.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" /><div className="absolute bottom-6 left-6 z-20"><StreakBadge streak={p1Stats?.winStreak || 0} losses={p1Stats?.losses} /></div></div>
+                    <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black"><ReactPlayer url={battle.opponentB?.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" /><div className="absolute bottom-6 right-6 z-20"><StreakBadge streak={p2Stats?.winStreak || 0} losses={p2Stats?.losses} /></div></div>
                 </div>
 
                 <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-2xl px-6 z-50">
                     <div className="bg-slate-950/80 backdrop-blur-xl p-8 rounded-[3.5rem] border border-white/10 shadow-2xl">
-                        
-                        {/* ⚡ STEP 12: COMBO OVERLAY */}
                         <AnimatePresence>
                             {activeCombo && activeCombo.comboCount >= 2 && (
-                                <motion.div 
-                                    initial={{ scale: 0.5, opacity: 0, y: 20 }}
-                                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                                    exit={{ scale: 1.5, opacity: 0 }}
-                                    className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
-                                >
-                                    <div className={cn(
-                                        "px-6 py-2 rounded-2xl font-black italic text-xl shadow-2xl flex items-center gap-2 border-2",
-                                        activeCombo.comboMultiplier >= 2 ? "bg-red-600 text-white border-white/30" : "bg-amber-500 text-slate-950 border-white/20"
-                                    )}>
+                                <motion.div initial={{ scale: 0.5, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 1.5, opacity: 0 }} className="absolute -top-16 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none">
+                                    <div className={cn("px-6 py-2 rounded-2xl font-black italic text-xl shadow-2xl flex items-center gap-2 border-2", activeCombo.comboCount >= 50 ? "bg-red-600 text-white border-white/30" : activeCombo.comboCount >= 25 ? "bg-purple-600 text-white" : activeCombo.comboCount >= 10 ? "bg-indigo-600 text-white" : "bg-amber-500 text-slate-950 border-white/20")}>
                                         <Zap className="animate-bounce" size={20} fill="currentColor" />
-                                        COMBO x{activeCombo.comboCount}
-                                        {activeCombo.comboMultiplier > 1 && (
-                                            <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">
-                                                {activeCombo.comboMultiplier}x POWER
-                                            </span>
-                                        )}
+                                        {activeCombo.comboCount >= 50 ? "LEGENDARY COMBO" : activeCombo.comboCount >= 25 ? "GIFT MACHINE" : activeCombo.comboCount >= 10 ? "FIRE STORM" : "COMBO"} x{activeCombo.comboCount}
+                                        {activeCombo.comboMultiplier > 1 && <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">{activeCombo.comboMultiplier}x POWER</span>}
                                     </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>
-
-                        <div className="h-5 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/10 mb-8 shadow-inner relative">
-                            <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p1Pct}%` }} />
-                            <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p2Pct}%` }} />
-                        </div>
+                        <div className="h-5 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/10 mb-8 shadow-inner relative"><div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p1Pct}%` }} /><div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p2Pct}%` }} /><div className="absolute left-1/2 top-0 bottom-0 w-1 bg-white/30 -translate-x-1/2 z-20" /></div>
                         <div className="grid grid-cols-2 gap-4">
                             <button onClick={() => handleVote('A')} disabled={isVoting} className="py-5 bg-blue-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all active:scale-95">VOTE {p1?.campusAcronym}</button>
                             <button onClick={() => handleVote('B')} disabled={isVoting} className="py-5 bg-amber-500 text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-xl transition-all active:scale-95">VOTE {p2?.campusAcronym}</button>
@@ -604,144 +442,52 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
 
         {isEnded && (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-950 pt-24">
-                <Trophy size={100} className="text-amber-500 mb-8 animate-bounce" />
-                <h1 className="text-5xl font-black text-white italic uppercase tracking-tighter mb-10">Concluded</h1>
-                {battle.aiVerdict && (
-                    <div className="max-w-xl p-10 bg-slate-900 border-4 border-amber-500/30 rounded-[3rem] text-center shadow-[0_0_100px_rgba(245,158,11,0.1)]">
-                        <p className="text-xl font-black italic text-indigo-50 mb-8 leading-relaxed">"{battle.aiVerdict.verdict}"</p>
-                        <Button onClick={onClose} className="w-full bg-white hover:bg-slate-100 text-slate-900 font-black rounded-2xl h-16 shadow-xl active:scale-95 transition-all">Return to Arena</Button>
-                    </div>
-                )}
-            </div>
+            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-950 pt-24"><Trophy size={100} className="text-amber-500 mb-8 animate-bounce" /><h1 className="text-5xl font-black text-white italic uppercase tracking-tighter mb-10">Concluded</h1>{battle.aiVerdict && <div className="max-w-xl p-10 bg-slate-900 border-4 border-amber-500/30 rounded-[3rem] text-center shadow-xl"><p className="text-xl font-black italic text-indigo-50 mb-8 leading-relaxed">"{battle.aiVerdict.verdict}"</p><Button onClick={onClose} className="w-full bg-white text-slate-900 font-black rounded-2xl h-16 shadow-xl">Return to Arena</Button></div>}</div>
         )}
       </div>
 
       <aside className="flex-1 bg-slate-900 flex flex-col overflow-hidden">
-        <SupportLeaderboard battleId={battleId} />
-
+        <div className="p-6 border-b border-white/5">
+            <ComboLeaderboard battleId={battleId} />
+            <SupportLeaderboard battleId={battleId} />
+        </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
-            <AnimatePresence>
-                {recentPowerUp && (
-                    <motion.div 
-                        initial={{ x: 50, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        exit={{ x: -50, opacity: 0 }}
-                        className="bg-indigo-600 text-white p-4 rounded-3xl shadow-xl flex items-center gap-4 border-2 border-white/10"
-                    >
-                        <div className="text-3xl">{POWER_UPS.find(p => p.type === recentPowerUp.type)?.emoji || '🔥'}</div>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">{recentPowerUp.userName}</p>
-                            <p className="font-black italic text-sm truncate">DEPLOYED {recentPowerUp.type.toUpperCase()}!</p>
-                        </div>
-                        {recentPowerUp.multiplier > 1 && (
-                            <div className="bg-amber-500 text-slate-950 px-2 py-1 rounded-lg font-black text-[10px] animate-pulse">
-                                {recentPowerUp.comboCount}x COMBO
-                            </div>
-                        )}
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {messages?.map(m => (
-                <div key={m.id} className="animate-in slide-in-from-bottom-2 flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                        <p className="text-[9px] font-black uppercase text-slate-500">{m.userName}</p>
-                        {m.isSubscriber && <Star size={8} className="text-amber-500 fill-amber-500" />}
-                    </div>
-                    <div className={cn(
-                        "p-3 rounded-2xl border text-sm max-w-[90%]",
-                        m.userId === user?.id ? "bg-indigo-600 text-white border-indigo-500 self-end" : "bg-white/5 border-white/5 text-slate-300"
-                    )}>
-                        {m.text}
-                    </div>
-                </div>
-            ))}
+            {messages?.map(m => (<div key={m.id} className="animate-in slide-in-from-bottom-2 flex flex-col gap-1"><div className="flex items-center gap-2"><p className={cn("text-[9px] font-black uppercase", m.userId === 'system' ? "text-amber-500" : "text-slate-500")}>{m.userName}</p>{m.isSubscriber && <Star size={8} className="text-amber-500 fill-amber-500" />}</div><div className={cn("p-3 rounded-2xl border text-sm max-w-[90%]", m.userId === 'system' ? "bg-amber-500/10 border-amber-500/30 text-amber-200 italic" : m.userId === user?.id ? "bg-indigo-600 text-white border-indigo-500 self-end" : "bg-white/5 border-white/5 text-slate-300")}>{m.text}</div></div>))}
             <div ref={scrollRef} />
         </div>
-
         <div className="p-6 bg-slate-950/80 backdrop-blur-xl border-t border-white/5 space-y-6">
-            {inputMode === 'boost' ? (
+            {inputMode === 'gift' ? (
                 <div className="space-y-4 animate-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between px-2">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                            <Zap size={12} fill="currentColor" /> Deployment Artillery
-                        </p>
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2"><Zap size={12} fill="currentColor" /> Arena Artillery</p>
                         <button onClick={() => setInputMode('chat')} className="p-1 hover:bg-white/10 rounded-full text-slate-500"><X size={16}/></button>
                     </div>
                     <div className="grid grid-cols-4 gap-3">
                         {POWER_UPS.map(up => {
                             const canAfford = (wallet?.coins || 0) >= up.cost;
                             return (
-                                <button 
-                                    key={up.type} 
-                                    disabled={!canAfford || boostsRemaining <= 0}
-                                    onClick={() => handlePowerUp(up, user?.campusId === p1?.campusAcronym ? 'A' : 'B')}
-                                    className={cn(
-                                        "flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all active:scale-90",
-                                        canAfford ? "bg-white/5 border-white/10 hover:bg-indigo-600/20 hover:border-indigo-500" : "bg-red-900/10 border-red-900/20 opacity-50 grayscale"
-                                    )}
-                                >
+                                <button key={up.type} disabled={!canAfford || boostsRemaining <= 0} onClick={() => handlePowerUp(up, user?.campusId === p1?.campusAcronym ? 'A' : 'B')} className={cn("flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all active:scale-90", canAfford ? "bg-white/5 border-white/10 hover:bg-indigo-600/20 hover:border-indigo-500" : "bg-red-900/10 opacity-50 grayscale")}>
                                     <span className="text-2xl">{up.emoji}</span>
-                                    <div className="text-center">
-                                        <p className="text-[8px] font-black uppercase text-white tracking-tighter">{up.label}</p>
-                                        <p className="text-[10px] font-bold text-amber-500">{up.cost}</p>
-                                    </div>
+                                    <div className="text-center"><p className="text-[8px] font-black uppercase text-white tracking-tighter">{up.label}</p><p className="text-[10px] font-bold text-amber-500">{up.cost}</p></div>
                                 </button>
                             );
                         })}
                     </div>
                     <div className="flex justify-between items-center px-2">
+                        <div className="flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/20"><Coins size={10} className="text-amber-500" /><span className="text-[10px] font-black text-amber-500">{wallet?.coins || 0}</span></div>
                         <p className="text-[8px] font-bold text-slate-500 uppercase">Limit: {boostsRemaining} Left</p>
-                        <div className="flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/20">
-                            <Coins size={10} className="text-amber-500" />
-                            <span className="text-[10px] font-black text-amber-500">{wallet?.coins || 0}</span>
-                        </div>
                     </div>
                 </div>
             ) : (
                 <div className="flex gap-2">
-                    <button 
-                        onClick={() => setInputMode('boost')}
-                        className="p-4 bg-white/5 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-2xl transition-all active:scale-90 border border-white/10"
-                    >
-                        <Zap size={20} fill="currentColor" />
-                    </button>
-                    <form onSubmit={handleSendMessage} className="flex-1 flex gap-2">
-                        <input 
-                            value={message}
-                            onChange={e => setMessage(e.target.value)}
-                            placeholder="Cast shade..."
-                            className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none border-none focus:ring-2 focus:ring-red-600 font-bold"
-                        />
-                        <button type="submit" disabled={!message.trim()} className="p-4 bg-red-600 text-white rounded-2xl active:scale-90 shadow-xl">
-                            <Send size={20} />
-                        </button>
-                    </form>
+                    <button onClick={() => setInputMode('gift')} className="p-4 bg-white/5 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-2xl transition-all active:scale-90 border border-white/10"><Zap size={20} fill="currentColor" /></button>
+                    <form onSubmit={handleSendMessage} className="flex-1 flex gap-2"><input value={message} onChange={e => setMessage(e.target.value)} placeholder="Cast shade..." className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none border-none focus:ring-2 focus:ring-red-600 font-bold" /><button type="submit" disabled={!message.trim()} className="p-4 bg-red-600 text-white rounded-2xl active:scale-90 shadow-xl"><Send size={20} /></button></form>
                 </div>
             )}
         </div>
       </aside>
-
       <JoinBattleModal battle={battle} isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
-      
-      {showReport && (
-          <ReportContentDialog 
-            targetId={battleId} 
-            targetType="battle" 
-            reportedUserId={battle.creatorId} 
-            isOpen={showReport} 
-            onClose={() => setShowReport(false)} 
-          />
-      )}
-
-      {subscribingTo && (
-          <CreatorSubscribeDialog 
-            creator={subscribingTo} 
-            isOpen={!!subscribingTo} 
-            onClose={() => setSubscribingTo(null)} 
-          />
-      )}
+      {showReport && <ReportContentDialog targetId={battleId} targetType="battle" reportedUserId={battle.creatorId} isOpen={showReport} onClose={() => setShowReport(false)} />}
     </div>
   );
 }

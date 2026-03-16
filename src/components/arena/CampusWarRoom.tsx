@@ -5,31 +5,32 @@
  * CampusWarRoom Component
  * -----------------------
  * National Hub Stage for University vs University Wars.
- * Now expanded with STEP 12: ARENA GIFT COMBO SYSTEM ⚡🔥
+ * Finalized with STEP 12: ARENA GIFT COMBO SYSTEM & ACHIEVEMENTS ⚡🔥
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
-  increment, doc, getDoc, writeBatch, onSnapshot
+  increment, doc, getDoc, writeBatch, onSnapshot, setDoc
 } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import type { CampusWar, BattleMessage, VoteShard, GiftCombo } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Globe, CheckCircle2
+  Loader2, MessageSquare, Globe, CheckCircle2, Flame, Coins
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
-import { registerUserDevice, logSuspiciousActivity, isBotSuspicionCheck, trackUserBehavior } from '@/lib/fraud-protection';
+import { registerUserDevice, isBotSuspicionCheck, trackUserBehavior } from '@/lib/fraud-protection';
+import { spendCoins } from '@/lib/monetization';
 
 const POWER_UPS = [
-    { type: 'fire', label: 'Vibe Boost', emoji: '🔥', weight: 5 },
-    { type: 'mass_shade', label: 'Mass Shade', emoji: '🗣️', weight: 15 },
-    { type: 'national_crown', label: 'National Crown', emoji: '👑', weight: 50 },
+    { type: 'fire', label: 'Vibe Boost', emoji: '🔥', weight: 5, cost: 10 },
+    { type: 'mass_shade', label: 'Mass Shade', emoji: '🗣️', weight: 15, cost: 30 },
+    { type: 'national_crown', label: 'National Crown', emoji: '👑', weight: 50, cost: 100 },
 ];
 
 const COMBO_WINDOW_MS = 4000; // Step 12: 4-second rule
@@ -43,7 +44,6 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   
   const [message, setMessage] = useState('');
   const [isVoting, setIsVoting] = useState(false);
-  const [hasVoted, setHasVoted] = useState(false);
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
   const [activeCombo, setActiveCombo] = useState<GiftCombo | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -54,6 +54,12 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   }, [firestore, warId]);
 
   const { data: war, isLoading } = useDoc<CampusWar>(warRef);
+
+  const walletRef = useMemoFirebase(() => {
+    if (!firestore || !user?.id) return null;
+    return doc(firestore, 'wallets', user.id);
+  }, [firestore, user?.id]);
+  const { data: wallet } = useDoc<any>(walletRef);
 
   // ⚡ STEP 12: COMBO LISTENER
   useEffect(() => {
@@ -88,17 +94,6 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
           B: acc.B + (shard.votesB || 0)
       }), { A: 0, B: 0 });
   }, [shards, war]);
-
-  useEffect(() => {
-    if (!firestore || !user?.id || !warId) return;
-    registerUserDevice(firestore, user.id);
-    const checkVote = async () => {
-        const auditRef = doc(firestore, 'battle_votes', warId, 'users', user.id);
-        const snap = await getDoc(auditRef);
-        if (snap.exists()) setHasVoted(true);
-    };
-    checkVote();
-  }, [firestore, user?.id, warId]);
 
   const messagesQuery = useMemoFirebase(() => 
     firestore ? query(
@@ -158,19 +153,22 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
       await batch.commit();
       trackUserBehavior(firestore, user.id, 'vote');
-      setHasVoted(true);
       sendReaction('🗳️');
     } catch(err) { toast({ variant: 'destructive', title: 'Refused' }); }
     finally { setIsVoting(false); }
   };
 
   const handlePowerUp = async (up: typeof POWER_UPS[0], side: 'A' | 'B') => {
-    if (!firestore || !user || !war || war.status === 'ended') return;
+    if (!firestore || !user || !war || war.status === 'ended' || !wallet) return;
     
     const isBlocked = await isBotSuspicionCheck(firestore, user.id);
     if (isBlocked) return;
 
-    // ⚡ STEP 12: COMBO HANDSHAKE
+    if (wallet.coins < up.cost) {
+        toast({ variant: 'destructive', title: 'Insufficient Coins' });
+        return;
+    }
+
     const comboId = `${warId}_${user.id}`;
     const comboRef = doc(firestore, 'gift_combos', comboId);
     const comboSnap = await getDoc(comboRef);
@@ -195,6 +193,14 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     const shardRef = doc(firestore, 'campus_wars', warId, 'vote_shards', shardId);
 
     try {
+        await spendCoins(firestore, user.id, up.cost, 'powerup_used', {
+            battleId: warId,
+            userName: user.name,
+            powerupType: up.type,
+            comboCount,
+            multiplier
+        });
+
         const batch = writeBatch(firestore);
         batch.set(comboRef, {
             userId: user.id,
@@ -207,6 +213,23 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
         batch.set(shardRef, { 
             [side === 'A' ? 'votesA' : 'votesB']: increment(finalWeight) 
         }, { merge: true });
+
+        // Achievement Log for War
+        if (comboCount === 10 || comboCount === 25 || comboCount === 50) {
+            const achievementRef = doc(firestore, 'user_achievements', user.id);
+            const achievementUpdate: any = { updatedAt: serverTimestamp() };
+            let milestoneMsg = "";
+            if (comboCount === 10) { achievementUpdate.fireStarter = true; milestoneMsg = `🔥 FIRE STORM x10! ${user.name} is defending the Yard!`; }
+            if (comboCount === 25) { achievementUpdate.giftMachine = true; milestoneMsg = `🚀 GIFT MACHINE x25! ${user.name} is unstoppable!`; }
+            if (comboCount === 50) { achievementUpdate.arenaLegend = true; milestoneMsg = `🏆 ARENA LEGEND x50! salute ${user.name}!`; }
+            
+            if (milestoneMsg) {
+                batch.set(achievementRef, achievementUpdate, { merge: true });
+                batch.set(doc(collection(firestore, "campus_wars", warId, "messages")), {
+                    userId: 'system', userName: 'WAR ROOM', text: milestoneMsg, createdAt: serverTimestamp()
+                });
+            }
+        }
 
         await batch.commit();
         trackUserBehavior(firestore, user.id, 'gift');
@@ -280,9 +303,9 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
                 {/* COMBO HUD */}
                 <AnimatePresence>
                     {activeCombo && activeCombo.comboCount >= 2 && (
-                        <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex justify-center mb-4">
-                            <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black italic text-xl shadow-2xl flex items-center gap-2 border-2 border-white/20">
-                                <Zap size={20} fill="currentColor" /> COMBO x{activeCombo.comboCount}
+                        <motion.div initial={{ scale: 0.5, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="flex justify-center mb-4">
+                            <div className={cn("px-6 py-2 rounded-2xl font-black italic text-xl shadow-2xl flex items-center gap-2 border-2", activeCombo.comboCount >= 50 ? "bg-red-600 text-white" : activeCombo.comboCount >= 25 ? "bg-purple-600 text-white" : activeCombo.comboCount >= 10 ? "bg-indigo-600 text-white" : "bg-amber-500 text-slate-950")}>
+                                <Zap size={20} fill="currentColor" /> {activeCombo.comboCount >= 50 ? "LEGENDARY COMBO" : activeCombo.comboCount >= 25 ? "GIFT MACHINE" : activeCombo.comboCount >= 10 ? "FIRE STORM" : "COMBO"} x{activeCombo.comboCount}
                             </div>
                         </motion.div>
                     )}
@@ -307,7 +330,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       <div className="flex-1 bg-slate-900 border-l border-white/5 flex flex-col">
         <div className="p-6 bg-slate-950/50 border-b border-white/5"><h3 className="text-white font-black uppercase text-xs tracking-widest">Global War Chat</h3></div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
-            {messages?.map(m => (<div key={m.id} className="animate-in slide-in-from-bottom-2"><p className="text-[9px] font-black uppercase text-slate-500 mb-1">{m.userName}</p><div className="bg-white/5 p-3 rounded-2xl border border-white/5 text-sm text-slate-300">{m.text}</div></div>))}
+            {messages?.map(m => (<div key={m.id} className="animate-in slide-in-from-bottom-2"><div className="flex items-center gap-2 mb-1"><p className={cn("text-[9px] font-black uppercase", m.userId === 'system' ? "text-amber-500" : "text-slate-500")}>{m.userName}</p></div><div className={cn("p-3 rounded-2xl border text-sm", m.userId === 'system' ? "bg-amber-500/10 border-amber-500/30 text-amber-200 italic" : "bg-white/5 border-white/5 text-slate-300")}>{m.text}</div></div>))}
             <div ref={scrollRef} />
         </div>
         <form onSubmit={handleSendMessage} className="p-6 bg-slate-950 flex gap-2">

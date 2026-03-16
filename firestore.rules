@@ -36,11 +36,25 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // ⚖️ CONTENT MODERATION: Reports Path
     match /content_reports/{reportId} {
       allow read: if isAdmin();
       allow create: if isSignedIn();
       allow update, delete: if isAdmin();
+    }
+
+    match /gift_combos/{comboId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && comboId.split('_')[1] == request.auth.uid;
+    }
+
+    match /user_achievements/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /battle_combo_leaders/{battleId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
 
     match /creator_settings/{userId} {

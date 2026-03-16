@@ -46,6 +46,22 @@ export type GiftCombo = {
   giftType?: string;
 };
 
+export type BattleComboLeader = {
+  id: string;
+  userId: string;
+  userName: string;
+  combo: number;
+  updatedAt: any;
+};
+
+export type UserAchievement = {
+  id: string;
+  fireStarter?: boolean; // 10 combo
+  giftMachine?: boolean; // 25 combo
+  arenaLegend?: boolean; // 50 combo
+  updatedAt: any;
+};
+
 export type UserDevice = {
   id: string;
   userId: string;

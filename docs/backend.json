@@ -56,54 +56,15 @@
         "giftType": { "type": "string" }
       }
     },
-    "UserDevice": {
-      "title": "UserDevice",
+    "UserAchievement": {
+      "title": "UserAchievement",
       "type": "object",
-      "description": "Anti-fraud audit node mapping users to hardware fingerprints.",
+      "description": "Tracks permanent prestige milestones for users.",
       "properties": {
-        "userId": { "type": "string" },
-        "deviceHash": { "type": "string" },
-        "lastSeen": { "type": "string", "format": "date-time" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "UserBehavior": {
-      "title": "UserBehavior",
-      "type": "object",
-      "description": "Daily engagement tracking for bot detection.",
-      "properties": {
-        "votesToday": { "type": "number" },
-        "giftsSent": { "type": "number" },
-        "watchTime": { "type": "number" },
-        "isBlocked": { "type": "boolean" },
-        "lastUpdated": { "type": "string", "format": "date-time" }
-      }
-    },
-    "FraudLog": {
-      "title": "FraudLog",
-      "type": "object",
-      "description": "Official audit trail for suspicious Arena activity.",
-      "properties": {
-        "type": { "type": "string", "enum": ["suspicious_votes", "multi_account_device", "gift_spam", "bot_pattern"] },
-        "userId": { "type": "string" },
-        "battleId": { "type": "string" },
-        "details": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
-      }
-    },
-    "ContentReport": {
-      "title": "ContentReport",
-      "type": "object",
-      "description": "User-submitted report for content moderation.",
-      "properties": {
-        "targetId": { "type": "string" },
-        "targetType": { "type": "string", "enum": ["post", "battle", "comment"] },
-        "reportedUserId": { "type": "string" },
-        "reportedById": { "type": "string" },
-        "reason": { "type": "string", "enum": ["harassment", "spam", "nudity", "hate_speech", "other"] },
-        "details": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "resolved"] },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "fireStarter": { "type": "boolean" },
+        "giftMachine": { "type": "boolean" },
+        "arenaLegend": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       }
     }
   },
@@ -117,6 +78,8 @@
     "/fraud_logs/{logId}": { "schema": "#/backend/entities/FraudLog", "description": "Audit trail for suspicious activity." },
     "/content_reports/{reportId}": { "schema": "#/backend/entities/ContentReport", "description": "Moderation reports." },
     "/gift_combos/{comboId}": { "schema": "#/backend/entities/GiftCombo", "description": "Real-time combo tracking." },
+    "/user_achievements/{userId}": { "schema": "#/backend/entities/UserAchievement", "description": "Permanent achievements." },
+    "/battle_combo_leaders/{battleId}": { "description": "Tracks the top combo counts per battle." },
     "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Live and past battles." }
   }
