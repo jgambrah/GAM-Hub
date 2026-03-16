@@ -6,16 +6,19 @@
  * --------------------------
  * National Hub stage for structured Arena competitions.
  * Features real-time registration tracking and prize pool scaling.
+ * 
+ * Optimized for Step 6: Entry Fees & Brackets.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import type { ArenaTournament } from '@/lib/types';
-import { Trophy, Users, Zap, Coins, ChevronRight, Loader2, Star, ShieldCheck } from 'lucide-react';
+import { Trophy, Users, Zap, Coins, ChevronRight, Loader2, Star, ShieldCheck, Flame, ListTree } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { JoinTournamentDialog } from './JoinTournamentDialog';
+import { TournamentBracketView } from './TournamentBracketView';
 
 export function TournamentSection() {
   const { firestore } = useFirebase();
@@ -59,8 +62,8 @@ export function TournamentSection() {
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Structured High-Stakes Combat</p>
           </div>
         </div>
-        <div className="bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200/50">
-          Season 1
+        <div className="bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200/50 flex items-center gap-2">
+          <Flame size={12} className="text-red-500" fill="currentColor" /> Season 1
         </div>
       </div>
 
@@ -74,6 +77,7 @@ export function TournamentSection() {
 }
 
 function TournamentCard({ tourney }: { tourney: ArenaTournament }) {
+  const [view, setView] = useState<'info' | 'bracket'>('info');
   const isRegistration = tourney.status === 'registration';
   const progress = (tourney.currentPlayers / tourney.maxPlayers) * 100;
 
@@ -87,7 +91,7 @@ function TournamentCard({ tourney }: { tourney: ArenaTournament }) {
         <Trophy size={250} />
       </div>
 
-      <div className="relative z-10">
+      <div className="relative z-10 h-full flex flex-col">
         <div className="flex justify-between items-start mb-10">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -96,58 +100,85 @@ function TournamentCard({ tourney }: { tourney: ArenaTournament }) {
                     {isRegistration ? "Registration Open" : "War in Progress"}
                 </span>
             </div>
-            <h3 className="text-3xl font-black italic tracking-tighter uppercase">{tourney.name}</h3>
+            <h3 className="text-3xl font-black italic tracking-tighter uppercase leading-tight">
+                {tourney.name}
+            </h3>
           </div>
-          <div className="bg-white/5 border border-white/10 p-4 rounded-3xl text-center">
-             <div className="flex items-center gap-2 justify-center text-amber-500 mb-1">
-                <Zap size={14} fill="currentColor" />
-                <span className="text-[8px] font-black uppercase tracking-widest">Prize Pool</span>
-             </div>
-             <p className="text-2xl font-black tabular-nums">{tourney.prizePool.toLocaleString()} <span className="text-[10px] uppercase opacity-50">Coins</span></p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6 mb-10">
-            <div className="p-6 bg-white/5 rounded-[2rem] border border-white/5 text-center">
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Battle Entry</p>
-                <div className="flex items-center justify-center gap-2">
-                    <Coins size={16} className="text-amber-500" />
-                    <span className="text-xl font-black">{tourney.entryFeeCoins}</span>
+          
+          <div className="flex flex-col gap-2">
+            <div className="bg-white/5 border border-white/10 p-4 rounded-3xl text-center">
+                <div className="flex items-center gap-2 justify-center text-amber-500 mb-1">
+                    <Zap size={14} fill="currentColor" />
+                    <span className="text-[8px] font-black uppercase tracking-widest">Prize Pool</span>
                 </div>
+                <p className="text-2xl font-black tabular-nums">{tourney.prizePool.toLocaleString()} <span className="text-[10px] uppercase opacity-50">Coins</span></p>
             </div>
-            <div className="p-6 bg-white/5 rounded-[2rem] border border-white/5 text-center">
-                <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Army Size</p>
-                <div className="flex items-center justify-center gap-2">
-                    <Users size={16} className="text-blue-400" />
-                    <span className="text-xl font-black">{tourney.currentPlayers}/{tourney.maxPlayers}</span>
-                </div>
-            </div>
-        </div>
-
-        {/* REGISTRATION PROGRESS BAR */}
-        <div className="mb-10">
-            <div className="flex justify-between items-end mb-2 px-2">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Enlistment Progress</span>
-                <span className="text-xs font-black text-amber-500">{Math.round(progress)}%</span>
-            </div>
-            <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/10 shadow-inner">
-                <div 
-                    className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-1000 ease-out"
-                    style={{ width: `${progress}%` }}
-                />
-            </div>
-        </div>
-
-        <div className="flex gap-4">
-            <JoinTournamentDialog tournament={tourney}>
-                <button className="flex-1 bg-white text-slate-950 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] shadow-xl hover:bg-amber-400 transition-all active:scale-95 flex items-center justify-center gap-2">
-                    Join Tournament <ChevronRight size={16} />
+            {!isRegistration && (
+                <button 
+                    onClick={() => setView(view === 'info' ? 'bracket' : 'info')}
+                    className="bg-white/10 hover:bg-white/20 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border border-white/10 transition-all flex items-center justify-center gap-2"
+                >
+                    {view === 'info' ? <><ListTree size={10}/> View Bracket</> : <><ChevronRight size={10}/> View Stats</>}
                 </button>
-            </JoinTournamentDialog>
-            <button className="p-5 bg-white/5 border border-white/10 rounded-[2rem] text-slate-400 hover:bg-white/10 transition-all">
-                <ShieldCheck size={24} />
-            </button>
+            )}
+          </div>
         </div>
+
+        {view === 'info' ? (
+            <div className="flex-1 animate-in fade-in duration-500">
+                <div className="grid grid-cols-2 gap-6 mb-10">
+                    <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5 text-center flex flex-col justify-center">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Battle Entry</p>
+                        <div className="flex items-center justify-center gap-2">
+                            <Coins size={16} className="text-amber-500" />
+                            <span className="text-xl font-black">{tourney.entryFeeCoins}</span>
+                        </div>
+                    </div>
+                    <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5 text-center flex flex-col justify-center">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Army Size</p>
+                        <div className="flex items-center justify-center gap-2">
+                            <Users size={16} className="text-blue-400" />
+                            <span className="text-xl font-black">{tourney.currentPlayers} / {tourney.maxPlayers}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* REGISTRATION PROGRESS BAR */}
+                <div className="mb-10">
+                    <div className="flex justify-between items-end mb-2 px-2">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Enlistment Progress</span>
+                        <span className="text-xs font-black text-amber-500">{Math.round(progress)}%</span>
+                    </div>
+                    <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/10 shadow-inner">
+                        <div 
+                            className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-1000 ease-out"
+                            style={{ width: `${progress}%` }}
+                        />
+                    </div>
+                </div>
+
+                <div className="mt-auto flex gap-4">
+                    {isRegistration ? (
+                        <JoinTournamentDialog tournament={tourney}>
+                            <button className="w-full bg-white text-slate-950 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] shadow-xl hover:bg-amber-400 transition-all active:scale-95 flex items-center justify-center gap-2">
+                                Join Tournament <ChevronRight size={16} />
+                            </button>
+                        </JoinTournamentDialog>
+                    ) : (
+                        <button 
+                            disabled
+                            className="w-full bg-slate-800 text-slate-500 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            <ShieldCheck size={16} /> Enlistment Closed
+                        </button>
+                    )}
+                </div>
+            </div>
+        ) : (
+            <div className="flex-1 animate-in slide-in-from-right-4 duration-500 overflow-y-auto no-scrollbar max-h-[300px]">
+                <TournamentBracketView tournamentId={tourney.id} />
+            </div>
+        )}
       </div>
     </div>
   );

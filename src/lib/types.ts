@@ -64,6 +64,12 @@ export type ArenaTournament = {
   status: 'registration' | 'ongoing' | 'finished';
   startTime: any;
   createdAt: any;
+  platformFeeCollected?: number;
+  finalWinners?: {
+    first: string;
+    second: string;
+    third: string;
+  };
 };
 
 export type ArenaMatch = {
@@ -72,10 +78,13 @@ export type ArenaMatch = {
   playerB: string;
   playerAName: string;
   playerBName: string;
+  playerAAvatar?: string;
+  playerBAvatar?: string;
   winner: string | null;
   round: number;
   battleId: string | null;
   status: 'pending' | 'live' | 'completed';
+  createdAt?: any;
 };
 
 export type SponsorStats = {
