@@ -53,11 +53,13 @@ export type WalletTransaction = {
   createdAt: any;
 };
 
-export type GiftLeaderboardEntry = {
+export type SponsorStats = {
   id: string;
-  userName: string;
-  avatarUrl: string;
-  coinsSent: number;
+  battleId: string;
+  views: number;
+  votes: number;
+  gifts: number;
+  shares: number;
   updatedAt: any;
 };
 
@@ -93,7 +95,6 @@ export type ArenaBattle = {
   lastSpikeAt?: any;
   createdAt: any;
   endsAt: any;
-  // Step 4: Sponsorship
   isSponsored?: boolean;
   sponsorId?: string;
   sponsorName?: string;
@@ -116,29 +117,6 @@ export type ArenaGift = {
   receiverId: string;
   giftType: 'fire' | 'mic' | 'crown' | 'rocket' | 'dragon' | 'throne' | 'elephant';
   coinsSpent: number;
-  createdAt: any;
-};
-
-export type EngagementEvent = {
-  id: string;
-  type: 'vote' | 'powerup' | 'reaction';
-  side: 'A' | 'B';
-  weight: number;
-  timestamp: any;
-};
-
-export type ArenaHighlight = {
-  id: string;
-  battleId: string;
-  clipUrl: string;
-  creatorId: string;
-  opponentId: string;
-  startTime: number;
-  endTime: number;
-  votesSpike: number;
-  winnerId: string;
-  category: 'savage_roast' | 'funniest_comeback' | 'crowd_favorite' | 'knockout_moment';
-  processingStatus?: 'pending' | 'completed' | 'failed';
   createdAt: any;
 };
 
@@ -180,7 +158,7 @@ export type SocialPost = {
     battleId: string;
     winnerName: string;
     totalEnergy: number;
-    category?: ArenaHighlight['category'];
+    category?: 'savage_roast' | 'funniest_comeback' | 'crowd_favorite' | 'knockout_moment';
   };
 };
 
@@ -634,4 +612,22 @@ export type ArenaChallenger = {
 export type VoteShard = {
   votesA: number;
   votesB: number;
+};
+
+export type GiftLeaderboardEntry = {
+  id: string;
+  userName: string;
+  avatarUrl: string;
+  coinsSent: number;
+  updatedAt: any;
+};
+
+export type ArenaGiftRecord = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  receiverId: string;
+  giftType: string;
+  coinsSpent: number;
+  createdAt: any;
 };

@@ -63,18 +63,6 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
-    "WalletTransaction": {
-      "title": "WalletTransaction",
-      "type": "object",
-      "description": "A record of coin movements in the Yard.",
-      "properties": {
-        "userId": { "type": "string" },
-        "type": { "type": "string", "enum": ["purchase", "gift_sent", "gift_received", "powerup_used", "tournament_entry"] },
-        "coins": { "type": "number" },
-        "amountPaidGHS": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      }
-    },
     "ArenaBattle": {
       "title": "ArenaBattle",
       "type": "object",
@@ -84,42 +72,24 @@
         "title": { "type": "string" },
         "creatorId": { "type": "string" },
         "status": { "type": "string", "enum": ["waiting", "live", "ended"] },
-        "opponentA": {
-          "type": "object",
-          "properties": {
-            "userId": { "type": "string" },
-            "videoUrl": { "type": "string" },
-            "votes": { "type": "number" }
-          }
-        },
-        "opponentB": {
-          "type": "object",
-          "properties": {
-            "userId": { "type": "string" },
-            "videoUrl": { "type": "string" },
-            "votes": { "type": "number" }
-          }
-        },
-        "viewerCount": { "type": "number" },
         "isSponsored": { "type": "boolean" },
         "sponsorId": { "type": "string" },
         "sponsorName": { "type": "string" },
-        "sponsorLogo": { "type": "string" },
         "prizeAmount": { "type": "number" }
       }
     },
-    "ArenaSponsor": {
-      "title": "ArenaSponsor",
+    "SponsorStats": {
+      "title": "SponsorStats",
       "type": "object",
-      "description": "A brand or business sponsoring Arena activities.",
+      "description": "Commercial performance metrics for sponsored events.",
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "logoUrl": { "type": "string" },
-        "website": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "name"]
+        "battleId": { "type": "string" },
+        "views": { "type": "number" },
+        "votes": { "type": "number" },
+        "gifts": { "type": "number" },
+        "shares": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -127,11 +97,9 @@
   },
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
-    "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances for monetization." },
+    "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
-    "/wallet_transactions/{txId}": { "schema": "#/backend/entities/WalletTransaction", "description": "Historical ledger of coin movements." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
-    "/arena_sponsors/{sponsorId}": { "schema": "#/backend/entities/ArenaSponsor", "description": "Registry of Arena brand sponsors." },
-    "/campus_pulse/{postId}": { "description": "Social feed content including highlights." }
+    "/sponsor_stats/{battleId}": { "schema": "#/backend/entities/SponsorStats", "description": "ROI metrics for brand partners." }
   }
 }

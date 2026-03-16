@@ -7,14 +7,14 @@
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
  * Implements Step 3: Cinematic Gift Animations & Support Leaderboard.
- * Now expanded with Step 4: SPONSORED BATTLE HUDS.
+ * Now expanded with Step 4: SPONSORED BATTLE HUDS & ANALYTICS.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
-  increment, doc, getDoc, onSnapshot, writeBatch, limit, where
+  increment, doc, getDoc, onSnapshot, writeBatch, limit, where, setDoc
 } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -22,7 +22,7 @@ import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2, Megaphone
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -139,7 +139,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
 
-  // Status flags - MOVED TO TOP to avoid ReferenceError
   const isCreator = user?.id === battle?.creatorId;
   const isWaiting = battle?.status === 'waiting';
   const isLive = battle?.status === 'live';
@@ -181,6 +180,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   useEffect(() => {
     if (!firestore || !battleId || !isLive) return;
     
+    // Track Battle View for Sponsors
+    if (battle?.isSponsored) {
+        setDoc(doc(firestore, 'sponsor_stats', battleId), { views: increment(1), updatedAt: serverTimestamp() }, { merge: true });
+    }
+
     const qP = query(collection(firestore, 'arena_battles', battleId, 'powerups'), orderBy('createdAt', 'desc'), limit(1));
     const unsubP = onSnapshot(qP, (snap) => {
       if (!snap.empty) {
@@ -206,7 +210,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     });
 
     return () => { unsubP(); unsubG(); };
-  }, [firestore, battleId, isLive]);
+  }, [firestore, battleId, isLive, battle?.isSponsored]);
 
   useEffect(() => {
     if (!firestore || !user || !battleId) return;
@@ -266,6 +270,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(1), 
           [`votes.${targetUserId}`]: increment(1) 
       });
+      if (battle.isSponsored) {
+          setDoc(doc(firestore, 'sponsor_stats', battleId), { votes: increment(1) }, { merge: true });
+      }
       setHasVoted(true);
     } catch(err) { toast({ variant: 'destructive', title: 'Action Refused' }); }
     finally { setIsVoting(false); }
@@ -312,6 +319,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             createdAt: serverTimestamp()
         });
 
+        if (battle.isSponsored) {
+            setDoc(doc(firestore, 'sponsor_stats', battleId), { votes: increment(powerup.weight) }, { merge: true });
+        }
+
         toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
 
     } catch (err: any) { toast({ variant: 'destructive', title: 'Deployment Failed' }); }
@@ -345,6 +356,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             coinsSpent: gift.cost,
             createdAt: serverTimestamp()
         });
+
+        if (battle.isSponsored) {
+            setDoc(doc(firestore, 'sponsor_stats', battleId), { gifts: increment(1) }, { merge: true });
+        }
 
         toast({ title: `${gift.label} Sent! ${gift.emoji}` });
 
@@ -556,7 +571,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           </div>
         </div>
 
-        {/* 🏆 GIFT LEADERBOARD: TOP SUPPORTERS */}
         {isLive && <SupportLeaderboard battleId={battleId} />}
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
@@ -631,7 +645,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                     </div>
                     <ScrollArea className="w-full">
                         <div className="flex flex-col gap-4 pb-2">
-                            {/* Standard Tier */}
                             <div className="flex gap-2">
                                 {Object.values(GIFTS).slice(0, 5).map(gift => (
                                     <button 
@@ -649,7 +662,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                 ))}
                             </div>
 
-                            {/* Tournament Tier */}
                             <div className="p-4 bg-gradient-to-br from-amber-500/10 to-purple-600/10 rounded-3xl border-2 border-dashed border-amber-500/30">
                                 <div className="flex items-center gap-2 mb-3">
                                     <Sparkles size={12} className="text-amber-500" />
