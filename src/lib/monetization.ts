@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -15,9 +16,9 @@ import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/e
  * Defines the commercial tiers for pushing highlights to more citizens.
  */
 export const PROMOTION_PACKAGES = {
-  small: { cost: 100, target: 5000, label: '5,000 Views' },
-  medium: { cost: 300, target: 20000, label: '20,000 Views' },
-  large: { cost: 700, target: 50000, label: '50,000 Views' }
+  small: { cost: 100, target: 5000, label: 'Small: 5,000 Views' },
+  medium: { cost: 300, target: 20000, label: 'Medium: 20,000 Views' },
+  large: { cost: 700, target: 50000, label: 'Large: 50,000 Views' }
 };
 
 /**

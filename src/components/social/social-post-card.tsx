@@ -14,7 +14,7 @@ import {
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
 import {
-  doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp, arrayUnion,
+  doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp, arrayUnion, arrayRemove
 } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import CommentSection from './CommentSection';
@@ -263,7 +263,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         
         // 🚀 Promotion Analytics Sync
         if (post.isPromoted) {
-            setDoc(statsRef, { likes: increment(1), updatedAt: serverTimestamp() }, { merge: true });
+            setDoc(statsRef, { likes: increment(1), updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
         }
       }
     } catch (error) { console.error(error); }
@@ -277,7 +277,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     // 🚀 Promotion Analytics Sync
     if (post.isPromoted) {
         const statsRef = doc(firestore, 'highlight_stats', post.id);
-        setDoc(statsRef, { shares: increment(1), updatedAt: serverTimestamp() }, { merge: true });
+        setDoc(statsRef, { shares: increment(1), updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
     }
 
     const shareData = {
@@ -312,7 +312,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             
             // 🚀 Growth Loop Analytics: Attribute follow to THIS highlight if promoted
             if (post.isPromoted) {
-                setDoc(statsRef, { followersGained: increment(1), updatedAt: serverTimestamp() }, { merge: true });
+                setDoc(statsRef, { followersGained: increment(1), updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
             }
             
             toast({ title: `Now Following ${post.authorName}! 🤝` });
@@ -378,7 +378,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
       data-post-id={post.id}
       className={cn(
         'group relative bg-card rounded-[3rem] border-2 overflow-hidden transition-all duration-500',
-        !isActiveVibe ? 'border-border shadow-sm hover:shadow-2xl' : 'border-blue-500 shadow-[0_0_80px_rgba(59,130,246,0.3)] ring-2 ring-blue-500/50 col-span-full z-10',
+        !isActiveVibe ? 'border-border shadow-sm hover:shadow-xl' : 'border-blue-500 shadow-[0_0_80px_rgba(59,130,246,0.3)] ring-2 ring-blue-500/50 col-span-full z-10',
         isGlobalSeed && !isActiveVibe && 'border-amber-200'
       )}
     >
@@ -440,7 +440,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             isActiveVibe ? 'aspect-video md:aspect-[21/9]' : 'aspect-video group/media'
           )}
         >
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.1),transparent)] animate-pulse" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(220,38,38,0.1),transparent)] animate-pulse" />
             <div className="relative z-10 p-10 bg-white/5 backdrop-blur-xl rounded-full border-4 border-white/10 shadow-2xl group-hover/media:scale-110 transition-transform duration-500">
                 <Mic size={64} className={cn("transition-colors", isActiveVibe ? "text-amber-400" : "text-blue-400")} />
             </div>
