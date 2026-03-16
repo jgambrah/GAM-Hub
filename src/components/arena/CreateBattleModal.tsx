@@ -6,11 +6,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { useFirebase, addDocumentNonBlocking, useCollection, useMemoFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { collection, serverTimestamp, query, where, limit } from 'firebase/firestore';
-import { Loader2, Swords, Zap, Video, Search, UserPlus, X, Target, Globe } from 'lucide-react';
+import { Loader2, Swords, Zap, Video, Search, UserPlus, X, Target, Globe, Gem } from 'lucide-react';
 import { campuses } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -23,6 +24,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
   
   const [title, setTitle] = useState('');
   const [myStreamUrl, setMyStreamUrl] = useState('');
+  const [subscriberOnly, setSubscriberOnly] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
   // RIVAL SEARCH STATE
@@ -54,6 +56,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           creatorId: user.id,
           creatorName: user.name,
           participants: [user.id],
+          subscriberOnly,
           opponentA: {
             userId: user.id,
             videoUrl: myStreamUrl.trim(),
@@ -89,6 +92,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           campusId: user.campusId,
           videoUrl: myStreamUrl.trim(),
           title: title.trim(),
+          subscriberOnly,
           createdAt: serverTimestamp()
         };
 
@@ -111,6 +115,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
       setMyStreamUrl(''); 
       setSearchQuery(''); 
       setSelectedRival(null);
+      setSubscriberOnly(false);
   };
 
   const isFormValid = title.trim().length > 3 && myStreamUrl.trim().length > 10;
@@ -199,6 +204,18 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
                         <Input placeholder="YouTube or TikTok link..." value={myStreamUrl} onChange={e => setMyStreamUrl(e.target.value)} className="rounded-xl border-none bg-blue-50 dark:bg-blue-900/20 font-mono text-sm h-12 pl-10" />
                         <Video className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400" size={16} />
                     </div>
+                </div>
+
+                {/* STEP 7: EXCLUSIVE BATTLE TOGGLE */}
+                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-600 text-white rounded-lg"><Gem size={14} /></div>
+                        <div>
+                            <p className="text-[10px] font-black text-indigo-900 dark:text-indigo-200 uppercase tracking-widest">Inner Circle Battle</p>
+                            <p className="text-[8px] text-indigo-700/60 dark:text-indigo-400/60 font-bold uppercase">Subscriber Only Challenge</p>
+                        </div>
+                    </div>
+                    <Switch checked={subscriberOnly} onCheckedChange={setSubscriberOnly} />
                 </div>
             </div>
 

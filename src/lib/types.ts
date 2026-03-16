@@ -159,6 +159,7 @@ export type ArenaBattle = {
   createdAt: any;
   endsAt: any;
   isSponsored?: boolean;
+  subscriberOnly?: boolean; // Step 7: Exclusive battles
   sponsorId?: string;
   sponsorName?: string;
   sponsorLogo?: string;
@@ -340,6 +341,7 @@ export type Message = {
   senderName: string;
   type: 'text' | 'image' | 'file' | 'audio' | 'product';
   duration?: number;
+  isSubscriber?: boolean; // Step 7: Conversion badge
   productInfo?: {
       id: string;
       name: string;
@@ -688,6 +690,7 @@ export type BattleMessage = {
   userId: string;
   userName: string;
   text: string;
+  isSubscriber?: boolean; // Step 7
   createdAt: any;
 };
 
