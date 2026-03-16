@@ -5,7 +5,7 @@
  * CampusWarRoom Component
  * -----------------------
  * National Hub Stage for University vs University Wars.
- * Now expanded with STEP 8: DEVICE REGISTRY & FRAUD PROTECTION 🛡️
+ * Now expanded with STEP 8: DEVICE REGISTRY, BOT BLOCKING & FRAUD PROTECTION 🛡️
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -24,7 +24,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
-import { registerUserDevice, logSuspiciousActivity } from '@/lib/fraud-protection';
+import { registerUserDevice, logSuspiciousActivity, isBotSuspicionCheck, trackUserBehavior } from '@/lib/fraud-protection';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Vibe Boost', emoji: '🔥', weight: 5 },
@@ -106,6 +106,14 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
   const handleVote = async (side: 'A' | 'B') => {
     if (!firestore || !user || isVoting || !war || war.status === 'ended') return;
+    
+    // 🛡️ Layer 4: Bot Block Check
+    const isBlocked = await isBotSuspicionCheck(firestore, user.id);
+    if (isBlocked) {
+        toast({ variant: 'destructive', title: 'Account Restricted', description: 'Contact support.' });
+        return;
+    }
+
     setIsVoting(true);
     
     try {
@@ -150,6 +158,10 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       }, { merge: true });
 
       await batch.commit();
+
+      // 🛡️ Layer 4: Track behavior
+      trackUserBehavior(firestore, user.id, 'vote');
+
       setHasVoted(true);
       sendReaction('🗳️');
       toast({ title: "War Energy Contributed! ⚔️" });
@@ -164,10 +176,15 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
   const handlePowerUp = async (up: typeof POWER_UPS[0], side: 'A' | 'B') => {
     if (!firestore || !user || !war || war.status === 'ended') return;
+    
+    const isBlocked = await isBotSuspicionCheck(firestore, user.id);
+    if (isBlocked) return;
+
     const shardId = Math.floor(Math.random() * 10).toString();
     const shardRef = doc(firestore, 'campus_wars', warId, 'vote_shards', shardId);
     try {
         await updateDoc(shardRef, { [side === 'A' ? 'votesA' : 'votesB']: increment(up.weight) });
+        trackUserBehavior(firestore, user.id, 'gift');
         sendReaction(up.emoji);
     } catch (err) { console.error(err); }
   };
@@ -270,7 +287,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
                     className="h-full transition-all duration-1000 ease-out rounded-full" 
                     style={{ width: `${p2Pct}%`, backgroundColor: war.campusBInfo?.primaryColor || '#f59e0b' }} 
                 />
-                <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-white/40 -translate-x-1/2 z-20" />
+                <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-white/30 -translate-x-1/2 z-20" />
             </div>
         </div>
 
@@ -304,7 +321,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       <div className="flex-1 bg-slate-900 border-l border-white/5 flex flex-col shadow-2xl">
         <div className="p-6 bg-slate-950/50 border-b border-white/5">
             <h3 className="text-white font-black uppercase text-xs tracking-widest flex items-center gap-2">
-                <MessageSquare size={14} className="text-indigo-500" /> Global War Chat
+                <MessageSquare size={14} className="text-indigo-50" /> Global War Chat
             </h3>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">

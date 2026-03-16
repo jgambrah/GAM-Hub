@@ -45,9 +45,18 @@ export type UserDevice = {
   createdAt: any;
 };
 
+export type UserBehavior = {
+  id: string;
+  votesToday: number;
+  giftsSent: number;
+  watchTime: number; // in seconds
+  isBlocked: boolean;
+  lastUpdated: any;
+};
+
 export type FraudLog = {
   id: string;
-  type: 'suspicious_votes' | 'multi_account_device' | 'gift_spam';
+  type: 'suspicious_votes' | 'multi_account_device' | 'gift_spam' | 'bot_pattern';
   userId: string;
   battleId?: string;
   details: string;

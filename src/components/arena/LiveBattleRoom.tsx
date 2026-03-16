@@ -5,7 +5,7 @@
  * LiveBattleRoom Component
  * -----------------------
  * Elite National Arena Stage.
- * Now expanded with STEP 8: SYBIL PROTECTION & FRAUD LOGGING 🛡️
+ * Now expanded with STEP 8: SYBIL PROTECTION, BOT DETECTION & FRAUD LOGGING 🛡️
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -36,7 +36,7 @@ import { Badge } from '../ui/badge';
 import { Label } from '../ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CreatorSubscribeDialog } from '../social/CreatorSubscribeDialog';
-import { registerUserDevice, logSuspiciousActivity } from '@/lib/fraud-protection';
+import { registerUserDevice, logSuspiciousActivity, trackUserBehavior, isBotSuspicionCheck } from '@/lib/fraud-protection';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },
@@ -266,6 +266,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const handleVote = async (target: 'A' | 'B') => {
     if (!firestore || !user || isVoting || !battle || battle.status !== 'live') return;
     
+    // 🛡️ STEP 8 Layer 4: Bot Block Check
+    const isBlocked = await isBotSuspicionCheck(firestore, user.id);
+    if (isBlocked) {
+        toast({ variant: 'destructive', title: 'Account Restricted', description: 'Suspicious engagement patterns detected. Contact Liaison support.' });
+        return;
+    }
+
     const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
     if (!targetUserId) return;
 
@@ -316,6 +323,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       }
 
       await batch.commit();
+      
+      // 🛡️ Layer 4: Update behavior node
+      trackUserBehavior(firestore, user.id, 'vote');
+
       toast({ title: "Energy Contributed! ⚡" });
 
     } catch(err) { 
@@ -329,6 +340,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const handlePowerUp = async (powerup: typeof POWER_UPS[0], target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
     
+    // 🛡️ Bot Block Check
+    const isBlocked = await isBotSuspicionCheck(firestore, user.id);
+    if (isBlocked) {
+        toast({ variant: 'destructive', title: 'Account Restricted' });
+        return;
+    }
+
     if (boostsRemaining <= 0) {
         toast({ variant: 'destructive', title: 'Limit Reached', description: 'Maximum 5 boosts per battle. Conserve your artillery!' });
         return;
@@ -373,6 +391,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             setDoc(doc(firestore, 'sponsor_stats', battleId), { votes: increment(powerup.weight) }, { merge: true });
         }
 
+        // 🛡️ Track behavior
+        trackUserBehavior(firestore, user.id, 'gift');
+
         toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
 
     } catch (err: any) { toast({ variant: 'destructive', title: 'Deployment Failed' }); }
@@ -381,6 +402,12 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const handleSendGift = async (gift: any, target: 'A' | 'B') => {
     if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
     
+    const isBlocked = await isBotSuspicionCheck(firestore, user.id);
+    if (isBlocked) {
+        toast({ variant: 'destructive', title: 'Account Restricted' });
+        return;
+    }
+
     if (wallet.coins < gift.cost) {
         toast({ variant: 'destructive', title: 'Insufficient Coins' });
         return;
@@ -410,6 +437,9 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         if (battle.isSponsored) {
             setDoc(doc(firestore, 'sponsor_stats', battleId), { gifts: increment(1) }, { merge: true });
         }
+
+        // 🛡️ Track behavior
+        trackUserBehavior(firestore, user.id, 'gift');
 
         toast({ title: `${gift.label} Sent! ${gift.emoji}` });
 

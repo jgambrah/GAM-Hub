@@ -54,12 +54,24 @@
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
+    "UserBehavior": {
+      "title": "UserBehavior",
+      "type": "object",
+      "description": "Daily engagement tracking for bot detection.",
+      "properties": {
+        "votesToday": { "type": "number" },
+        "giftsSent": { "type": "number" },
+        "watchTime": { "type": "number", "description": "Engagement time in seconds." },
+        "isBlocked": { "type": "boolean" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      }
+    },
     "FraudLog": {
       "title": "FraudLog",
       "type": "object",
       "description": "Official audit trail for suspicious Arena activity.",
       "properties": {
-        "type": { "type": "string", "enum": ["suspicious_votes", "multi_account_device", "gift_spam"] },
+        "type": { "type": "string", "enum": ["suspicious_votes", "multi_account_device", "gift_spam", "bot_pattern"] },
         "userId": { "type": "string" },
         "battleId": { "type": "string" },
         "details": { "type": "string" },
@@ -164,6 +176,7 @@
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/user_devices/{deviceId}": { "schema": "#/backend/entities/UserDevice", "description": "Device-to-user mappings for Sybil protection." },
+    "/user_behavior/{userId}": { "schema": "#/backend/entities/UserBehavior", "description": "Behavioral analytics for bot detection." },
     "/fraud_logs/{logId}": { "schema": "#/backend/entities/FraudLog", "description": "Audit trail for suspicious activity." },
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },

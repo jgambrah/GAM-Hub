@@ -26,6 +26,12 @@ service cloud.firestore {
       allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
     }
 
+    // 🛡️ ANTI-FRAUD: Behavior Audits
+    match /user_behavior/{userId} {
+      allow read: if isAdmin() || request.auth.uid == userId;
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
     // 🛡️ ANTI-FRAUD: Suspicious Activity Logs (Liaison Only Write)
     match /fraud_logs/{logId} {
       allow read: if isAdmin();

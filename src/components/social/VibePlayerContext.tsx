@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -7,6 +8,7 @@
  * 2. Infinite Feed Loop (Auto-Scroller)
  * 3. TikTok-Style Prefetching
  * 4. Multi-Armed Bandit Strategy
+ * 5. Bot Behavior Tracking Layer 🛡️
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
@@ -15,12 +17,13 @@ import { useAuth } from '@/hooks/use-auth';
 import { useVibeProfile } from '@/hooks/use-vibe-profile';
 import { recordEngagement } from '@/lib/trending-service';
 import { useFirebase } from '@/firebase';
-import { collection, query, orderBy, limit, getDocs, doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, doc, onSnapshot } from 'firebase/firestore';
 import { enforceDiversity } from '@/lib/diversity-engine';
 import { logTrendEvent } from '@/lib/trend-logger';
 import { getRecommendedVibes } from '@/ai/flows/vibe-recommendation-flow';
 import { vibeBufferManager } from '@/lib/vibe-buffer-manager';
 import { computeVibeScore } from '@/lib/vibe-scoring';
+import { trackUserBehavior } from '@/lib/fraud-protection';
 
 export type MediaCategory = 'video' | 'image' | 'text' | 'audio';
 
@@ -78,6 +81,7 @@ const VibePlayerContext = createContext<VibePlayerContextType | undefined>(undef
 
 export function VibePlayerProvider({ children }: { children: React.ReactNode }) {
   const { firestore } = useFirebase();
+  const { user } = useAuth();
   const [activePostId, setActivePostId] = useState<string | null>(null);
   const [activePost, setActivePostState] = useState<SocialPost | null>(null);
   const [queue, setQueue] = useState<SocialPost[]>([]);
@@ -185,16 +189,22 @@ export function VibePlayerProvider({ children }: { children: React.ReactNode }) 
 
   const recordPlay = useCallback((p: SocialPost) => {
     recordSignal(p, 'watch');
-    if (firestore) {
+    if (firestore && user?.id) {
         recordEngagement(firestore, p.id, 'view', p.authorId, p.createdAt);
         logTrendEvent(firestore, { type: 'video_view', entityId: p.id, campusId: p.campusId, tag: p.tags?.[0] });
+        
+        // 🛡️ BOT DETECTION: Increment watch time node
+        trackUserBehavior(firestore, user.id, 'watch', 5); // Assumed average play check
     }
-  }, [recordSignal, firestore]);
+  }, [recordSignal, firestore, user?.id]);
 
   const recordWatchedToEnd = useCallback((p: SocialPost) => {
     recordSignal(p, 'watch');
-    if (firestore) recordEngagement(firestore, p.id, 'completion', p.authorId, p.createdAt);
-  }, [recordSignal, firestore]);
+    if (firestore && user?.id) {
+        recordEngagement(firestore, p.id, 'completion', p.authorId, p.createdAt);
+        trackUserBehavior(firestore, user.id, 'watch', 15); // Bonus for completion
+    }
+  }, [recordSignal, firestore, user?.id]);
 
   const recordLike = useCallback((p: SocialPost) => {
     recordSignal(p, 'like');
