@@ -37,6 +37,14 @@ export type User = {
   candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
 };
 
+export type GiftCombo = {
+  userId: string;
+  battleId: string;
+  comboCount: number;
+  lastGiftTime: any;
+  comboMultiplier: number;
+};
+
 export type UserDevice = {
   id: string;
   userId: string;

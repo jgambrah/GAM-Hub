@@ -5,7 +5,7 @@
  * LiveBattleRoom Component
  * -----------------------
  * Elite National Arena Stage.
- * Now expanded with STEP 10: WIN STREAK PRESTIGE 👑🔥
+ * Now expanded with STEP 12: ARENA GIFT COMBO SYSTEM ⚡🔥
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -17,7 +17,7 @@ import {
 import { useFirebase, useCollection, useMemoFirebase, useDoc, updateDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
-import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry, ArenaLeaderboard } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry, ArenaLeaderboard, GiftCombo } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
   Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2, Megaphone, Gem, ShieldAlert, Flame
@@ -45,6 +45,9 @@ const POWER_UPS = [
     { type: 'crown', label: 'Crown Boost', emoji: '👑', weight: 20, cost: 50 },
     { type: 'knockout', label: 'Knockout', emoji: '⚡', weight: 50, cost: 120 },
 ];
+
+const MAX_BOOSTS_PER_USER = 10;
+const COMBO_WINDOW_MS = 5000; // 5 seconds to continue combo
 
 function StreakBadge({ streak, losses }: { streak: number, losses?: number }) {
     if (streak < 2 && (losses || 0) > 0) return null;
@@ -132,6 +135,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   const [isVoting, setIsVoting] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [selectingOpponentId, setSelectingOpponentId] = useState<string | null>(null);
+  const [activeCombo, setActiveCombo] = useState<GiftCombo | null>(null);
   const [recentPowerUp, setRecentPowerUp] = useState<any>(null);
   const [recentGift, setRecentGift] = useState<ArenaGift | null>(null);
   const [subscribingTo, setSubscribingTo] = useState<any | null>(null);
@@ -197,6 +201,30 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   , [firestore, battleId]);
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
+
+  // ⚡ STEP 12: COMBO TRACKING
+  useEffect(() => {
+    if (!firestore || !battleId || !user?.id || !isLive) return;
+    
+    const comboId = `${battleId}_${user.id}`;
+    const unsub = onSnapshot(doc(firestore, 'gift_combos', comboId), (snap) => {
+        if (snap.exists()) {
+            const data = snap.data() as GiftCombo;
+            const now = Date.now();
+            const lastTime = data.lastGiftTime?.toMillis?.() || 0;
+            
+            // Auto-expire local combo if window passed
+            if (now - lastTime > COMBO_WINDOW_MS) {
+                setActiveCombo(null);
+            } else {
+                setActiveCombo(data);
+            }
+        } else {
+            setActiveCombo(null);
+        }
+    });
+    return () => unsub();
+  }, [firestore, battleId, user?.id, isLive]);
 
   useEffect(() => {
     if (firestore && user?.id) {
@@ -376,7 +404,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     if (isBlocked) return;
 
     if (boostsRemaining <= 0) {
-        toast({ variant: 'destructive', title: 'Limit Reached', description: 'Maximum 5 boosts per battle.' });
+        toast({ variant: 'destructive', title: 'Limit Reached', description: 'Maximum 10 boosts per battle.' });
         return;
     }
 
@@ -389,34 +417,78 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     const isSubscriber = user.subscribedCreators?.includes(targetUserId);
 
     try {
+        // ⚡ STEP 12: COMBO LOGIC
+        const comboId = `${battleId}_${user.id}`;
+        const comboRef = doc(firestore, 'gift_combos', comboId);
+        const comboSnap = await getDoc(comboRef);
+        
+        let comboCount = 1;
+        let multiplier = 1.0;
+        const now = Date.now();
+
+        if (comboSnap.exists()) {
+            const data = comboSnap.data() as GiftCombo;
+            const lastTime = data.lastGiftTime?.toMillis?.() || 0;
+            if (now - lastTime < COMBO_WINDOW_MS) {
+                comboCount = data.comboCount + 1;
+                // Calculate Multipliers
+                if (comboCount >= 50) multiplier = 3.0;
+                else if (comboCount >= 20) multiplier = 2.0;
+                else if (comboCount >= 10) multiplier = 1.5;
+                else if (comboCount >= 5) multiplier = 1.2;
+            }
+        }
+
+        const votesWithMultiplier = Math.floor(powerup.weight * multiplier);
+
         await spendCoins(firestore, user.id, powerup.cost, 'powerup_used', {
             battleId,
             targetSide: target,
             powerupType: powerup.type,
             targetCreatorId: targetUserId,
             userName: user.name,
-            userAvatarUrl: user.avatarUrl
+            userAvatarUrl: user.avatarUrl,
+            comboCount,
+            multiplier
         });
 
+        const batch = writeBatch(firestore);
         const bRef = doc(firestore, 'arena_battles', battleId);
-        await updateDoc(bRef, { 
-            [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(powerup.weight), 
-            [`votes.${targetUserId}`]: increment(powerup.weight) 
+        batch.update(bRef, { 
+            [target === 'A' ? 'opponentA.votes' : 'opponentB.votes']: increment(votesWithMultiplier), 
+            [`votes.${targetUserId}`]: increment(votesWithMultiplier) 
         });
 
-        await addDoc(collection(firestore, 'arena_battles', battleId, 'powerups'), {
+        batch.set(comboRef, {
+            userId: user.id,
+            battleId,
+            comboCount,
+            comboMultiplier: multiplier,
+            lastGiftTime: serverTimestamp()
+        }, { merge: true });
+
+        const historyRef = doc(collection(firestore, 'arena_battles', battleId, 'powerups'));
+        batch.set(historyRef, {
             userId: user.id,
             userName: user.name,
             target: target === 'A' ? 'opponentA' : 'opponentB',
             type: powerup.type,
             isSubscriber, 
-            votesAdded: powerup.weight,
+            votesAdded: votesWithMultiplier,
             coinsSpent: powerup.cost,
+            comboCount,
+            multiplier,
             createdAt: serverTimestamp()
         });
 
+        await batch.commit();
         trackUserBehavior(firestore, user.id, 'gift');
-        toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
+        
+        if (multiplier > 1) {
+            toast({ title: `COMBO x${comboCount}! ⚡`, description: `${multiplier}x Vote Multiplier Active` });
+        } else {
+            toast({ title: `${powerup.label} Deployed! ${powerup.emoji}` });
+        }
 
     } catch (err: any) { toast({ variant: 'destructive', title: 'Deployment Failed' }); }
   };
@@ -552,6 +624,32 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
                 <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-2xl px-6 z-50">
                     <div className="bg-slate-950/80 backdrop-blur-xl p-8 rounded-[3.5rem] border border-white/10 shadow-2xl">
+                        
+                        {/* ⚡ STEP 12: COMBO OVERLAY */}
+                        <AnimatePresence>
+                            {activeCombo && activeCombo.comboCount >= 2 && (
+                                <motion.div 
+                                    initial={{ scale: 0.5, opacity: 0, y: 20 }}
+                                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                                    exit={{ scale: 1.5, opacity: 0 }}
+                                    className="absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
+                                >
+                                    <div className={cn(
+                                        "px-6 py-2 rounded-2xl font-black italic text-xl shadow-2xl flex items-center gap-2 border-2",
+                                        activeCombo.comboMultiplier >= 2 ? "bg-red-600 text-white border-white/30" : "bg-amber-500 text-slate-950 border-white/20"
+                                    )}>
+                                        <Zap className="animate-bounce" size={20} fill="currentColor" />
+                                        COMBO x{activeCombo.comboCount}
+                                        {activeCombo.comboMultiplier > 1 && (
+                                            <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">
+                                                {activeCombo.comboMultiplier}x POWER
+                                            </span>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         <div className="h-5 bg-white/5 rounded-full overflow-hidden flex p-1 border border-white/10 mb-8 shadow-inner relative">
                             <div className="h-full bg-blue-600 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p1Pct}%` }} />
                             <div className="h-full bg-amber-500 transition-all duration-1000 ease-out rounded-full" style={{ width: `${p2Pct}%` }} />
@@ -579,8 +677,116 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
       </div>
 
-      {/* CHAT INTERFACE AND OTHER ELEMENTS */}
-      
+      {/* --- RIGHT SIDE: CHAT & GIFTS --- */}
+      <aside className="flex-1 bg-slate-900 flex flex-col overflow-hidden">
+        
+        {/* Support Leaderboard */}
+        <SupportLeaderboard battleId={battleId} />
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
+            <AnimatePresence>
+                {recentPowerUp && (
+                    <motion.div 
+                        initial={{ x: 50, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: -50, opacity: 0 }}
+                        className="bg-indigo-600 text-white p-4 rounded-3xl shadow-xl flex items-center gap-4 border-2 border-white/10"
+                    >
+                        <div className="text-3xl">{POWER_UPS.find(p => p.type === recentPowerUp.type)?.emoji || '🔥'}</div>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">{recentPowerUp.userName}</p>
+                            <p className="font-black italic text-sm truncate">DEPLOYED {recentPowerUp.type.toUpperCase()}!</p>
+                        </div>
+                        {recentPowerUp.multiplier > 1 && (
+                            <div className="bg-amber-500 text-slate-950 px-2 py-1 rounded-lg font-black text-[10px] animate-pulse">
+                                {recentPowerUp.comboCount}x COMBO
+                            </div>
+                        )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {messages?.map(m => (
+                <div key={m.id} className="animate-in slide-in-from-bottom-2 flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                        <p className="text-[9px] font-black uppercase text-slate-500">{m.userName}</p>
+                        {m.isSubscriber && <Star size={8} className="text-amber-500 fill-amber-500" />}
+                    </div>
+                    <div className={cn(
+                        "p-3 rounded-2xl border text-sm max-w-[90%]",
+                        m.userId === user?.id ? "bg-indigo-600 text-white border-indigo-500 self-end" : "bg-white/5 border-white/5 text-slate-300"
+                    )}>
+                        {m.text}
+                    </div>
+                </div>
+            ))}
+            <div ref={scrollRef} />
+        </div>
+
+        <div className="p-6 bg-slate-950/80 backdrop-blur-xl border-t border-white/5 space-y-6">
+            
+            {inputMode === 'boost' ? (
+                <div className="space-y-4 animate-in slide-in-from-bottom-4">
+                    <div className="flex items-center justify-between px-2">
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                            <Zap size={12} fill="currentColor" /> Deployment Artillery
+                        </p>
+                        <button onClick={() => setInputMode('chat')} className="p-1 hover:bg-white/10 rounded-full text-slate-500"><X size={16}/></button>
+                    </div>
+                    <div className="grid grid-cols-4 gap-3">
+                        {POWER_UPS.map(up => {
+                            const canAfford = (wallet?.coins || 0) >= up.cost;
+                            return (
+                                <button 
+                                    key={up.type} 
+                                    disabled={!canAfford || boostsRemaining <= 0}
+                                    onClick={() => handlePowerUp(up, user?.campusId === battle.opponentA.campusAcronym ? 'A' : 'B')}
+                                    className={cn(
+                                        "flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all active:scale-90",
+                                        canAfford ? "bg-white/5 border-white/10 hover:bg-indigo-600/20 hover:border-indigo-500" : "bg-red-900/10 border-red-900/20 opacity-50 grayscale"
+                                    )}
+                                >
+                                    <span className="text-2xl">{up.emoji}</span>
+                                    <div className="text-center">
+                                        <p className="text-[8px] font-black uppercase text-white tracking-tighter">{up.label}</p>
+                                        <p className="text-[10px] font-bold text-amber-500">{up.cost}</p>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div className="flex justify-between items-center px-2">
+                        <p className="text-[8px] font-bold text-slate-500 uppercase">Limit: {boostsRemaining} Left</p>
+                        <div className="flex items-center gap-1.5 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/20">
+                            <Coins size={10} className="text-amber-500" />
+                            <span className="text-[10px] font-black text-amber-500">{wallet?.coins || 0}</span>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex gap-2">
+                    <button 
+                        onClick={() => setInputMode('boost')}
+                        className="p-4 bg-white/5 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-2xl transition-all active:scale-90 border border-white/10"
+                    >
+                        <Zap size={20} fill="currentColor" />
+                    </button>
+                    <form onSubmit={handleSendMessage} className="flex-1 flex gap-2">
+                        <input 
+                            value={message}
+                            onChange={e => setMessage(e.target.value)}
+                            placeholder="Cast shade..."
+                            className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none border-none focus:ring-2 focus:ring-red-600 font-bold"
+                        />
+                        <button type="submit" disabled={!message.trim()} className="p-4 bg-red-600 text-white rounded-2xl active:scale-90 shadow-xl">
+                            <Send size={20} />
+                        </button>
+                    </form>
+                </div>
+            )}
+        </div>
+      </aside>
+
       <JoinBattleModal battle={battle} isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
       
       {showReport && (
@@ -590,6 +796,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             reportedUserId={battle.creatorId} 
             isOpen={showReport} 
             onClose={() => setShowReport(false)} 
+          />
+      )}
+
+      {subscribingTo && (
+          <CreatorSubscribeDialog 
+            creator={subscribingTo} 
+            isOpen={!!subscribingTo} 
+            onClose={() => setSubscribingTo(null)} 
           />
       )}
     </div>

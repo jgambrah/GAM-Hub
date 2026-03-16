@@ -43,6 +43,18 @@
       },
       "required": ["id", "email", "role"]
     },
+    "GiftCombo": {
+      "title": "GiftCombo",
+      "type": "object",
+      "description": "Tracks rapid gifting streaks for vote multipliers.",
+      "properties": {
+        "userId": { "type": "string" },
+        "battleId": { "type": "string" },
+        "comboCount": { "type": "number" },
+        "lastGiftTime": { "type": "string", "format": "date-time" },
+        "comboMultiplier": { "type": "number" }
+      }
+    },
     "UserDevice": {
       "title": "UserDevice",
       "type": "object",
@@ -103,6 +115,7 @@
     "/user_behavior/{userId}": { "schema": "#/backend/entities/UserBehavior", "description": "Behavioral analytics." },
     "/fraud_logs/{logId}": { "schema": "#/backend/entities/FraudLog", "description": "Audit trail for suspicious activity." },
     "/content_reports/{reportId}": { "schema": "#/backend/entities/ContentReport", "description": "Moderation reports." },
+    "/gift_combos/{comboId}": { "schema": "#/backend/entities/GiftCombo", "description": "Real-time combo tracking." },
     "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Live and past battles." }
   }
