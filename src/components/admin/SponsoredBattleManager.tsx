@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useRef } from 'react';
@@ -6,7 +7,7 @@ import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/fires
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
     Swords, Megaphone, Plus, Trophy, Globe, 
-    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck
+    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck, Banknote, DollarSign, Target, TrendingUp
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ import Image from 'next/image';
  * SponsoredBattleManager Component
  * ------------------------------
  * Official tool for the National Liaison to manage brand partnerships.
+ * Now includes Commercial Pricing Intelligence guide.
  */
 export default function SponsoredBattleManager() {
   const { firestore, storage, auth } = useFirebase();
@@ -252,59 +254,108 @@ export default function SponsoredBattleManager() {
 
       {/* ── OVERVIEW VIEW ─────────────────────────────────────────────────── */}
       {view === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Sponsors List */}
-          <Card className="rounded-[3rem] border-none shadow-xl overflow-hidden">
-            <CardHeader className="p-8 border-b bg-muted/20">
-              <CardTitle className="text-xl font-black flex items-center gap-2">
-                <ShieldCheck className="text-blue-600" /> Partner Registry
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y max-h-[500px] overflow-y-auto no-scrollbar">
-                {isLoadingSponsors ? (
-                  <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-blue-600"/></div>
-                ) : sponsors && sponsors.length > 0 ? (
-                  sponsors.map(s => (
-                    <div key={s.id} className="p-6 flex items-center justify-between hover:bg-muted/30 transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border shadow-inner">
-                          <Image src={s.logoUrl} fill className="object-contain p-1" alt="logo" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          
+          {/* 💰 COMMERCIAL PRICING GUIDE */}
+          <div className="lg:col-span-1 space-y-6">
+            <Card className="rounded-[3rem] border-2 border-primary/10 shadow-lg overflow-hidden h-fit">
+                <CardHeader className="bg-primary/5 p-8 border-b">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-primary text-white rounded-2xl shadow-lg">
+                            <Banknote size={20} />
                         </div>
                         <div>
-                          <p className="font-black text-foreground">{s.name}</p>
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.website || 'National Partner'}</p>
+                            <CardTitle className="text-lg font-black">Pricing Intel</CardTitle>
+                            <CardDescription className="text-[10px] uppercase font-bold text-primary/60">Liaison Revenue Model</CardDescription>
                         </div>
-                      </div>
-                      <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><BadgeCheck size={18}/></div>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-20 text-center text-muted-foreground italic">No official partners registered yet.</div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </CardHeader>
+                <CardContent className="p-8 space-y-6">
+                    {[
+                        { label: 'Battle Placement', price: 'GHS 3,000+', icon: Target, desc: 'Single live showdown branding.' },
+                        { label: 'Weekly Tournament', price: 'GHS 15,000+', icon: TrendingUp, desc: 'Full week of sponsored wars.' },
+                        { label: 'Yard Championship', price: 'GHS 75,000+', icon: Crown, desc: 'Exclusive National TV rights.' }
+                    ].map((tier) => (
+                        <div key={tier.label} className="p-4 bg-muted/30 rounded-2xl border border-transparent hover:border-primary/10 transition-all group">
+                            <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs font-black uppercase text-foreground flex items-center gap-2">
+                                    <tier.icon size={12} className="text-primary" /> {tier.label}
+                                </span>
+                                <span className="text-sm font-black text-primary group-hover:scale-110 transition-transform">{tier.price}</span>
+                            </div>
+                            <p className="text-[10px] text-muted-foreground italic">{tier.desc}</p>
+                        </div>
+                    ))}
+                    <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-inner text-center">
+                        <p className="text-[9px] font-black uppercase tracking-[0.3em] opacity-60 mb-1">Total Hub Revenue</p>
+                        <p className="text-xl font-black">GHS 124,500.00</p>
+                    </div>
+                </CardContent>
+            </Card>
+          </div>
+
+          {/* Sponsors List */}
+          <div className="lg:col-span-1">
+            <Card className="rounded-[3rem] border-none shadow-xl overflow-hidden h-full">
+                <CardHeader className="p-8 border-b bg-muted/20">
+                <CardTitle className="text-xl font-black flex items-center gap-2">
+                    <ShieldCheck className="text-blue-600" /> Partner Registry
+                </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                <div className="divide-y max-h-[500px] overflow-y-auto no-scrollbar">
+                    {isLoadingSponsors ? (
+                    <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-blue-600"/></div>
+                    ) : sponsors && sponsors.length > 0 ? (
+                    sponsors.map(s => (
+                        <div key={s.id} className="p-6 flex items-center justify-between hover:bg-muted/30 transition-all">
+                        <div className="flex items-center gap-4">
+                            <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white border shadow-inner">
+                            <Image src={s.logoUrl} fill className="object-contain p-1" alt="logo" />
+                            </div>
+                            <div>
+                            <p className="font-black text-foreground">{s.name}</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{s.website || 'National Partner'}</p>
+                            </div>
+                        </div>
+                        <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><BadgeCheck size={18}/></div>
+                        </div>
+                    ))
+                    ) : (
+                    <div className="p-20 text-center text-muted-foreground italic">No official partners registered yet.</div>
+                    )}
+                </div>
+                </CardContent>
+            </Card>
+          </div>
 
           {/* Logistics Summary */}
-          <div className="space-y-6">
-            <Card className="rounded-[3rem] bg-indigo-600 text-white p-8 border-none shadow-2xl relative overflow-hidden">
+          <div className="lg:col-span-1 space-y-6">
+            <Card className="rounded-[3rem] bg-indigo-600 text-white p-8 border-none shadow-2xl relative overflow-hidden h-full flex flex-col justify-between">
               <div className="absolute right-0 top-0 p-8 opacity-10 rotate-12"><Globe size={150}/></div>
               <div className="relative z-10">
                 <h3 className="text-2xl font-black mb-4">Yard Monetization</h3>
                 <p className="text-sm text-indigo-100 leading-relaxed font-medium">
                   Sponsored battles drive national visibility for brands while providing professional rewards for campus creators. Every battle launched here is prioritized across all university feeds.
                 </p>
-                <div className="mt-8 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.3em] opacity-60">
-                  <Zap size={14} fill="currentColor" /> National Hub Priority Active
+                
+                <div className="mt-8 space-y-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white/10 rounded-lg"><Zap size={14} className="text-amber-400" /></div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">Sponsored Highlights Tagged</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white/10 rounded-lg"><Megaphone size={14} className="text-blue-300" /></div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">Push Notifications Deployed</p>
+                    </div>
                 </div>
               </div>
+              
+              <div className="relative z-10 pt-10 mt-auto flex items-center justify-between opacity-60">
+                 <p className="text-[8px] font-black text-white uppercase tracking-widest">National Command Node • GH</p>
+                 <ShieldCheck size={16} />
+              </div>
             </Card>
-            
-            <div className="p-8 bg-slate-900 rounded-[2.5rem] border border-white/5 flex flex-col items-center justify-center text-center gap-2">
-               <Megaphone size={32} className="text-slate-700" />
-               <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Liaison Command Node • GH 🇬🇭</p>
-            </div>
           </div>
         </div>
       )}

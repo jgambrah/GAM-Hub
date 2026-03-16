@@ -9,7 +9,7 @@ import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, increment, updateDoc }
 import { 
     Flame, ThumbsUp, MessageSquare, Zap, ShieldAlert, Bot, Trash2, Youtube, 
     AlertTriangle, Mic, Music, Target, Trophy, PlayCircle, Crown, Smile, Swords, 
-    Share2, Copy, Send as SendIcon, Star
+    Share2, Copy, Send as SendIcon, Star, Megaphone
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -47,7 +47,7 @@ const getCategoryLabel = (category: string) => {
  * ArenaPostCard Component
  * -----------------------
  * Elite visual node for Arena vibrations. 
- * Optimized with React.memo to drastically reduce re-renders in heavy feeds.
+ * Now updated to display Sponsored branding for victory archives.
  */
 export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post: ArenaPost }) {
     const { user, isAdmin } = useAuth();
@@ -65,6 +65,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
     const canDelete = isAuthor || isAdmin;
     const isShade = post.vibeType === 'shade';
     const isHighlight = post.type === 'arena_highlight';
+    const isSponsored = post.isSponsored || false;
 
     const videoSource = post.hlsUrl || post.mediaUrl;
     const youtubeId = useMemo(() => isBlocked ? null : getYouTubeId(post.mediaUrl || ''), [post.mediaUrl, isBlocked]);
@@ -167,8 +168,26 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
             "relative bg-card rounded-[3rem] p-8 border-l-8 shadow-2xl transition-all duration-500 overflow-hidden",
             isBlocked ? "border-red-600 bg-red-50 dark:bg-red-950/10" : isHighlight ? "border-amber-500 bg-gradient-to-br from-slate-900 to-slate-950 text-white" : isShade ? "border-red-500 bg-gradient-to-br from-white to-red-50/30" : "border-amber-500 bg-gradient-to-br from-white to-amber-50/30"
         )}>
+            {/* SPONSORED ATTRIBUTION BANNER */}
+            {isSponsored && (
+                <div className="absolute top-0 left-0 right-0 bg-amber-500 text-slate-950 px-8 py-2 z-30 flex items-center justify-between border-b-2 border-white/20">
+                    <div className="flex items-center gap-2">
+                        <Megaphone size={12} fill="currentColor" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">Sponsored Victory</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-black uppercase tracking-widest">Powered by {post.sponsorName}</span>
+                        {post.sponsorLogo && (
+                            <div className="w-5 h-5 rounded-md overflow-hidden bg-white shadow-sm p-0.5">
+                                <img src={post.sponsorLogo} alt="sponsor" className="w-full h-full object-contain" />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {isHighlight && (
-                <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-2 animate-in zoom-in duration-500">
+                <div className={cn("absolute z-20 flex flex-col items-end gap-2 animate-in zoom-in duration-500", isSponsored ? "top-14 right-6" : "top-6 right-6")}>
                     <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
                         <Trophy size={12} fill="currentColor" /> Winning Performance
                     </div>
@@ -180,7 +199,7 @@ export const ArenaPostCard = React.memo(function ArenaPostCard({ post }: { post:
                 </div>
             )}
 
-            <div className="flex justify-between items-start mb-6 relative z-10">
+            <div className={cn("flex justify-between items-start mb-6 relative z-10", isSponsored && "mt-10")}>
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl border-4 border-white dark:border-slate-800 shadow-xl overflow-hidden flex-shrink-0" 
                         style={{ backgroundColor: isBlocked ? "#dc2626" : post.authorColor }}>

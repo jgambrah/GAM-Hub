@@ -244,6 +244,11 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     const data = doc.data();
     const info = data.participantInfo || {};
     
+    // Sponsorship Context
+    const isSponsored = data.isSponsored || false;
+    const sponsorName = data.sponsorName || null;
+    const sponsorLogo = data.sponsorLogo || null;
+
     const vA = data.opponentA?.votes || 0;
     const vB = data.opponentB?.votes || 0;
     const winnerId = vA > vB ? data.opponentA.userId : (vB > vA ? data.opponentB.userId : null);
@@ -299,6 +304,9 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             startTime: peakTimeOffset,
             category: highlightCategory,
             processingStatus: "pending",
+            isSponsored,
+            sponsorName,
+            sponsorLogo,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -308,16 +316,21 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             authorAvatarUrl: winnerInfo.avatarUrl,
             campusId: winnerInfo.campusId || "all",
             campusAcronym: winnerInfo.campusAcronym,
-            content: `🏆 Victory Archive: ${winnerInfo.name} dominated the Yard! Check out this highlight.`,
+            content: `${isSponsored ? sponsorName + " " : ""}Victory Archive: ${winnerInfo.name} dominated the Yard! Check out this highlight.`,
             mediaType: "video",
             mediaUrl: winner.videoUrl, 
             type: "arena_highlight",
             isArenaEntry: true,
+            isSponsored,
+            sponsorName,
+            sponsorLogo,
             battleMetadata: { 
                 battleId: doc.id, 
                 winnerName: winnerInfo.name, 
                 totalEnergy,
-                category: highlightCategory
+                category: highlightCategory,
+                isSponsored,
+                sponsorName
             },
             likes: 0,
             commentCount: 0,

@@ -149,6 +149,9 @@ export type SocialPost = {
   isArenaEntry?: boolean;
   vibeType?: 'shade' | 'celebration';
   isOfficial?: boolean;
+  isSponsored?: boolean;
+  sponsorName?: string;
+  sponsorLogo?: string;
   type?: 'regular' | 'src_official' | 'vetted_announcement' | 'election_winner' | 'shoutout' | 'arena_highlight';
   status?: 'active' | 'blocked' | 'hidden';
   moderationNote?: string;
@@ -159,6 +162,8 @@ export type SocialPost = {
     winnerName: string;
     totalEnergy: number;
     category?: 'savage_roast' | 'funniest_comeback' | 'crowd_favorite' | 'knockout_moment';
+    isSponsored?: boolean;
+    sponsorName?: string;
   };
 };
 
