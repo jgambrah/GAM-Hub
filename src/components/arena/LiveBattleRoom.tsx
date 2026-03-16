@@ -20,7 +20,7 @@ import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry, ArenaLeaderboard, GiftCombo } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2, Megaphone, Gem, ShieldAlert, Flame
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2, Megaphone, Gem, ShieldAlert, Flame, Coins
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -47,7 +47,7 @@ const POWER_UPS = [
 ];
 
 const MAX_BOOSTS_PER_USER = 10;
-const COMBO_WINDOW_MS = 5000; // 5 seconds to continue combo
+const COMBO_WINDOW_MS = 4000; // Step 12: 4-second reset rule
 
 function StreakBadge({ streak, losses }: { streak: number, losses?: number }) {
     if (streak < 2 && (losses || 0) > 0) return null;
@@ -213,7 +213,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             const now = Date.now();
             const lastTime = data.lastGiftTime?.toMillis?.() || 0;
             
-            // Auto-expire local combo if window passed
+            // Auto-expire local combo if window passed (Step 12: 4s rule)
             if (now - lastTime > COMBO_WINDOW_MS) {
                 setActiveCombo(null);
             } else {
@@ -251,32 +251,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       }
     });
 
-    const qG = query(collection(firestore, 'arena_battles', battleId, 'gifts'), orderBy('createdAt', 'desc'), limit(1));
-    const unsubG = onSnapshot(qG, (snap) => {
-      if (!snap.empty) {
-        const data = snap.docs[0].data();
-        if (Date.now() - (data.createdAt?.toMillis?.() || 0) < 5000) {
-          setRecentGift({ id: snap.docs[0].id, ...data } as ArenaGift);
-          const timer = setTimeout(() => setRecentGift(null), 4500);
-          return () => clearTimeout(timer);
-        }
-      }
-    });
-
-    return () => { unsubP(); unsubG(); };
+    return () => { unsubP(); };
   }, [firestore, battleId, isLive, battle?.isSponsored]);
-
-  // ⚖️ MODERATION: Auto-flagging logic
-  useEffect(() => {
-      if (!firestore || !battleId || !battle) return;
-      if (battle.reportCount && battle.reportCount >= 5 && battle.status !== 'under_review') {
-          updateDocumentNonBlocking(doc(firestore, 'arena_battles', battleId), { 
-              status: 'under_review',
-              flaggedAt: serverTimestamp() 
-          });
-          toast({ variant: 'destructive', title: "Security Intervention", description: "Battle has been paused for moderation review." });
-      }
-  }, [battle?.reportCount, battleId, firestore]);
 
   const handleSelectOpponent = async (challenger: ArenaChallenger) => {
     if (!firestore || !battle || !user || battle.creatorId !== user.id) return;
@@ -333,7 +309,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     
     const isBlocked = await isBotSuspicionCheck(firestore, user.id);
     if (isBlocked) {
-        toast({ variant: 'destructive', title: 'Account Restricted', description: 'Suspicious engagement patterns detected. Contact Liaison support.' });
+        toast({ variant: 'destructive', title: 'Account Restricted', description: 'Suspicious patterns detected.' });
         return;
     }
 
@@ -350,21 +326,10 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       if (auditSnap.exists()) {
           const data = auditSnap.data();
           const lastVote = data.lastVoteTime?.toMillis?.() || 0;
-          const voteCount = data.voteCount || 0;
-
           if (now - lastVote < 10000) {
-              toast({ variant: 'destructive', title: 'Voting too fast!', description: 'Please wait 10s between energy contributions.' });
+              toast({ variant: 'destructive', title: 'Voting too fast!', description: 'Please wait 10s.' });
               setIsVoting(false);
               return;
-          }
-
-          if (voteCount > 50) {
-              logSuspiciousActivity(firestore, {
-                  type: 'suspicious_votes',
-                  userId: user.id,
-                  battleId,
-                  details: `User has contributed ${voteCount + 1} votes to battle ${battleId}. Threshold exceeded.`
-              });
           }
       }
 
@@ -380,17 +345,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
           [`votes.${targetUserId}`]: increment(1) 
       });
 
-      if (battle.isSponsored) {
-          const sponsorStatsRef = doc(firestore, 'sponsor_stats', battleId);
-          batch.set(sponsorStatsRef, { votes: increment(1) }, { merge: true });
-      }
-
       await batch.commit();
       trackUserBehavior(firestore, user.id, 'vote');
       toast({ title: "Energy Contributed! ⚡" });
 
     } catch(err) { 
-        console.error(err);
         toast({ variant: 'destructive', title: 'Action Refused' }); 
     } finally { 
         setIsVoting(false); 
@@ -403,11 +362,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     const isBlocked = await isBotSuspicionCheck(firestore, user.id);
     if (isBlocked) return;
 
-    if (boostsRemaining <= 0) {
-        toast({ variant: 'destructive', title: 'Limit Reached', description: 'Maximum 10 boosts per battle.' });
-        return;
-    }
-
     if (wallet.coins < powerup.cost) {
         toast({ variant: 'destructive', title: 'Insufficient Coins' });
         return;
@@ -417,7 +371,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     const isSubscriber = user.subscribedCreators?.includes(targetUserId);
 
     try {
-        // ⚡ STEP 12: COMBO LOGIC
+        // ⚡ STEP 12: COMBO LOGIC (4-second window)
         const comboId = `${battleId}_${user.id}`;
         const comboRef = doc(firestore, 'gift_combos', comboId);
         const comboSnap = await getDoc(comboRef);
@@ -431,13 +385,14 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             const lastTime = data.lastGiftTime?.toMillis?.() || 0;
             if (now - lastTime < COMBO_WINDOW_MS) {
                 comboCount = data.comboCount + 1;
-                // Calculate Multipliers
-                if (comboCount >= 50) multiplier = 3.0;
-                else if (comboCount >= 20) multiplier = 2.0;
-                else if (comboCount >= 10) multiplier = 1.5;
-                else if (comboCount >= 5) multiplier = 1.2;
             }
         }
+
+        // Apply Step 12 Multipliers
+        if (comboCount >= 50) multiplier = 3.0;
+        else if (comboCount >= 20) multiplier = 2.0;
+        else if (comboCount >= 10) multiplier = 1.5;
+        else if (comboCount >= 5) multiplier = 1.2;
 
         const votesWithMultiplier = Math.floor(powerup.weight * multiplier);
 
@@ -462,6 +417,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         batch.set(comboRef, {
             userId: user.id,
             battleId,
+            giftType: powerup.type,
             comboCount,
             comboMultiplier: multiplier,
             lastGiftTime: serverTimestamp()
@@ -497,22 +453,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   if (isLoadingBattle || !battle) {
     return <div className="fixed inset-0 z-[7000] bg-black flex items-center justify-center"><Loader2 className="animate-spin text-red-600" size={48} /></div>;
-  }
-
-  // ⚖️ MODERATION: Gated view for under review content
-  if (isUnderReview && !isAdmin && !isCreator) {
-      return (
-          <div className="fixed inset-0 z-[7000] bg-slate-950 flex flex-col items-center justify-center p-10 text-center space-y-6">
-              <div className="p-8 bg-red-600 rounded-full shadow-[0_0_50px_rgba(220,38,38,0.4)]">
-                  <ShieldAlert size={64} className="text-white animate-pulse" />
-              </div>
-              <h2 className="text-3xl font-black text-white uppercase italic tracking-tighter">Ring Restricted</h2>
-              <p className="text-slate-400 max-w-sm font-medium leading-relaxed">
-                  This battle has been flagged by multiple citizens and is currently under security review by the National Liaison.
-              </p>
-              <Button onClick={onClose} className="bg-white text-slate-900 font-black rounded-2xl px-10 py-6 h-auto">Return to Yard</Button>
-          </div>
-      );
   }
 
   const p1 = battle.participantInfo[battle.opponentA.userId];
@@ -677,10 +617,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
       </div>
 
-      {/* --- RIGHT SIDE: CHAT & GIFTS --- */}
       <aside className="flex-1 bg-slate-900 flex flex-col overflow-hidden">
-        
-        {/* Support Leaderboard */}
         <SupportLeaderboard battleId={battleId} />
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
@@ -724,7 +661,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         </div>
 
         <div className="p-6 bg-slate-950/80 backdrop-blur-xl border-t border-white/5 space-y-6">
-            
             {inputMode === 'boost' ? (
                 <div className="space-y-4 animate-in slide-in-from-bottom-4">
                     <div className="flex items-center justify-between px-2">
@@ -740,7 +676,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                                 <button 
                                     key={up.type} 
                                     disabled={!canAfford || boostsRemaining <= 0}
-                                    onClick={() => handlePowerUp(up, user?.campusId === battle.opponentA.campusAcronym ? 'A' : 'B')}
+                                    onClick={() => handlePowerUp(up, user?.campusId === p1?.campusAcronym ? 'A' : 'B')}
                                     className={cn(
                                         "flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all active:scale-90",
                                         canAfford ? "bg-white/5 border-white/10 hover:bg-indigo-600/20 hover:border-indigo-500" : "bg-red-900/10 border-red-900/20 opacity-50 grayscale"

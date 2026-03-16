@@ -43,6 +43,7 @@ export type GiftCombo = {
   comboCount: number;
   lastGiftTime: any;
   comboMultiplier: number;
+  giftType?: string;
 };
 
 export type UserDevice = {

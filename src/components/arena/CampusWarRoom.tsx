@@ -5,18 +5,18 @@
  * CampusWarRoom Component
  * -----------------------
  * National Hub Stage for University vs University Wars.
- * Now expanded with STEP 8: DEVICE REGISTRY, BOT BLOCKING & FRAUD PROTECTION 🛡️
+ * Now expanded with STEP 12: ARENA GIFT COMBO SYSTEM ⚡🔥
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   collection, query, orderBy, limitToLast, 
   serverTimestamp, addDoc, updateDoc, 
-  increment, doc, getDoc, writeBatch
+  increment, doc, getDoc, writeBatch, onSnapshot
 } from 'firebase/firestore';
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
-import type { CampusWar, BattleMessage, VoteShard } from '@/lib/types';
+import type { CampusWar, BattleMessage, VoteShard, GiftCombo } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
   Loader2, MessageSquare, Globe, CheckCircle2
@@ -32,6 +32,8 @@ const POWER_UPS = [
     { type: 'national_crown', label: 'National Crown', emoji: '👑', weight: 50 },
 ];
 
+const COMBO_WINDOW_MS = 4000; // Step 12: 4-second rule
+
 interface LocalBurst { id: string; emoji: string; x: number; }
 
 export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () => void }) {
@@ -43,6 +45,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   const [isVoting, setIsVoting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [bursts, setBursts] = useState<LocalBurst[]>([]);
+  const [activeCombo, setActiveCombo] = useState<GiftCombo | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const warRef = useMemoFirebase(() => {
@@ -51,6 +54,25 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   }, [firestore, warId]);
 
   const { data: war, isLoading } = useDoc<CampusWar>(warRef);
+
+  // ⚡ STEP 12: COMBO LISTENER
+  useEffect(() => {
+    if (!firestore || !warId || !user?.id) return;
+    
+    const comboId = `${warId}_${user.id}`;
+    const unsub = onSnapshot(doc(firestore, 'gift_combos', comboId), (snap) => {
+        if (snap.exists()) {
+            const data = snap.data() as GiftCombo;
+            const now = Date.now();
+            const lastTime = data.lastGiftTime?.toMillis?.() || 0;
+            if (now - lastTime > COMBO_WINDOW_MS) setActiveCombo(null);
+            else setActiveCombo(data);
+        } else {
+            setActiveCombo(null);
+        }
+    });
+    return () => unsub();
+  }, [firestore, warId, user?.id]);
 
   const shardsQuery = useMemoFirebase(() => {
       if (!firestore || !warId) return null;
@@ -67,12 +89,9 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       }), { A: 0, B: 0 });
   }, [shards, war]);
 
-  // 🛡️ STEP 8: Device Registry & Initial Check
   useEffect(() => {
     if (!firestore || !user?.id || !warId) return;
-    
     registerUserDevice(firestore, user.id);
-
     const checkVote = async () => {
         const auditRef = doc(firestore, 'battle_votes', warId, 'users', user.id);
         const snap = await getDoc(auditRef);
@@ -94,12 +113,11 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !firestore || !user || war?.status === 'ended') return;
-    const text = message.trim();
     setMessage('');
     addDoc(collection(firestore, "campus_wars", warId, "messages"), { 
         userId: user.id, 
         userName: user.name, 
-        text, 
+        text: message.trim(), 
         createdAt: serverTimestamp() 
     });
   };
@@ -107,39 +125,21 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
   const handleVote = async (side: 'A' | 'B') => {
     if (!firestore || !user || isVoting || !war || war.status === 'ended') return;
     
-    // 🛡️ Layer 4: Bot Block Check
     const isBlocked = await isBotSuspicionCheck(firestore, user.id);
-    if (isBlocked) {
-        toast({ variant: 'destructive', title: 'Account Restricted', description: 'Contact support.' });
-        return;
-    }
+    if (isBlocked) return;
 
     setIsVoting(true);
-    
     try {
       const voteAuditRef = doc(firestore, 'battle_votes', warId, 'users', user.id);
       const auditSnap = await getDoc(voteAuditRef);
       const now = Date.now();
 
       if (auditSnap.exists()) {
-          const data = auditSnap.data();
-          const lastVote = data.lastVoteTime?.toMillis?.() || 0;
-          const voteCount = data.voteCount || 0;
-
+          const lastVote = auditSnap.data().lastVoteTime?.toMillis?.() || 0;
           if (now - lastVote < 10000) {
-              toast({ variant: 'destructive', title: 'Energy Recharging...', description: 'Please wait 10s between war contributions.' });
+              toast({ variant: 'destructive', title: 'Energy Recharging...' });
               setIsVoting(false);
               return;
-          }
-
-          // 🛡️ STEP 8 Layer 3: Fraud Detection
-          if (voteCount > 50) {
-              logSuspiciousActivity(firestore, {
-                  type: 'suspicious_votes',
-                  userId: user.id,
-                  battleId: warId,
-                  details: `User reached ${voteCount + 1} votes in national war ${warId}. Flagging for bot audit.`
-              });
           }
       }
 
@@ -149,8 +149,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
       batch.set(voteAuditRef, {
           lastVoteTime: serverTimestamp(),
-          voteCount: increment(1),
-          side: side === 'A' ? war.campusAId : war.campusBId
+          voteCount: increment(1)
       }, { merge: true });
 
       batch.set(shardRef, { 
@@ -158,20 +157,11 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       }, { merge: true });
 
       await batch.commit();
-
-      // 🛡️ Layer 4: Track behavior
       trackUserBehavior(firestore, user.id, 'vote');
-
       setHasVoted(true);
       sendReaction('🗳️');
-      toast({ title: "War Energy Contributed! ⚔️" });
-
-    } catch(err) {
-        console.error(err);
-        toast({ variant: 'destructive', title: 'Deployment Refused' });
-    } finally { 
-        setIsVoting(false); 
-    }
+    } catch(err) { toast({ variant: 'destructive', title: 'Refused' }); }
+    finally { setIsVoting(false); }
   };
 
   const handlePowerUp = async (up: typeof POWER_UPS[0], side: 'A' | 'B') => {
@@ -180,10 +170,45 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     const isBlocked = await isBotSuspicionCheck(firestore, user.id);
     if (isBlocked) return;
 
+    // ⚡ STEP 12: COMBO HANDSHAKE
+    const comboId = `${warId}_${user.id}`;
+    const comboRef = doc(firestore, 'gift_combos', comboId);
+    const comboSnap = await getDoc(comboRef);
+    
+    let comboCount = 1;
+    let multiplier = 1.0;
+    const now = Date.now();
+
+    if (comboSnap.exists()) {
+        const data = comboSnap.data() as GiftCombo;
+        const lastTime = data.lastGiftTime?.toMillis?.() || 0;
+        if (now - lastTime < COMBO_WINDOW_MS) comboCount = data.comboCount + 1;
+    }
+
+    if (comboCount >= 50) multiplier = 3.0;
+    else if (comboCount >= 20) multiplier = 2.0;
+    else if (comboCount >= 10) multiplier = 1.5;
+    else if (comboCount >= 5) multiplier = 1.2;
+
+    const finalWeight = Math.floor(up.weight * multiplier);
     const shardId = Math.floor(Math.random() * 10).toString();
     const shardRef = doc(firestore, 'campus_wars', warId, 'vote_shards', shardId);
+
     try {
-        await updateDoc(shardRef, { [side === 'A' ? 'votesA' : 'votesB']: increment(up.weight) });
+        const batch = writeBatch(firestore);
+        batch.set(comboRef, {
+            userId: user.id,
+            battleId: warId,
+            comboCount,
+            comboMultiplier: multiplier,
+            lastGiftTime: serverTimestamp()
+        }, { merge: true });
+
+        batch.set(shardRef, { 
+            [side === 'A' ? 'votesA' : 'votesB']: increment(finalWeight) 
+        }, { merge: true });
+
+        await batch.commit();
         trackUserBehavior(firestore, user.id, 'gift');
         sendReaction(up.emoji);
     } catch (err) { console.error(err); }
@@ -199,16 +224,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  if (isLoading || !war) {
-    return (
-        <div className="fixed inset-0 z-[8000] bg-slate-950 flex flex-col items-center justify-center text-center gap-4">
-            <Loader2 className="animate-spin text-indigo-600" size={48} />
-            <p className="text-white font-black text-xs uppercase tracking-[0.4em] opacity-50 animate-pulse">
-                Mobilizing National Yard War...
-            </p>
-        </div>
-    );
-  }
+  if (isLoading || !war) return null;
 
   const { A: votesA, B: votesB } = aggregatedScores;
   const totalVotes = (votesA || 0) + (votesB || 0);
@@ -222,15 +238,7 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
         <div className="absolute inset-0 pointer-events-none z-[100]">
             <AnimatePresence>
                 {bursts.map(b => (
-                    <motion.div
-                        key={b.id}
-                        initial={{ opacity: 0, y: 0, scale: 0.5 }}
-                        animate={{ opacity: [0, 1, 1, 0], y: -400, scale: [0.5, 2, 1.5, 1] }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 2, ease: "easeOut" }}
-                        className="absolute text-7xl"
-                        style={{ left: `${b.x}%`, bottom: '150px' }}
-                    >
+                    <motion.div key={b.id} initial={{ opacity: 0, y: 0, scale: 0.5 }} animate={{ opacity: [0, 1, 1, 0], y: -400, scale: [0.5, 2, 1.5, 1] }} exit={{ opacity: 0 }} transition={{ duration: 2 }} className="absolute text-7xl" style={{ left: `${b.x}%`, bottom: '150px' }}>
                         {b.emoji}
                     </motion.div>
                 ))}
@@ -238,13 +246,9 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
         </div>
 
         <div className="absolute top-0 left-0 right-0 z-50 p-8 flex justify-between items-start bg-gradient-to-b from-black/80 to-transparent">
-          <button onClick={onClose} className="p-4 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md border border-white/10 transition-all">
-            <X size={24}/>
-          </button>
+          <button onClick={onClose} className="p-4 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur-md border border-white/10 transition-all"><X size={24}/></button>
           <div className="text-center">
-            <div className="bg-indigo-600 px-8 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.4em] shadow-2xl animate-pulse">
-                Live National War
-            </div>
+            <div className="bg-indigo-600 px-8 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.4em] shadow-2xl animate-pulse">Live National War</div>
             <h1 className="text-2xl font-black italic text-white mt-4 tracking-tighter uppercase">"{war.title}"</h1>
           </div>
           <div className="bg-white/10 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/10 text-white flex items-center gap-3">
@@ -255,61 +259,43 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
 
         <div className="flex-1 flex flex-col justify-center items-center p-8 gap-12">
             <div className="w-full max-w-5xl flex justify-between items-center gap-10">
-                <div className="text-center flex-1 animate-in slide-in-from-left-10 duration-1000">
-                    <h2 className="text-8xl md:text-[10rem] font-black italic tracking-tighter mb-4" style={{ color: war.campusAInfo?.primaryColor }}>
-                        {war.campusAInfo?.acronym}
-                    </h2>
+                <div className="text-center flex-1">
+                    <h2 className="text-8xl md:text-[10rem] font-black italic tracking-tighter mb-4" style={{ color: war.campusAInfo?.primaryColor }}>{war.campusAInfo?.acronym}</h2>
                     <p className="text-5xl font-black text-white tabular-nums">{(votesA || 0).toLocaleString()}</p>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-4">Campus Energy</p>
                 </div>
-
-                <div className="relative">
-                    <div className="p-10 bg-indigo-600 rounded-full shadow-[0_0_100px_rgba(79,70,229,0.4)] border-8 border-slate-900">
-                        <Swords size={64} className="text-white" />
-                    </div>
-                </div>
-
-                <div className="text-center flex-1 animate-in slide-in-from-right-10 duration-1000">
-                    <h2 className="text-8xl md:text-[10rem] font-black italic tracking-tighter mb-4" style={{ color: war.campusBInfo?.primaryColor }}>
-                        {war.campusBInfo?.acronym}
-                    </h2>
-                    <p className="text-5xl font-black text-white tabular-nums">{(votesB || 0).toLocaleString()}</p>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-4">Campus Energy</p>
-                </div>
+                <div className="relative"><div className="p-10 bg-indigo-600 rounded-full shadow-[0_0_100px_rgba(79,70,229,0.4)] border-8 border-slate-900"><Swords size={64} className="text-white" /></div></div>
+                <div className="text-center flex-1"><h2 className="text-8xl md:text-[10rem] font-black italic tracking-tighter mb-4" style={{ color: war.campusBInfo?.primaryColor }}>{war.campusBInfo?.acronym}</h2><p className="text-5xl font-black text-white tabular-nums">{(votesB || 0).toLocaleString()}</p></div>
             </div>
 
             <div className="w-full max-w-4xl h-16 bg-white/5 rounded-full overflow-hidden flex p-2 border-2 border-white/10 shadow-2xl relative">
-                <div 
-                    className="h-full transition-all duration-1000 ease-out rounded-full" 
-                    style={{ width: `${p1Pct}%`, backgroundColor: war.campusAInfo?.primaryColor || '#3b82f6' }} 
-                />
-                <div 
-                    className="h-full transition-all duration-1000 ease-out rounded-full" 
-                    style={{ width: `${p2Pct}%`, backgroundColor: war.campusBInfo?.primaryColor || '#f59e0b' }} 
-                />
+                <div className="h-full transition-all duration-1000 ease-out rounded-full" style={{ width: `${p1Pct}%`, backgroundColor: war.campusAInfo?.primaryColor }} />
+                <div className="h-full transition-all duration-1000 ease-out rounded-full" style={{ width: `${p2Pct}%`, backgroundColor: war.campusBInfo?.primaryColor }} />
                 <div className="absolute left-1/2 top-0 bottom-0 w-1 bg-white/30 -translate-x-1/2 z-20" />
             </div>
         </div>
 
         <div className="p-10 bg-gradient-to-t from-black/80 to-transparent flex justify-center gap-10">
             <div className="flex flex-col gap-4 w-full max-w-md">
+                
+                {/* COMBO HUD */}
+                <AnimatePresence>
+                    {activeCombo && activeCombo.comboCount >= 2 && (
+                        <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex justify-center mb-4">
+                            <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black italic text-xl shadow-2xl flex items-center gap-2 border-2 border-white/20">
+                                <Zap size={20} fill="currentColor" /> COMBO x{activeCombo.comboCount}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <div className="grid grid-cols-2 gap-4">
                     <button onClick={() => handleVote('A')} disabled={isVoting} className="py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95 border-2 border-white/10 hover:brightness-110" style={{ backgroundColor: war.campusAInfo?.primaryColor }}>VOTE {war.campusAInfo?.acronym}</button>
                     <button onClick={() => handleVote('B')} disabled={isVoting} className="py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl transition-all active:scale-95 border-2 border-white/10 hover:brightness-110" style={{ backgroundColor: war.campusBInfo?.primaryColor }}>VOTE {war.campusBInfo?.acronym}</button>
                 </div>
-                {hasVoted && (
-                    <div className="text-center animate-in zoom-in duration-500">
-                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] flex items-center justify-center gap-2">
-                            <CheckCircle2 size={14} /> National Contribution Logged
-                        </p>
-                    </div>
-                )}
                 <div className="flex justify-center gap-4">
                     {POWER_UPS.map(up => (
                         <button key={up.type} onClick={() => handlePowerUp(up, user?.campusId === war.campusAId ? 'A' : 'B')} className="group flex flex-col items-center gap-1">
-                            <div className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all active:scale-90">
-                                <span className="text-2xl group-active:scale-150 transition-transform inline-block">{up.emoji}</span>
-                            </div>
+                            <div className="p-4 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all active:scale-90"><span className="text-2xl">{up.emoji}</span></div>
                             <span className="text-[8px] font-black text-slate-500 uppercase">+{up.weight}</span>
                         </button>
                     ))}
@@ -318,33 +304,15 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
         </div>
       </div>
 
-      <div className="flex-1 bg-slate-900 border-l border-white/5 flex flex-col shadow-2xl">
-        <div className="p-6 bg-slate-950/50 border-b border-white/5">
-            <h3 className="text-white font-black uppercase text-xs tracking-widest flex items-center gap-2">
-                <MessageSquare size={14} className="text-indigo-50" /> Global War Chat
-            </h3>
-        </div>
+      <div className="flex-1 bg-slate-900 border-l border-white/5 flex flex-col">
+        <div className="p-6 bg-slate-950/50 border-b border-white/5"><h3 className="text-white font-black uppercase text-xs tracking-widest">Global War Chat</h3></div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar bg-slate-900/50">
-            {messages?.map(m => (
-                <div key={m.id} className="animate-in slide-in-from-bottom-2">
-                    <p className="text-[9px] font-black uppercase text-slate-500 mb-1">{m.userName}</p>
-                    <div className="bg-white/5 p-3 rounded-2xl border border-white/5 text-sm text-slate-300">
-                        {m.text}
-                    </div>
-                </div>
-            ))}
+            {messages?.map(m => (<div key={m.id} className="animate-in slide-in-from-bottom-2"><p className="text-[9px] font-black uppercase text-slate-500 mb-1">{m.userName}</p><div className="bg-white/5 p-3 rounded-2xl border border-white/5 text-sm text-slate-300">{m.text}</div></div>))}
             <div ref={scrollRef} />
         </div>
         <form onSubmit={handleSendMessage} className="p-6 bg-slate-950 flex gap-2">
-            <input 
-                value={message}
-                onChange={e => setMessage(e.target.value)}
-                placeholder="Declare defense..."
-                className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none border-none focus:ring-2 focus:ring-indigo-600 font-bold transition-all"
-            />
-            <button type="submit" disabled={!message.trim()} className="p-4 bg-indigo-600 text-white rounded-2xl active:scale-90 shadow-xl transition-all">
-                <Send size={20} />
-            </button>
+            <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Declare defense..." className="flex-1 bg-white/5 rounded-2xl px-5 py-4 text-sm text-white outline-none border-none focus:ring-2 focus:ring-indigo-600 font-bold transition-all" />
+            <button type="submit" disabled={!message.trim()} className="p-4 bg-indigo-600 text-white rounded-2xl active:scale-90 shadow-xl"><Send size={20} /></button>
         </form>
       </div>
     </div>

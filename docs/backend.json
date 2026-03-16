@@ -52,7 +52,8 @@
         "battleId": { "type": "string" },
         "comboCount": { "type": "number" },
         "lastGiftTime": { "type": "string", "format": "date-time" },
-        "comboMultiplier": { "type": "number" }
+        "comboMultiplier": { "type": "number" },
+        "giftType": { "type": "string" }
       }
     },
     "UserDevice": {
