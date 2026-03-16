@@ -256,6 +256,31 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
 
     await doc.ref.update({ status: "ended", endedAt: admin.firestore.FieldValue.serverTimestamp() });
 
+    // 🏆 TOURNAMENT PROGRESSION LOGIC (Step 6)
+    if (data.tournamentMatch && data.tournamentId && data.matchId) {
+        const tourneyRef = db.collection("arena_tournaments").doc(data.tournamentId);
+        const matchRef = tourneyRef.collection("matches").doc(data.matchId);
+        
+        await matchRef.update({ 
+            winner: winnerId, 
+            status: "completed",
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        if (winnerId) {
+            await tourneyRef.collection("players").doc(winnerId).update({
+                round: admin.firestore.FieldValue.increment(1)
+            });
+        }
+
+        const loserId = data.opponentA.userId === winnerId ? data.opponentB?.userId : data.opponentA.userId;
+        if (loserId) {
+            await tourneyRef.collection("players").doc(loserId).update({
+                eliminated: true
+            });
+        }
+    }
+
     if (!isDraw && winnerId) {
         const winner = data.opponentA.userId === winnerId ? data.opponentA : data.opponentB;
         const loser = data.opponentA.userId === winnerId ? data.opponentB : data.opponentA;

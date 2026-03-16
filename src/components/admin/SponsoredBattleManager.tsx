@@ -3,7 +3,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, useDoc, updateDocumentNonBlocking } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, setDoc, getDocs, where, writeBatch } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, setDoc, getDocs, where, writeBatch, getDoc, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
     Swords, Megaphone, Plus, Trophy, Globe, 
@@ -18,12 +18,13 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ArenaSponsor, ArenaBattle, ArenaPricingTier, ArenaSeason, ArenaTournament, ArenaMatch, User } from '@/lib/types';
 import Image from 'next/image';
+import { distributeTournamentPrizes } from '@/lib/monetization';
 
 export default function SponsoredBattleManager() {
   const { firestore, storage, auth } = useFirebase();
   const { toast } = useToast();
   
-  const [view, setView] = useState<'overview' | 'create_sponsor' | 'launch_battle' | 'season' | 'create_tournament' | 'manage_brackets'>('overview');
+  const [view, setView] = useState<'overview' | 'create_sponsor' | 'launch_battle' | 'season' | 'create_tournament' | 'manage_brackets' | 'finalize_tournament'>('overview');
   const [loading, setLoading] = useState(false);
   const [selectedTournament, setSelectedTournament] = useState<ArenaTournament | null>(null);
 
@@ -233,7 +234,6 @@ export default function SponsoredBattleManager() {
     if (!firestore) return;
     setLoading(true);
     try {
-        // 1. Fetch all registered players
         const playersSnap = await getDocs(collection(firestore, 'arena_tournaments', tournament.id, 'players'));
         const players = playersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter(p => !p.eliminated);
 
@@ -242,7 +242,6 @@ export default function SponsoredBattleManager() {
             return;
         }
 
-        // 2. Shuffle & Pair
         const shuffled = [...players].sort(() => Math.random() - 0.5);
         const batch = writeBatch(firestore);
         
@@ -265,7 +264,6 @@ export default function SponsoredBattleManager() {
             });
         }
 
-        // 3. Update status to ongoing
         batch.update(doc(firestore, 'arena_tournaments', tournament.id), { status: 'ongoing', updatedAt: serverTimestamp() });
         
         await batch.commit();
@@ -282,7 +280,6 @@ export default function SponsoredBattleManager() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
-      {/* ── HEADER ────────────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 bg-card p-8 rounded-[3rem] border shadow-sm">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -295,7 +292,7 @@ export default function SponsoredBattleManager() {
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
           {view !== 'overview' ? (
-            <Button variant="ghost" onClick={() => setView('overview')} className="rounded-xl font-bold transition-all hover:bg-muted">Back to Console</Button>
+            <button onClick={() => setView('overview')} className="px-6 py-3 rounded-xl font-bold transition-all hover:bg-muted bg-white border border-border shadow-sm text-xs uppercase tracking-widest">Back to Console</button>
           ) : (
             <>
               <Button onClick={() => setView('create_tournament')} variant="outline" className="rounded-xl font-black text-[10px] uppercase tracking-widest border-2">
@@ -315,15 +312,21 @@ export default function SponsoredBattleManager() {
         </div>
       </div>
 
-      {/* ── TOURNAMENT BRACKETS VIEW ───────────────────────────────────────── */}
       {view === 'manage_brackets' && selectedTournament && (
           <TournamentBracketManager 
             tournament={selectedTournament} 
             onBack={() => setView('overview')} 
+            onFinalize={() => setView('finalize_tournament')}
           />
       )}
 
-      {/* ── TOURNAMENT ARCHITECT VIEW ─────────────────────────────────────── */}
+      {view === 'finalize_tournament' && selectedTournament && (
+          <TournamentFinalizer 
+            tournament={selectedTournament} 
+            onBack={() => setView('manage_brackets')} 
+          />
+      )}
+
       {view === 'create_tournament' && (
         <Card className="max-w-2xl mx-auto rounded-[3rem] border-2 border-indigo-500/20 shadow-2xl animate-in zoom-in-95 duration-300">
           <CardHeader className="p-10 border-b bg-indigo-500/10">
@@ -361,7 +364,6 @@ export default function SponsoredBattleManager() {
         </Card>
       )}
 
-      {/* ── SEASON SPONSOR VIEW ───────────────────────────────────────────── */}
       {view === 'season' && (
         <Card className="max-w-2xl mx-auto rounded-[3rem] border-2 border-indigo-500/20 shadow-2xl animate-in zoom-in-95 duration-300">
           <CardHeader className="p-10 border-b bg-indigo-500/10">
@@ -403,7 +405,6 @@ export default function SponsoredBattleManager() {
         </Card>
       )}
 
-      {/* ── CREATE SPONSOR VIEW ───────────────────────────────────────────── */}
       {view === 'create_sponsor' && (
         <Card className="max-w-2xl mx-auto rounded-[3rem] border-2 shadow-2xl animate-in zoom-in-95 duration-300">
           <CardHeader className="p-10 border-b bg-muted/20">
@@ -445,7 +446,6 @@ export default function SponsoredBattleManager() {
         </Card>
       )}
 
-      {/* ── LAUNCH BATTLE VIEW ────────────────────────────────────────────── */}
       {view === 'launch_battle' && (
         <Card className="max-w-2xl mx-auto rounded-[3rem] border-2 border-amber-500/20 shadow-2xl animate-in zoom-in-95 duration-300">
           <CardHeader className="p-10 border-b bg-amber-500/10">
@@ -486,11 +486,9 @@ export default function SponsoredBattleManager() {
         </Card>
       )}
 
-      {/* ── OVERVIEW VIEW ─────────────────────────────────────────────────── */}
       {view === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* 💰 LIVE COMMERCIAL INTELLIGENCE */}
           <div className="lg:col-span-1 space-y-6">
             <Card className="rounded-[3rem] border-2 border-primary/10 shadow-lg overflow-hidden h-fit">
                 <CardHeader className="bg-primary/5 p-8 border-b">
@@ -538,7 +536,6 @@ export default function SponsoredBattleManager() {
             </Card>
           </div>
 
-          {/* Sponsors & Tournaments List */}
           <div className="lg:col-span-1 space-y-6">
             <Card className="rounded-[3rem] border-none shadow-xl overflow-hidden h-fit">
                 <CardHeader className="p-8 border-b bg-muted/20">
@@ -595,6 +592,9 @@ export default function SponsoredBattleManager() {
                             {t.status === 'registration' && (
                                 <Button onClick={() => handleGenerateBracket(t)} size="sm" className="bg-indigo-600 text-white font-black text-[8px] uppercase h-8 rounded-lg shadow-lg">Start</Button>
                             )}
+                            {t.status === 'ongoing' && (
+                                <button onClick={() => { setSelectedTournament(t); setView('finalize_tournament'); }} className="text-[8px] font-black text-amber-600 uppercase border-b-2 border-amber-200">Finalize</button>
+                            )}
                         </div>
                     ))
                     ) : (
@@ -605,7 +605,6 @@ export default function SponsoredBattleManager() {
             </Card>
           </div>
 
-          {/* Logistics Summary */}
           <div className="lg:col-span-1 space-y-6">
             <Card className="rounded-[3rem] bg-indigo-600 text-white p-8 border-none shadow-2xl relative overflow-hidden h-full flex flex-col justify-between">
               <div className="absolute right-0 top-0 p-8 opacity-10 rotate-12"><Globe size={150}/></div>
@@ -639,7 +638,7 @@ export default function SponsoredBattleManager() {
   );
 }
 
-function TournamentBracketManager({ tournament, onBack }: { tournament: ArenaTournament, onBack: () => void }) {
+function TournamentBracketManager({ tournament, onBack, onFinalize }: { tournament: ArenaTournament, onBack: () => void, onFinalize: () => void }) {
     const { firestore } = useFirebase();
     const { toast } = useToast();
     const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -656,7 +655,6 @@ function TournamentBracketManager({ tournament, onBack }: { tournament: ArenaTou
         setLoadingId(match.id);
         
         try {
-            // 1. Fetch participants metadata for high-fidelity battle card
             const pASnap = await getDoc(doc(firestore, 'users', match.playerA));
             const pBSnap = await getDoc(doc(firestore, 'users', match.playerB));
             const uA = pASnap.data() as User;
@@ -669,7 +667,7 @@ function TournamentBracketManager({ tournament, onBack }: { tournament: ArenaTou
                 participants: [match.playerA, match.playerB],
                 opponentA: {
                     userId: match.playerA,
-                    videoUrl: '', // To be filled by player
+                    videoUrl: '', 
                     votes: 0
                 },
                 opponentB: {
@@ -699,7 +697,7 @@ function TournamentBracketManager({ tournament, onBack }: { tournament: ArenaTou
                 matchId: match.id,
                 round: match.round,
                 createdAt: serverTimestamp(),
-                endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 Hour Match
+                endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() 
             };
 
             const battleRef = await addDoc(collection(firestore, "arena_battles"), battleData);
@@ -729,7 +727,10 @@ function TournamentBracketManager({ tournament, onBack }: { tournament: ArenaTou
                         <CardTitle className="text-3xl font-black italic tracking-tighter uppercase">{tournament.name}</CardTitle>
                         <CardDescription className="text-indigo-100 font-bold uppercase text-[10px] tracking-widest mt-2">Bracket Status: {tournament.status}</CardDescription>
                     </div>
-                    <Button onClick={onBack} variant="outline" className="rounded-xl bg-white/10 text-white border-white/20">Back to Hub</Button>
+                    <div className="flex gap-3">
+                        <Button onClick={onFinalize} variant="outline" className="rounded-xl bg-amber-500 text-slate-950 border-none font-black text-[10px] uppercase">Finalize & Pay</Button>
+                        <Button onClick={onBack} variant="outline" className="rounded-xl bg-white/10 text-white border-white/20">Back to Hub</Button>
+                    </div>
                 </CardHeader>
                 <CardContent className="p-10">
                     <div className="space-y-6">
@@ -772,7 +773,7 @@ function TournamentBracketManager({ tournament, onBack }: { tournament: ArenaTou
                                                     "px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border",
                                                     match.status === 'live' ? "bg-red-50 text-red-600 border-red-100" : "bg-green-50 text-green-600 border-green-100"
                                                 )}>
-                                                    {match.status}
+                                                    {match.status} {match.winner ? `(Winner: ${match.winner === match.playerA ? match.playerAName : match.playerBName})` : ''}
                                                 </div>
                                             )}
                                         </div>
@@ -789,5 +790,113 @@ function TournamentBracketManager({ tournament, onBack }: { tournament: ArenaTou
                 </CardContent>
             </Card>
         </div>
+    );
+}
+
+function TournamentFinalizer({ tournament, onBack }: { tournament: ArenaTournament, onBack: () => void }) {
+    const { firestore } = useFirebase();
+    const { toast } = useToast();
+    const [loading, setLoading] = useState(false);
+    
+    const [winners, setWinners] = useState({ first: '', second: '', third: '' });
+
+    const playersQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'arena_tournaments', tournament.id, 'players'), orderBy('round', 'desc'), limit(50));
+    }, [firestore, tournament.id]);
+
+    const { data: players } = useCollection<any>(playersQuery);
+
+    const handleFinalize = async () => {
+        if (!firestore || !winners.first || !winners.second || !winners.third) {
+            toast({ variant: 'destructive', title: "Incomplete Results", description: "Select the top 3 warriors before distributing prizes." });
+            return;
+        }
+
+        setLoading(true);
+        try {
+            await distributeTournamentPrizes(firestore, tournament.id, winners);
+            toast({ title: "Championship Finalized! 💰", description: "Prizes have been distributed to the winners' wallets." });
+            onBack();
+        } catch (err: any) {
+            toast({ variant: 'destructive', title: "Finalization Refused", description: err.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const platformFee = Math.floor(tournament.prizePool * 0.20);
+    const fund = tournament.prizePool - platformFee;
+
+    return (
+        <Card className="rounded-[3rem] border-none shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-w-4xl mx-auto">
+            <CardHeader className="bg-slate-900 text-white p-10">
+                <div className="flex items-center gap-3 mb-4">
+                    <div className="p-3 bg-amber-500 rounded-2xl shadow-lg shadow-amber-500/20 text-slate-950">
+                        <Trophy size={24} />
+                    </div>
+                    <div>
+                        <CardTitle className="text-2xl font-black italic uppercase">Championship Finalization</CardTitle>
+                        <CardDescription className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">National Prize Distribution Node</CardDescription>
+                    </div>
+                </div>
+            </CardHeader>
+            <CardContent className="p-10 space-y-10">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-6">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">National Prize Fund Audit</h4>
+                        <div className="p-6 bg-muted rounded-[2rem] space-y-4">
+                            <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold text-muted-foreground uppercase">Total Prize Pool</span>
+                                <span className="font-black">{tournament.prizePool} Coins</span>
+                            </div>
+                            <div className="flex justify-between items-center text-red-500">
+                                <span className="text-xs font-bold uppercase italic">Platform Fee (20%)</span>
+                                <span className="font-black">-{platformFee}</span>
+                            </div>
+                            <div className="pt-4 border-t border-dashed border-border flex justify-between items-center text-emerald-600">
+                                <span className="text-sm font-black uppercase tracking-tight">Final Prize Fund</span>
+                                <span className="text-2xl font-black">{fund}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Warrior Selection</h4>
+                        <div className="space-y-4">
+                            <div className="space-y-1">
+                                <Label className="text-[8px] font-black uppercase text-amber-600">1st Place (60%): {Math.floor(fund * 0.6)}</Label>
+                                <Select onValueChange={v => setWinners({...winners, first: v})}>
+                                    <SelectTrigger className="h-12 rounded-xl border-2 border-amber-500/20 font-bold"><SelectValue placeholder="Select Champion" /></SelectTrigger>
+                                    <SelectContent>{players?.map(p => <SelectItem key={p.id} value={p.userId}>{p.userName} (Round {p.round})</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-[8px] font-black uppercase text-slate-400">2nd Place (25%): {Math.floor(fund * 0.25)}</Label>
+                                <Select onValueChange={v => setWinners({...winners, second: v})}>
+                                    <SelectTrigger className="h-12 rounded-xl font-bold"><SelectValue placeholder="Select Runner-up" /></SelectTrigger>
+                                    <SelectContent>{players?.map(p => <SelectItem key={p.id} value={p.userId}>{p.userName} (Round {p.round})</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-[8px] font-black uppercase text-orange-400">3rd Place (15%): {Math.floor(fund * 0.15)}</Label>
+                                <Select onValueChange={v => setWinners({...winners, third: v})}>
+                                    <SelectTrigger className="h-12 rounded-xl font-bold"><SelectValue placeholder="Select 3rd Place" /></SelectTrigger>
+                                    <SelectContent>{players?.map(p => <SelectItem key={p.id} value={p.userId}>{p.userName} (Round {p.round})</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <Button 
+                    disabled={loading} 
+                    onClick={handleFinalize}
+                    className="w-full py-8 bg-slate-900 text-white rounded-[2rem] font-black text-xl shadow-2xl active:scale-95 transition-all"
+                >
+                    {loading ? <Loader2 className="animate-spin" /> : <><Coins size={24} className="mr-2"/> EXECUTE NATIONAL PAYOUT</>}
+                </Button>
+            </CardContent>
+        </Card>
     );
 }

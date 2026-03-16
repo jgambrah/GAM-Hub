@@ -6,7 +6,7 @@
  * Implements Step 2, 3, 5 & 6: Spam Prevention, Revenue Split, Paid Boosting & Tournament Entry.
  */
 
-import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp, getDoc, setDoc } from 'firebase/firestore';
+import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp, getDoc, setDoc, writeBatch } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 import type { ArenaTournament } from './types';
@@ -17,7 +17,7 @@ import type { ArenaTournament } from './types';
 export const PROMOTION_PACKAGES = {
   small: { cost: 100, target: 5000, label: 'Small: 5,000 Views' },
   medium: { cost: 300, target: 20000, label: 'Medium: 20,000 Views' },
-  large: { cost: 700, target: 50000, label: 'Large: 5,000 Views' }
+  large: { cost: 700, target: 50000, label: 'Large: 50,000 Views' }
 };
 
 /**
@@ -225,4 +225,76 @@ export async function joinTournament(
     });
 
   });
+}
+
+/**
+ * distributeTournamentPrizes (Step 6)
+ * ---------------------------------
+ * Finalizes a national competition and distributes Hub Coins rewards.
+ * Prize Fund = Total Pool - 20% Platform Commission
+ * 1st: 60% of fund
+ * 2nd: 25% of fund
+ * 3rd: 15% of fund
+ */
+export async function distributeTournamentPrizes(
+    db: Firestore, 
+    tournamentId: string,
+    winners: { first: string, second: string, third: string }
+) {
+    const tournamentRef = doc(db, 'arena_tournaments', tournamentId);
+    const historyRef = collection(db, 'wallet_transactions');
+
+    return runTransaction(db, async (transaction) => {
+        const tourneySnap = await transaction.get(tournamentRef);
+        if (!tourneySnap.exists()) throw new Error("Tournament node not found.");
+        
+        const data = tourneySnap.data() as ArenaTournament;
+        const totalPool = data.prizePool;
+        
+        // 1. Calculate Fund (80% of pool)
+        const platformFee = Math.floor(totalPool * 0.20);
+        const prizeFund = totalPool - platformFee;
+
+        // 2. Calculate Tiers
+        const firstPrize = Math.floor(prizeFund * 0.60);
+        const secondPrize = Math.floor(prizeFund * 0.25);
+        const thirdPrize = Math.floor(prizeFund * 0.15);
+
+        const payouts = [
+            { userId: winners.first, amount: firstPrize, rank: '1st' },
+            { userId: winners.second, amount: secondPrize, rank: '2nd' },
+            { userId: winners.third, amount: thirdPrize, rank: '3rd' }
+        ];
+
+        // 3. Dispatch Rewards
+        for (const p of payouts) {
+            const walletRef = doc(db, 'wallets', p.userId);
+            transaction.update(walletRef, {
+                coins: increment(p.amount),
+                updatedAt: serverTimestamp()
+            });
+
+            const txRef = doc(historyRef);
+            transaction.set(txRef, {
+                userId: p.userId,
+                type: 'gift_received',
+                coins: p.amount,
+                metadata: {
+                    tournamentId,
+                    tournamentName: data.name,
+                    rank: p.rank,
+                    isTournamentPrize: true
+                },
+                createdAt: serverTimestamp()
+            });
+        }
+
+        // 4. Update Tournament Status
+        transaction.update(tournamentRef, {
+            status: 'finished',
+            platformFeeCollected: platformFee,
+            finalWinners: winners,
+            updatedAt: serverTimestamp()
+        });
+    });
 }
