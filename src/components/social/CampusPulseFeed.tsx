@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo, useState, useEffect } from 'react';
@@ -17,14 +18,14 @@ import { generateQueryEmbedding } from '@/ai/flows/generate-query-embedding';
 import { recordBanditTrial } from '@/lib/bandit-learning';
 import { computeVibeScore } from '@/lib/vibe-scoring';
 
-// LIAISON PROTOCOL: Increase batch size to ensure all recent vibes are visible
-const BATCH_SIZE = 100;
+// LIAISON PROTOCOL: Increase batch size to ensure a wide inventory pool for the search engine
+const BATCH_SIZE = 150;
 
 /**
  * CampusPulseFeed Component
  * ------------------------
  * The main scroller orchestrator.
- * Upgraded to handle explicit tab filtering and high-capacity retrieval.
+ * Upgraded with a high-integrity Search Engine that combines Keyword Matching and Neural Discovery.
  */
 export default function CampusPulseFeed({
     activeCampusId,
@@ -57,35 +58,44 @@ export default function CampusPulseFeed({
         
         setIsLoading(true);
         const pulseRef = collection(firestore, 'campus_pulse');
+        
+        // 1. DETERMINE SEARCH CONTEXT
         const tagToFilter = activeTag || (searchQuery.startsWith('#') ? searchQuery.slice(1).toLowerCase() : null);
         
-        // 1. Build the base query with campus filtering
+        // AUTO-TAG CONVERSION: If search is a single word, prioritize tag-matching in the query
+        const isSingleWord = searchQuery.trim().split(/\s+/).length === 1 && !searchQuery.startsWith('#');
+        const potentialTag = isSingleWord ? searchQuery.trim().toLowerCase() : null;
+
+        // 2. BUILD THE BASE QUERY
         let baseQuery = pulseRef as any;
         if (activeCampusId !== 'all') {
             baseQuery = query(pulseRef, where('campusId', '==', activeCampusId));
         }
 
-        // 2. Add tag filtering if active
+        // 3. TARGETED DISCOVERY: Filter by tag if specified
         if (tagToFilter) {
             baseQuery = query(baseQuery, where('tags', 'array-contains', tagToFilter));
+        } else if (potentialTag) {
+            // Try to find items with this tag first for high relevance
+            baseQuery = query(baseQuery, where('tags', 'array-contains', potentialTag));
         }
 
-        // 3. TAB FILTERING: Ensure the query matches the user's discovery intent
+        // 4. TAB FILTERING: Filter by media type if vlog or shoppable tabs are selected
         if (tab === 'vlogs' || tab === 'shoppable') {
-            // Priority: Surface all video types first
             baseQuery = query(baseQuery, where('mediaType', 'in', ['video', 'native', 'youtube', 'tiktok']));
         }
 
-        // 4. Final Ordering and Limits (Expanded for high visibility)
         const finalQuery = query(baseQuery, orderBy('createdAt', 'desc'), limit(BATCH_SIZE));
 
-        // 🧠 SEMANTIC AI: Generate query vector for search if needed
+        // 🧠 SEMANTIC AI: Generate query vector for neural search ranking
         if (searchQuery.trim() && !searchQuery.startsWith('#')) {
             setIsEmbedding(true);
             generateQueryEmbedding(searchQuery).then(vector => {
                 setQueryVector(vector);
                 setIsEmbedding(false);
-            });
+            }).catch(() => setIsEmbedding(false));
+        } else {
+            setQueryVector(null);
         }
 
         // 📡 LIVE HANDSHAKE: onSnapshot for instant updates
@@ -115,17 +125,26 @@ export default function CampusPulseFeed({
 
     const handleRefresh = () => {
         setIsRefreshing(true);
-        // onSnapshot handles live updates automatically, this just triggers local visual reset if needed
     };
 
+    // 🔍 INTEGRATED SEARCH RANKING & FILTERING
     const filteredPosts = useMemo(() => {
         if (!posts || posts.length === 0) return [];
 
-        // 🎰 STAGE 1: NEURAL RANKING
-        // We calculate scores but preserve the total set to ensure nothing is missing
-        return posts
-            .map(p => ({ 
+        // STAGE 1: Scoring and Keyword Mapping
+        const scored = posts.map(p => {
+            let isTextMatch = false;
+            if (searchQuery.trim() && !searchQuery.startsWith('#')) {
+                const term = searchQuery.toLowerCase().trim();
+                isTextMatch = 
+                    p.content?.toLowerCase().includes(term) || 
+                    p.authorName?.toLowerCase().includes(term) ||
+                    p.tags?.some(t => t.toLowerCase().includes(term));
+            }
+
+            return { 
                 ...p, 
+                isTextMatch,
                 pScore: computeVibeScore(p, {
                     queryVector,
                     userIntelligence: sessionProfile,
@@ -133,14 +152,24 @@ export default function CampusPulseFeed({
                     activeMood: 'all',
                     getPersonalScore
                 }) 
-            }))
-            .sort((a, b) => b.pScore - a.pScore);
-    }, [posts, queryVector, globalTrends, getPersonalScore, sessionProfile]);
+            };
+        });
+
+        // STAGE 2: If searching, apply the "Hard Filter" to ensure relevance
+        if (searchQuery.trim() && !searchQuery.startsWith('#')) {
+            return scored
+                .filter(r => r.isTextMatch || (queryVector && r.pScore > 25))
+                .sort((a, b) => b.pScore - a.pScore);
+        }
+
+        // DEFAULT: Sort by AI Personalization score
+        return scored.sort((a, b) => b.pScore - a.pScore);
+    }, [posts, queryVector, globalTrends, getPersonalScore, sessionProfile, searchQuery]);
 
     return (
         <div className="space-y-8 pb-20">
             {searchQuery && !activeTag && (
-                <div className="flex items-center justify-between px-4">
+                <div className="flex items-center justify-between px-4 animate-in fade-in slide-in-from-left-4">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl shadow-sm">
                             <SearchIcon size={18} />
@@ -151,10 +180,15 @@ export default function CampusPulseFeed({
                             </h3>
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                                 <Zap size={10} className="text-indigo-500 fill-indigo-500" /> 
-                                {queryVector ? 'Semantic AI Match Active' : 'Keyword Matrix Pool'}
+                                {queryVector ? 'Semantic AI Match Active' : 'Keyword Matrix Search'}
                             </p>
                         </div>
                     </div>
+                    {filteredPosts.length > 0 && (
+                        <div className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">
+                            {filteredPosts.length} matches found
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -191,6 +225,12 @@ export default function CampusPulseFeed({
                     <Skeleton className="h-[500px] rounded-[3rem]" />
                     <Skeleton className="h-[500px] rounded-[3rem]" />
                     <Skeleton className="h-[500px] rounded-[3rem]" />
+                </div>
+            ) : filteredPosts.length === 0 && searchQuery ? (
+                <div className="py-24 text-center space-y-4 bg-white/20 rounded-[3rem] border-4 border-dashed border-muted-foreground/10 mx-2 animate-in zoom-in duration-500">
+                    <SearchIcon className="mx-auto h-16 w-16 text-slate-300" />
+                    <h3 className="text-xl font-black text-slate-400 uppercase tracking-widest">No matching vibes</h3>
+                    <p className="text-sm text-slate-500 italic max-w-xs mx-auto">Try searching for broader keywords like "food," "exam," or "hostel."</p>
                 </div>
             ) : (
                 <VibeFeed 

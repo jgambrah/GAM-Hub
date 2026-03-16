@@ -6,7 +6,7 @@ import { cosineSimilarity } from './utils';
  * computeVibeScore
  * ----------------
  * Professional ranking algorithm combining Personalization, Trends, and Neural Similarity.
- * Now expanded with Step 5: Paid Highlight Promotion Prioritization.
+ * Now overhauled to provide high-impact results for Search Discovery.
  */
 export function computeVibeScore(
   candidate: SocialPost,
@@ -22,39 +22,35 @@ export function computeVibeScore(
   let score = 0;
   const { currentPost, queryVector, userIntelligence, globalTrendScores, getPersonalScore } = context;
 
-  // 1. 🚀 STEP 5: PAID PROMOTION BOOST (Highest Priority)
+  // 1. 🧠 SEARCH INTELLIGENCE (Primary Override)
+  // If a neural vector from a search query is present, it becomes the dominant ranking factor.
+  if (queryVector && candidate.embedding) {
+    const similarity = cosineSimilarity(queryVector, candidate.embedding);
+    // Exponential boost for high-similarity neural matches
+    if (similarity > 0.6) {
+      score += Math.pow(similarity, 2) * 200; 
+    }
+  }
+
+  // 2. 🚀 PAID PROMOTION BOOST
   // If a creator has paid to boost, they jump the queue.
   if (candidate.isPromoted && candidate.promotionViewsTarget) {
       const delivered = candidate.promotionViewsDelivered || 0;
       const target = candidate.promotionViewsTarget;
       
-      // Only boost if target hasn't been met
       if (delivered < target) {
           const tier = candidate.promotionLevel || 'small';
-          // Massive bonuses to ensure promoted content surfaces instantly
           const tierBonus = tier === 'large' ? 1000 : tier === 'medium' ? 600 : 300;
           
-          // Apply a "Urgency Multiplier" - stronger boost if we are far from target
           const progress = delivered / target;
           const urgencyMultiplier = progress < 0.5 ? 1.5 : 1.0;
           
           score += tierBonus * urgencyMultiplier;
-
-          // 🏆 LIAISON PROTOCOL: 4x Multiplier for Paid Visibility
-          // This ensures boosted content significantly outranks even the strongest organic vibes.
-          score *= 4;
+          score *= 4; // LIAISON PROTOCOL: 4x Multiplier for Paid Visibility
       }
   }
 
-  // 2. 🧠 NEURAL SEARCH: Match search query vector to post embedding (Primary discovery)
-  if (queryVector && candidate.embedding) {
-    const similarity = cosineSimilarity(queryVector, candidate.embedding);
-    if (similarity > 0.7) {
-      score += similarity * 100; // Strongest signal for active search
-    }
-  }
-
-  // 3. 🔗 SEMANTIC SIMILARITY: Find "Related Videos" (Autoplay logic)
+  // 3. 🔗 SEMANTIC CONTINUITY: Find "Related Videos" (Autoplay logic)
   if (currentPost?.embedding && candidate.embedding) {
     const similarity = cosineSimilarity(currentPost.embedding, candidate.embedding);
     if (similarity > 0.8) {
