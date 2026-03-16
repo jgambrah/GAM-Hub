@@ -110,6 +110,15 @@ export type ArenaSponsor = {
   createdAt: any;
 };
 
+export type ArenaPricingTier = {
+  id: string;
+  label: string;
+  price: string;
+  description: string;
+  iconType: 'target' | 'trending' | 'crown';
+  order: number;
+};
+
 export type ArenaGift = {
   id: string;
   senderId: string;

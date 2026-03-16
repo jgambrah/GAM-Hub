@@ -1,7 +1,8 @@
+
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, useDoc } from '@/firebase';
 import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
@@ -14,14 +15,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import type { ArenaSponsor, ArenaBattle } from '@/lib/types';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { ArenaSponsor, ArenaBattle, ArenaPricingTier } from '@/lib/types';
 import Image from 'next/image';
 
 /**
  * SponsoredBattleManager Component
  * ------------------------------
  * Official tool for the National Liaison to manage brand partnerships.
- * Now includes Commercial Pricing Intelligence guide.
+ * Now expanded with Live Commercial Intelligence and Dynamic Pricing.
  */
 export default function SponsoredBattleManager() {
   const { firestore, storage, auth } = useFirebase();
@@ -43,13 +45,29 @@ export default function SponsoredBattleManager() {
 
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Fetch existing sponsors
+  // 1. LIVE DATA SYNC: Fetch National Revenue & Pricing Tiers
+  const statsRef = useMemoFirebase(() => firestore ? doc(firestore, 'platform_stats', 'revenue') : null, [firestore]);
+  const { data: revenueData } = useDoc(statsRef);
+
+  const pricingQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'arena_pricing'), orderBy('order', 'asc')) : null, [firestore]);
+  const { data: pricingTiers, isLoading: isLoadingPricing } = useCollection<ArenaPricingTier>(pricingQuery);
+
+  // 2. Fetch existing sponsors
   const sponsorsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     return query(collection(firestore, 'arena_sponsors'), orderBy('createdAt', 'desc'));
   }, [firestore]);
 
   const { data: sponsors, isLoading: isLoadingSponsors } = useCollection<ArenaSponsor>(sponsorsQuery);
+
+  const getPricingIcon = (type: string) => {
+    switch(type) {
+      case 'target': return Target;
+      case 'trending': return TrendingUp;
+      case 'crown': return Crown;
+      default: return Zap;
+    }
+  }
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -108,7 +126,7 @@ export default function SponsoredBattleManager() {
         participants: [auth.currentUser.uid],
         opponentA: {
             userId: auth.currentUser.uid,
-            videoUrl: '', // Host video placeholder
+            videoUrl: '', 
             votes: 0
         },
         opponentB: null,
@@ -123,7 +141,7 @@ export default function SponsoredBattleManager() {
         votes: { [auth.currentUser.uid]: 0 },
         viewerCount: 0,
         createdAt: serverTimestamp(),
-        endsAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() // 24 hour duration for sponsored events
+        endsAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() 
       };
 
       await addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
@@ -255,7 +273,7 @@ export default function SponsoredBattleManager() {
       {view === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* 💰 COMMERCIAL PRICING GUIDE */}
+          {/* 💰 LIVE COMMERCIAL INTELLIGENCE */}
           <div className="lg:col-span-1 space-y-6">
             <Card className="rounded-[3rem] border-2 border-primary/10 shadow-lg overflow-hidden h-fit">
                 <CardHeader className="bg-primary/5 p-8 border-b">
@@ -270,24 +288,34 @@ export default function SponsoredBattleManager() {
                     </div>
                 </CardHeader>
                 <CardContent className="p-8 space-y-6">
-                    {[
-                        { label: 'Battle Placement', price: 'GHS 3,000+', icon: Target, desc: 'Single live showdown branding.' },
-                        { label: 'Weekly Tournament', price: 'GHS 15,000+', icon: TrendingUp, desc: 'Full week of sponsored wars.' },
-                        { label: 'Yard Championship', price: 'GHS 75,000+', icon: Crown, desc: 'Exclusive National TV rights.' }
-                    ].map((tier) => (
-                        <div key={tier.label} className="p-4 bg-muted/30 rounded-2xl border border-transparent hover:border-primary/10 transition-all group">
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="text-xs font-black uppercase text-foreground flex items-center gap-2">
-                                    <tier.icon size={12} className="text-primary" /> {tier.label}
-                                </span>
-                                <span className="text-sm font-black text-primary group-hover:scale-110 transition-transform">{tier.price}</span>
-                            </div>
-                            <p className="text-[10px] text-muted-foreground italic">{tier.desc}</p>
+                    {isLoadingPricing ? (
+                        <div className="space-y-4">
+                            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 w-full rounded-2xl" />)}
                         </div>
-                    ))}
+                    ) : pricingTiers && pricingTiers.length > 0 ? (
+                        pricingTiers.map((tier) => {
+                            const TierIcon = getPricingIcon(tier.iconType);
+                            return (
+                                <div key={tier.id} className="p-4 bg-muted/30 rounded-2xl border border-transparent hover:border-primary/10 transition-all group">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-xs font-black uppercase text-foreground flex items-center gap-2">
+                                            <TierIcon size={12} className="text-primary" /> {tier.label}
+                                        </span>
+                                        <span className="text-sm font-black text-primary group-hover:scale-110 transition-transform">{tier.price}</span>
+                                    </div>
+                                    <p className="text-[10px] text-muted-foreground italic">{tier.description}</p>
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <p className="text-[10px] text-muted-foreground text-center py-4 italic">No pricing tiers defined.</p>
+                    )}
+
                     <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-inner text-center">
                         <p className="text-[9px] font-black uppercase tracking-[0.3em] opacity-60 mb-1">Total Hub Revenue</p>
-                        <p className="text-xl font-black">GHS 124,500.00</p>
+                        <p className="text-xl font-black">
+                            GHS {(revenueData?.total_fees_collected || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </p>
                     </div>
                 </CardContent>
             </Card>
