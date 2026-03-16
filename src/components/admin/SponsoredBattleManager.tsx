@@ -45,6 +45,7 @@ export default function SponsoredBattleManager() {
   // --- TOURNAMENT STATE ---
   const [tournamentForm, setTournamentForm] = useState({
       name: '',
+      category: 'weekly' as 'weekly' | 'monthly' | 'special',
       entryFee: '200',
       maxPlayers: '64'
   });
@@ -211,6 +212,7 @@ export default function SponsoredBattleManager() {
       try {
           const tData = {
               name: tournamentForm.name,
+              category: tournamentForm.category,
               entryFeeCoins: parseInt(tournamentForm.entryFee),
               maxPlayers: parseInt(tournamentForm.maxPlayers),
               currentPlayers: 0,
@@ -220,9 +222,9 @@ export default function SponsoredBattleManager() {
               updatedAt: serverTimestamp()
           };
           await addDocumentNonBlocking(collection(firestore, 'arena_tournaments'), tData);
-          toast({ title: "Tournament Announced!", description: "Enlistment is now open for all citizens." });
+          toast({ title: "Tournament Announced!", description: `${tournamentForm.category.toUpperCase()} enlistment is now open.` });
           setView('overview');
-          setTournamentForm({ name: '', entryFee: '200', maxPlayers: '64' });
+          setTournamentForm({ name: '', category: 'weekly', entryFee: '200', maxPlayers: '64' });
       } catch (err) {
           toast({ variant: 'destructive', title: "Deployment Failed" });
       } finally {
@@ -339,7 +341,20 @@ export default function SponsoredBattleManager() {
                 <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Tournament Name</Label>
                 <Input required value={tournamentForm.name} onChange={e => setTournamentForm({...tournamentForm, name: e.target.value})} placeholder="e.g. National Campus Roast Championship" className="h-14 rounded-2xl border-none bg-muted font-bold text-lg shadow-inner" />
               </div>
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Recurrence</Label>
+                    <Select value={tournamentForm.category} onValueChange={(v: any) => setTournamentForm({...tournamentForm, category: v})}>
+                        <SelectTrigger className="h-14 rounded-2xl border-none bg-muted font-black shadow-inner">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                            <SelectItem value="weekly">Weekly Cycle</SelectItem>
+                            <SelectItem value="monthly">Monthly Arena</SelectItem>
+                            <SelectItem value="special">Special Event</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
                 <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Entry Fee (Hub Coins)</Label>
                     <Input required type="number" value={tournamentForm.entryFee} onChange={e => setTournamentForm({...tournamentForm, entryFee: e.target.value})} className="h-14 rounded-2xl border-none bg-muted font-black text-lg shadow-inner" />
@@ -583,7 +598,10 @@ export default function SponsoredBattleManager() {
                     tournaments.map(t => (
                         <div key={t.id} className="p-6 flex items-center justify-between hover:bg-muted/30 transition-all">
                             <div onClick={() => { setSelectedTournament(t); setView('manage_brackets'); }} className="cursor-pointer group flex-1">
-                                <p className="font-black text-foreground group-hover:text-indigo-600 transition-colors">{t.name}</p>
+                                <div className="flex items-center gap-2">
+                                    <p className="font-black text-foreground group-hover:text-indigo-600 transition-colors">{t.name}</p>
+                                    <Badge variant="outline" className="text-[7px] font-black uppercase px-1.5 py-0">{t.category}</Badge>
+                                </div>
                                 <div className="flex items-center gap-3 mt-1">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase">{t.status}</span>
                                     <span className="flex items-center gap-1 text-[10px] font-black text-indigo-600 uppercase"><Users size={10}/> {t.currentPlayers}/{t.maxPlayers}</span>

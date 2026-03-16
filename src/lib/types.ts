@@ -57,6 +57,7 @@ export type WalletTransaction = {
 export type ArenaTournament = {
   id: string;
   name: string;
+  category?: 'weekly' | 'monthly' | 'special';
   entryFeeCoins: number;
   maxPlayers: number;
   currentPlayers: number;

@@ -7,14 +7,14 @@
  * National Hub stage for structured Arena competitions.
  * Features real-time registration tracking and prize pool scaling.
  * 
- * Optimized for Step 6: Entry Fees & Brackets.
+ * Optimized for Step 6: Recurring Weekly/Monthly Cycles.
  */
 
 import React, { useState } from 'react';
 import { useFirebase, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import type { ArenaTournament } from '@/lib/types';
-import { Trophy, Users, Zap, Coins, ChevronRight, Loader2, Star, ShieldCheck, Flame, ListTree } from 'lucide-react';
+import { Trophy, Users, Zap, Coins, ChevronRight, Loader2, Star, ShieldCheck, Flame, ListTree, Calendar } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { JoinTournamentDialog } from './JoinTournamentDialog';
@@ -63,7 +63,7 @@ export function TournamentSection() {
           </div>
         </div>
         <div className="bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200/50 flex items-center gap-2">
-          <Flame size={12} className="text-red-500" fill="currentColor" /> Season 1
+          <Flame size={12} className="text-red-500" fill="currentColor" /> National Series
         </div>
       </div>
 
@@ -81,6 +81,12 @@ function TournamentCard({ tourney }: { tourney: ArenaTournament }) {
   const isRegistration = tourney.status === 'registration';
   const progress = (tourney.currentPlayers / tourney.maxPlayers) * 100;
 
+  const getCategoryColor = (cat?: string) => {
+      if (cat === 'monthly') return 'bg-purple-600 text-white';
+      if (cat === 'weekly') return 'bg-blue-600 text-white';
+      return 'bg-amber-500 text-slate-950';
+  };
+
   return (
     <div className={cn(
         "bg-slate-950 rounded-[3.5rem] p-10 text-white relative overflow-hidden group border-4 border-slate-900 transition-all hover:shadow-[0_0_80px_rgba(245,158,11,0.15)]",
@@ -94,19 +100,22 @@ function TournamentCard({ tourney }: { tourney: ArenaTournament }) {
       <div className="relative z-10 h-full flex flex-col">
         <div className="flex justify-between items-start mb-10">
           <div>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-3">
                 <div className={cn("w-2 h-2 rounded-full", isRegistration ? "bg-amber-500 animate-pulse" : "bg-red-600 animate-ping")} />
                 <span className={cn("text-[10px] font-black uppercase tracking-[0.3em]", isRegistration ? "text-amber-400" : "text-red-500")}>
                     {isRegistration ? "Registration Open" : "War in Progress"}
                 </span>
+                <Badge className={cn("text-[8px] font-black uppercase tracking-widest border-none px-2", getCategoryColor(tourney.category))}>
+                    {tourney.category || 'Special'}
+                </Badge>
             </div>
-            <h3 className="text-3xl font-black italic tracking-tighter uppercase leading-tight">
+            <h3 className="text-3xl font-black italic tracking-tighter uppercase leading-tight group-hover:text-amber-400 transition-colors">
                 {tourney.name}
             </h3>
           </div>
           
           <div className="flex flex-col gap-2">
-            <div className="bg-white/5 border border-white/10 p-4 rounded-3xl text-center">
+            <div className="bg-white/5 border border-white/10 p-4 rounded-3xl text-center shadow-inner">
                 <div className="flex items-center gap-2 justify-center text-amber-500 mb-1">
                     <Zap size={14} fill="currentColor" />
                     <span className="text-[8px] font-black uppercase tracking-widest">Prize Pool</span>
@@ -127,14 +136,14 @@ function TournamentCard({ tourney }: { tourney: ArenaTournament }) {
         {view === 'info' ? (
             <div className="flex-1 animate-in fade-in duration-500">
                 <div className="grid grid-cols-2 gap-6 mb-10">
-                    <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5 text-center flex flex-col justify-center">
+                    <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5 text-center flex flex-col justify-center shadow-inner">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Battle Entry</p>
                         <div className="flex items-center justify-center gap-2">
                             <Coins size={16} className="text-amber-500" />
                             <span className="text-xl font-black">{tourney.entryFeeCoins}</span>
                         </div>
                     </div>
-                    <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5 text-center flex flex-col justify-center">
+                    <div className="p-6 bg-white/5 rounded-[2.5rem] border border-white/5 text-center flex flex-col justify-center shadow-inner">
                         <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Army Size</p>
                         <div className="flex items-center justify-center gap-2">
                             <Users size={16} className="text-blue-400" />
@@ -146,12 +155,15 @@ function TournamentCard({ tourney }: { tourney: ArenaTournament }) {
                 {/* REGISTRATION PROGRESS BAR */}
                 <div className="mb-10">
                     <div className="flex justify-between items-end mb-2 px-2">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Enlistment Progress</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Enlistment Progress</span>
+                            <span className="text-[8px] font-bold text-slate-600">({tourney.currentPlayers} joined)</span>
+                        </div>
                         <span className="text-xs font-black text-amber-500">{Math.round(progress)}%</span>
                     </div>
                     <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/10 shadow-inner">
                         <div 
-                            className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-1000 ease-out"
+                            className="h-full bg-gradient-to-r from-amber-600 to-amber-400 rounded-full transition-all duration-1000 ease-out shadow-[0_0_15px_rgba(245,158,11,0.3)]"
                             style={{ width: `${progress}%` }}
                         />
                     </div>
@@ -161,7 +173,7 @@ function TournamentCard({ tourney }: { tourney: ArenaTournament }) {
                     {isRegistration ? (
                         <JoinTournamentDialog tournament={tourney}>
                             <button className="w-full bg-white text-slate-950 py-5 rounded-[2rem] font-black text-xs uppercase tracking-[0.3em] shadow-xl hover:bg-amber-400 transition-all active:scale-95 flex items-center justify-center gap-2">
-                                Join Tournament <ChevronRight size={16} />
+                                JOIN TOURNAMENT <ChevronRight size={16} />
                             </button>
                         </JoinTournamentDialog>
                     ) : (
