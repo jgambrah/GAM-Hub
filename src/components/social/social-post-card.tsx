@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -7,12 +8,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music, TrendingUp, BarChart3
+  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music, TrendingUp, BarChart3,
+  UserPlus, CheckCircle2
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import { useFirebase } from '@/firebase';
+import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
 import {
-  doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp,
+  doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp, arrayUnion,
 } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import CommentSection from './CommentSection';
@@ -32,12 +34,20 @@ import { renderWithHashtags } from '@/lib/hashtag-utils';
 import VibeShopOverlay from './VibeShopOverlay';
 import VoicePlayer from './VoicePlayer';
 import { BoostVibeDialog } from '../arena/BoostVibeDialog';
+import { HighlightAnalyticsDialog } from '../arena/HighlightAnalyticsDialog';
 import dynamic from 'next/dynamic';
 
 const TikTokEmbed = dynamic(() => import('./tiktok-embed').then(mod => mod.TikTokEmbed), {
   ssr: false,
   loading: () => <div className="h-[500px] w-[325px] bg-muted animate-pulse rounded-lg mx-auto" />
 });
+
+const getYouTubeId = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+}
 
 function MediaTypeIcon({ mediaType, size = 10 }: { mediaType: SocialPost['mediaType']; size?: number }) {
   if (mediaType === 'youtube') return <Youtube size={size} className="text-red-500" />;
@@ -65,6 +75,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
   const [showBoostDialog, setShowBoostDialog] = React.useState(false);
+  const [showAnalytics, setShowAnalytics] = React.useState(false);
   
   const [isSkippingRestricted, setIsSkippingRestricted] = React.useState(false);
   const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
@@ -89,13 +100,16 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
 
+  const isFollowing = user?.followedUsers?.includes(post.authorId) || false;
+  const [isProcessingFollow, setIsProcessingFollow] = React.useState(false);
+
   const videoSource = post.hlsUrl || post.mediaUrl;
 
   React.useEffect(() => {
     addToQueue([post]);
   }, [post.id, addToQueue]);
 
-  // 🚀 PROMOTION TRACKING PROTOCOL
+  // 🚀 PROMOTION TRACKING PROTOCOL (STEP 5)
   React.useEffect(() => {
     if (!post.isPromoted || hasTrackedPromotionImpression.current || !firestore || isAuthor) return;
 
@@ -105,6 +119,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           hasTrackedPromotionImpression.current = true;
           
           const postRef = doc(firestore, 'campus_pulse', post.id);
+          const statsRef = doc(firestore, 'highlight_stats', post.id);
+          
           const delivered = (post.promotionViewsDelivered || 0) + 1;
           const target = post.promotionViewsTarget || 0;
           
@@ -112,12 +128,18 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             promotionViewsDelivered: increment(1)
           };
           
-          // Auto-Stop: Set isPromoted to false when target is met
+          // Auto-Stop Protocol
           if (delivered >= target && target > 0) {
             updates.isPromoted = false;
           }
           
           updateDoc(postRef, updates).catch(e => console.warn("Liaison Analytics: Promo track drifted.", e));
+          
+          // Sync to persistent analytics node
+          setDoc(statsRef, {
+              views: increment(1),
+              updatedAt: serverTimestamp()
+          }, { merge: true }).catch(() => {});
         }
       },
       { threshold: 0.5 }
@@ -222,6 +244,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     setIsProcessingLike(true);
     const likeRef = doc(firestore, 'campus_pulse', post.id, 'likedBy', user.id);
     const postRef = doc(firestore, 'campus_pulse', post.id);
+    const statsRef = doc(firestore, 'highlight_stats', post.id);
+
     try {
       if (isLiked) {
         await deleteDoc(likeRef);
@@ -236,6 +260,11 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         setIsLiked(true);
         recordLike(post);
         recordEngagement(firestore, post.id, 'like', post.authorId, post.createdAt);
+        
+        // 🚀 Promotion Analytics Sync
+        if (post.isPromoted) {
+            setDoc(statsRef, { likes: increment(1), updatedAt: serverTimestamp() }, { merge: true });
+        }
       }
     } catch (error) { console.error(error); }
     finally { setIsProcessingLike(false); }
@@ -245,6 +274,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     if (!firestore) return;
     recordEngagement(firestore, post.id, 'share', post.authorId, post.createdAt);
     
+    // 🚀 Promotion Analytics Sync
+    if (post.isPromoted) {
+        const statsRef = doc(firestore, 'highlight_stats', post.id);
+        setDoc(statsRef, { shares: increment(1), updatedAt: serverTimestamp() }, { merge: true });
+    }
+
     const shareData = {
         title: 'Check this out on GAM Hub',
         text: post.content,
@@ -259,6 +294,34 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         await navigator.clipboard.writeText(shareData.url);
         toast({ title: "Link Copied!" });
     } catch { toast({ variant: 'destructive', title: "Share Failed" }); }
+  };
+
+  const handleFollow = async () => {
+    if (!user || !firestore || isProcessingFollow || isAuthor) return;
+    setIsProcessingFollow(true);
+    
+    const userRef = doc(firestore, 'users', user.id);
+    const statsRef = doc(firestore, 'highlight_stats', post.id);
+
+    try {
+        if (isFollowing) {
+            await updateDoc(userRef, { followedUsers: arrayRemove(post.authorId) });
+            toast({ title: "Unfollowed Creator" });
+        } else {
+            await updateDoc(userRef, { followedUsers: arrayUnion(post.authorId) });
+            
+            // 🚀 Growth Loop Analytics: Attribute follow to THIS highlight if promoted
+            if (post.isPromoted) {
+                setDoc(statsRef, { followersGained: increment(1), updatedAt: serverTimestamp() }, { merge: true });
+            }
+            
+            toast({ title: `Now Following ${post.authorName}! 🤝` });
+        }
+    } catch (e) {
+        toast({ variant: 'destructive', title: "Follow Failed" });
+    } finally {
+        setIsProcessingFollow(false);
+    }
   };
 
   const handleDeletePost = async (e: React.MouseEvent) => {
@@ -303,13 +366,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         }
     }
   }, [isContinuous]);
-
-  const getYouTubeId = (url: string) => {
-    if (!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return match && match[2].length === 11 ? match[2] : null;
-  };
 
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
   const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
@@ -485,10 +541,24 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <AvatarImage src={post.authorAvatarUrl} />
               <AvatarFallback className="font-black text-indigo-600">{post.authorName?.charAt(0)}</AvatarFallback>
             </Avatar>
-            <div>
-              <p className={cn('font-black text-foreground transition-all duration-300', isActiveVibe ? 'text-lg' : 'text-base')}>
-                {post.authorName}
-              </p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className={cn('font-black text-foreground transition-all duration-300 truncate', isActiveVibe ? 'text-lg' : 'text-base')}>
+                    {post.authorName}
+                </p>
+                {!isAuthor && !isProcessingFollow && (
+                    <button 
+                        onClick={handleFollow}
+                        className={cn(
+                            "px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all active:scale-95 border",
+                            isFollowing ? "bg-slate-100 text-slate-500 border-slate-200" : "bg-blue-600 text-white border-blue-600 shadow-md"
+                        )}
+                    >
+                        {isFollowing ? 'Following' : 'Follow'}
+                    </button>
+                )}
+                {isProcessingFollow && <Loader2 className="animate-spin text-slate-300" size={10} />}
+              </div>
               <div className="flex items-center gap-2">
                 <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{post.campusAcronym}</p>
                 <span className="flex items-center gap-1.5 text-[9px] font-black text-slate-400 uppercase tracking-tighter">
@@ -497,6 +567,17 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 </span>
               </div>
             </div>
+            
+            {/* 🚀 STEP 5: CREATOR ROI QUICK-ACCESS */}
+            {isAuthor && post.isPromoted && (
+                <button 
+                    onClick={() => setShowAnalytics(true)}
+                    className="p-3 bg-blue-600 text-white rounded-2xl shadow-xl hover:scale-110 active:scale-95 transition-all flex items-center gap-2 pr-4"
+                >
+                    <BarChart3 size={18} />
+                    <span className="text-[9px] font-black uppercase tracking-widest">Analytics</span>
+                </button>
+            )}
           </div>
 
           <div className={cn('font-bold leading-snug text-foreground transition-all duration-300', isActiveVibe ? 'text-2xl md:text-3xl tracking-tight' : 'text-xl tracking-tight')}>
@@ -508,7 +589,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               <div className="mt-8 p-6 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] border-2 border-blue-100 dark:border-blue-800 animate-in slide-in-from-bottom-2 duration-500">
                   <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center gap-2">
-                          <BarChart3 size={16} className="text-blue-600" />
+                          <TrendingUp size={16} className="text-blue-600" />
                           <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Promotion Signal</span>
                       </div>
                       <span className="text-[10px] font-bold text-slate-500 uppercase">{Math.round(promotionProgress)}% Delivered</span>
@@ -586,6 +667,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
       {showBoostDialog && (
           <BoostVibeDialog post={post} isOpen={showBoostDialog} onClose={() => setShowBoostDialog(false)} />
+      )}
+
+      {showAnalytics && (
+          <HighlightAnalyticsDialog post={post} isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} />
       )}
     </div>
   );

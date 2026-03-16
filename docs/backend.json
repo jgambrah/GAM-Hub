@@ -69,9 +69,21 @@
       "description": "A vibration shared in the Yard or an Arena highlight.",
       "properties": {
         "isPromoted": { "type": "boolean", "description": "Flag for paid highlight boosting." },
-        "promotionLevel": { "type": "string", "enum": ["none", "starter", "viral", "legendary"] },
+        "promotionLevel": { "type": "string", "enum": ["none", "small", "medium", "large"] },
         "promotionViewsTarget": { "type": "number" },
         "promotionViewsDelivered": { "type": "number" }
+      }
+    },
+    "HighlightStats": {
+      "title": "HighlightStats",
+      "type": "object",
+      "description": "Granular engagement metrics for a promoted highlight.",
+      "properties": {
+        "views": { "type": "number" },
+        "likes": { "type": "number" },
+        "shares": { "type": "number" },
+        "followersGained": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       }
     }
   },
@@ -84,6 +96,7 @@
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/sponsor_stats/{battleId}": { "schema": "#/backend/entities/SponsorStats", "description": "ROI metrics for brand partners." },
-    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts and promoted highlights." }
+    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts and promoted highlights." },
+    "/highlight_stats/{highlightId}": { "schema": "#/backend/entities/HighlightStats", "description": "Detailed ROI analytics for promoted vibrations." }
   }
 }

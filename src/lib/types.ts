@@ -15,6 +15,7 @@ export type User = {
   visibility?: 'public' | 'private';
   fcmToken?: string;
   followedVendors?: string[];
+  followedUsers?: string[];
   onboardingStatus?: 'needs_submission' | 'pending_review' | 'approved';
   vendorCategory?: string;
   contactPhone?: string;
@@ -60,6 +61,15 @@ export type SponsorStats = {
   votes: number;
   gifts: number;
   shares: number;
+  updatedAt: any;
+};
+
+export type HighlightStats = {
+  id: string;
+  views: number;
+  likes: number;
+  shares: number;
+  followersGained: number;
   updatedAt: any;
 };
 
@@ -184,7 +194,7 @@ export type SocialPost = {
   };
   // Step 5: Promotion Fields
   isPromoted?: boolean;
-  promotionLevel?: 'none' | 'starter' | 'viral' | 'legendary';
+  promotionLevel?: 'none' | 'small' | 'medium' | 'large';
   promotionViewsTarget?: number;
   promotionViewsDelivered?: number;
 };
