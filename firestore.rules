@@ -111,6 +111,22 @@ service cloud.firestore {
       }
     }
 
+    // 🏆 ARENA TOURNAMENTS
+    match /arena_tournaments/{tournamentId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin();
+      // Allow updates for registration increments (transactional)
+      allow update: if isAdmin() || (
+        isSignedIn() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPlayers', 'prizePool', 'updatedAt'])
+      );
+
+      match /participants/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
     match /campus_wars/{warId} {
       allow read: if isSignedIn();
       allow create: if isAdmin() || (isSignedIn() && request.auth.token.role == 'src');
