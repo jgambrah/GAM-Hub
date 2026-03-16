@@ -39,7 +39,7 @@
         "lead_credits": { "type": "number" },
         "isVerified": { "type": "boolean" },
         "idVerificationStatus": { "type": "string", "enum": ["unverified", "pending", "approved"] },
-        "subscribedCreators": { "type": "array", "items": { "type": "string" }, "description": "Cached list of active creator subscriptions for the user." }
+        "subscribedCreators": { "type": "array", "items": { "type": "string" } }
       },
       "required": ["id", "email", "role"]
     },
@@ -61,7 +61,7 @@
       "properties": {
         "votesToday": { "type": "number" },
         "giftsSent": { "type": "number" },
-        "watchTime": { "type": "number", "description": "Engagement time in seconds." },
+        "watchTime": { "type": "number" },
         "isBlocked": { "type": "boolean" },
         "lastUpdated": { "type": "string", "format": "date-time" }
       }
@@ -78,95 +78,19 @@
         "timestamp": { "type": "string", "format": "date-time" }
       }
     },
-    "HubWallet": {
-      "title": "HubWallet",
+    "ContentReport": {
+      "title": "ContentReport",
       "type": "object",
-      "description": "The monetization node for individual users to participate in Arena economy.",
+      "description": "User-submitted report for content moderation.",
       "properties": {
-        "coins": { "type": "number" },
-        "totalPurchased": { "type": "number" },
-        "totalSpent": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "CreatorWallet": {
-      "title": "CreatorWallet",
-      "type": "object",
-      "description": "Vault for earned coins from battles and gifts.",
-      "properties": {
-        "earnedCoins": { "type": "number" },
-        "totalEarned": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "CreatorSettings": {
-      "title": "CreatorSettings",
-      "type": "object",
-      "description": "Commercial governance for individual creators.",
-      "properties": {
-        "subscriptionsEnabled": { "type": "boolean" },
-        "subscriptionPrice": { "type": "number", "enum": [2, 3, 5] },
-        "subscriberCount": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "CreatorAnalytics": {
-      "title": "CreatorAnalytics",
-      "type": "object",
-      "description": "Business intelligence for creators to track subscription ROI.",
-      "properties": {
-        "activeSubscribers": { "type": "number" },
-        "monthlyIncomeGHS": { "type": "number" },
-        "totalNetEarningsGHS": { "type": "number" },
-        "newSubscribersLast30": { "type": "number" },
-        "updatedAt": { "type": "string", "format": "date-time" }
-      }
-    },
-    "CreatorSubscription": {
-      "title": "CreatorSubscription",
-      "type": "object",
-      "description": "Monthly recurring support from a fan to a creator (Billing Record).",
-      "properties": {
-        "creatorId": { "type": "string" },
-        "subscriberId": { "type": "string" },
-        "priceMonthly": { "type": "number" },
-        "status": { "type": "string", "enum": ["active", "cancelled", "expired"] },
-        "startDate": { "type": "string", "format": "date-time" },
-        "renewalDate": { "type": "string", "format": "date-time" }
-      },
-      "required": ["creatorId", "subscriberId", "status"]
-    },
-    "CreatorSubscriber": {
-      "title": "CreatorSubscriber",
-      "type": "object",
-      "description": "Inner Circle membership record for gating benefits.",
-      "properties": {
-        "subscriberSince": { "type": "string", "format": "date-time" }
-      }
-    },
-    "ArenaTournament": {
-      "title": "ArenaTournament",
-      "type": "object",
-      "description": "Structured competition with entry fees and brackets.",
-      "properties": {
-        "name": { "type": "string" },
-        "entryFeeCoins": { "type": "number" },
-        "maxPlayers": { "type": "number" },
-        "currentPlayers": { "type": "number" },
-        "prizePool": { "type": "number" },
-        "status": { "type": "string", "enum": ["registration", "ongoing", "finished"] },
-        "startTime": { "type": "string", "format": "date-time" },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["post", "battle", "comment"] },
+        "reportedUserId": { "type": "string" },
+        "reportedById": { "type": "string" },
+        "reason": { "type": "string", "enum": ["harassment", "spam", "nudity", "hate_speech", "other"] },
+        "details": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "resolved"] },
         "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["name", "entryFeeCoins", "maxPlayers", "status"]
-    },
-    "BattleVote": {
-      "title": "BattleVote",
-      "type": "object",
-      "description": "Anti-fraud audit node for battle voting rate limits.",
-      "properties": {
-        "lastVoteTime": { "type": "string", "format": "date-time" },
-        "voteCount": { "type": "number" }
       }
     }
   },
@@ -175,17 +99,11 @@
   },
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
-    "/user_devices/{deviceId}": { "schema": "#/backend/entities/UserDevice", "description": "Device-to-user mappings for Sybil protection." },
-    "/user_behavior/{userId}": { "schema": "#/backend/entities/UserBehavior", "description": "Behavioral analytics for bot detection." },
+    "/user_devices/{deviceId}": { "schema": "#/backend/entities/UserDevice", "description": "Device-to-user mappings." },
+    "/user_behavior/{userId}": { "schema": "#/backend/entities/UserBehavior", "description": "Behavioral analytics." },
     "/fraud_logs/{logId}": { "schema": "#/backend/entities/FraudLog", "description": "Audit trail for suspicious activity." },
-    "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
-    "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
-    "/creator_settings/{userId}": { "schema": "#/backend/entities/CreatorSettings", "description": "Subscription and commercial settings for creators." },
-    "/creator_analytics/{userId}": { "schema": "#/backend/entities/CreatorAnalytics", "description": "ROI and income tracking for talent." },
-    "/creator_subscriptions/{subId}": { "schema": "#/backend/entities/CreatorSubscription", "description": "Recurring fan support audit trail." },
-    "/creator_subscribers/{creatorId}/subscribers/{subscriberId}": { "schema": "#/backend/entities/CreatorSubscriber", "description": "Inner Circle membership list for benefit gating." },
-    "/arena_tournaments/{tournamentId}": { "schema": "#/backend/entities/ArenaTournament", "description": "Organized competitions." },
-    "/battle_votes/{battleId}/users/{userId}": { "schema": "#/backend/entities/BattleVote", "description": "Voting frequency audit nodes." },
-    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts and promoted highlights." }
+    "/content_reports/{reportId}": { "schema": "#/backend/entities/ContentReport", "description": "Moderation reports." },
+    "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts." },
+    "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Live and past battles." }
   }
 }

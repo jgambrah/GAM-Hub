@@ -16,7 +16,7 @@ export type User = {
   fcmToken?: string;
   followedVendors?: string[];
   followedUsers?: string[];
-  subscribedCreators?: string[]; // Step 7: IDs of creators user is subscribed to
+  subscribedCreators?: string[];
   onboardingStatus?: 'needs_submission' | 'pending_review' | 'approved';
   vendorCategory?: string;
   contactPhone?: string;
@@ -49,7 +49,7 @@ export type UserBehavior = {
   id: string;
   votesToday: number;
   giftsSent: number;
-  watchTime: number; // in seconds
+  watchTime: number; 
   isBlocked: boolean;
   lastUpdated: any;
 };
@@ -61,6 +61,18 @@ export type FraudLog = {
   battleId?: string;
   details: string;
   timestamp: any;
+};
+
+export type ContentReport = {
+  id: string;
+  targetId: string;
+  targetType: 'post' | 'battle' | 'comment';
+  reportedUserId: string;
+  reportedById: string;
+  reason: 'harassment' | 'spam' | 'nudity' | 'hate_speech' | 'other';
+  details: string;
+  status: 'pending' | 'resolved';
+  createdAt: any;
 };
 
 export type CreatorSettings = {
@@ -142,25 +154,6 @@ export type ArenaMatch = {
   createdAt?: any;
 };
 
-export type SponsorStats = {
-  id: string;
-  battleId: string;
-  views: number;
-  votes: number;
-  gifts: number;
-  shares: number;
-  updatedAt: any;
-};
-
-export type HighlightStats = {
-  id: string;
-  views: number;
-  likes: number;
-  shares: number;
-  followersGained: number;
-  updatedAt: any;
-};
-
 export type ArenaBattle = {
   id: string;
   title: string;
@@ -180,7 +173,7 @@ export type ArenaBattle = {
     votes: number;
   } | null;
   participantInfo: Record<string, { name: string; avatarUrl: string; campusAcronym: string; primaryColor: string }>;
-  status: 'waiting' | 'live' | 'ended';
+  status: 'waiting' | 'live' | 'ended' | 'under_review';
   votes: Record<string, number>; 
   viewerCount: number;
   aiVerdict?: {
@@ -194,7 +187,7 @@ export type ArenaBattle = {
   createdAt: any;
   endsAt: any;
   isSponsored?: boolean;
-  subscriberOnly?: boolean; // Step 7: Exclusive battles
+  subscriberOnly?: boolean;
   sponsorId?: string;
   sponsorName?: string;
   sponsorLogo?: string;
@@ -203,46 +196,7 @@ export type ArenaBattle = {
   tournamentId?: string;
   matchId?: string;
   round?: number;
-};
-
-export type ArenaSponsor = {
-  id: string;
-  name: string;
-  logoUrl: string;
-  website?: string;
-  createdAt: any;
-};
-
-export type ArenaPricingTier = {
-  id: string;
-  label: string;
-  price: string;
-  description: string;
-  iconType: 'target' | 'trending' | 'crown';
-  order: number;
-};
-
-export type ArenaSeason = {
-  title: string;
-  sponsorName: string;
-  sponsorLogo: string;
-  isActive: boolean;
-  updatedAt: any;
-};
-
-export type ArenaGift = {
-  id: string;
-  senderId: string;
-  senderName: string;
-  receiverId: string;
-  giftType: 'fire' | 'mic' | 'crown' | 'rocket' | 'dragon' | 'throne' | 'elephant';
-  coinsSpent: number;
-  createdAt: any;
-};
-
-export type BattleVoteAudit = {
-  lastVoteTime: any;
-  voteCount: number;
+  reportCount?: number;
 };
 
 export type SocialPost = {
@@ -278,7 +232,7 @@ export type SocialPost = {
   sponsorName?: string;
   sponsorLogo?: string;
   type?: 'regular' | 'src_official' | 'vetted_announcement' | 'election_winner' | 'shoutout' | 'arena_highlight';
-  status?: 'active' | 'blocked' | 'hidden';
+  status?: 'active' | 'blocked' | 'hidden' | 'under_review';
   moderationNote?: string;
   authorColor?: string;
   stats?: { likes: number; burns: number };
@@ -294,6 +248,7 @@ export type SocialPost = {
   promotionLevel?: 'none' | 'small' | 'medium' | 'large';
   promotionViewsTarget?: number;
   promotionViewsDelivered?: number;
+  reportCount?: number;
 };
 
 export type ArenaPost = SocialPost;
@@ -381,7 +336,7 @@ export type Message = {
   senderName: string;
   type: 'text' | 'image' | 'file' | 'audio' | 'product';
   duration?: number;
-  isSubscriber?: boolean; // Step 7: Conversion badge
+  isSubscriber?: boolean;
   productInfo?: {
       id: string;
       name: string;
@@ -486,7 +441,7 @@ export type Notification = {
     | 'like' | 'comment' | 'share' | 'follow' | 'voice_reply' 
     | 'message' | 'voice_message' | 'group_message'
     | 'order' | 'price_drop' | 'vendor_reply' | 'product_recommendation'
-    | 'event' | 'hostel_update' | 'department_news' | 'war' | 'system' | 'battle_challenge' | 'subscription';
+    | 'event' | 'hostel_update' | 'department_news' | 'war' | 'system' | 'battle_challenge' | 'subscription' | 'moderation_alert';
   title: string;
   message: string;
   link?: string;
@@ -713,7 +668,7 @@ export type BattleMessage = {
   userId: string;
   userName: string;
   text: string;
-  isSubscriber?: boolean; // Step 7
+  isSubscriber?: boolean;
   createdAt: any;
 };
 

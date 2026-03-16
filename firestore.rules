@@ -20,22 +20,26 @@ service cloud.firestore {
       allow write: if isAdmin() || request.auth.uid == userId;
     }
 
-    // 🛡️ ANTI-FRAUD: Device Mapping
     match /user_devices/{deviceId} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
     }
 
-    // 🛡️ ANTI-FRAUD: Behavior Audits
     match /user_behavior/{userId} {
       allow read: if isAdmin() || request.auth.uid == userId;
       allow write: if isSignedIn() && request.auth.uid == userId;
     }
 
-    // 🛡️ ANTI-FRAUD: Suspicious Activity Logs (Liaison Only Write)
     match /fraud_logs/{logId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn(); // Loggers run on client
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // ⚖️ CONTENT MODERATION: Reports Path
+    match /content_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
       allow update, delete: if isAdmin();
     }
 
@@ -49,7 +53,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // 💎 RECURRING: Creator Subscriptions (Audit Trail)
     match /creator_subscriptions/{subId} {
       allow read: if isSignedIn() && (
         request.auth.uid == resource.data.subscriberId || 
@@ -60,13 +63,11 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // 💎 RECURRING: Inner Circle Benefits (Gating Path)
     match /creator_subscribers/{creatorId}/subscribers/{subscriberId} {
       allow read: if isSignedIn();
       allow write: if isAdmin() || (isSignedIn() && request.auth.uid == subscriberId);
     }
 
-    // 💰 MONETIZATION: Coin Wallet Registry
     match /wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow update: if isSignedIn() && request.auth.uid == userId && request.resource.data.coins < resource.data.coins;
@@ -104,7 +105,6 @@ service cloud.firestore {
       }
     }
 
-    // 🛡️ ANTI-FRAUD: Vote Audit Nodes
     match /battle_votes/{battleId}/users/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
@@ -115,9 +115,17 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.authorId ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'comebackCount', 'commerceClicks', 'trendScore', 'promotionViewsDelivered', 'isPromoted'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'comebackCount', 'commerceClicks', 'trendScore', 'promotionViewsDelivered', 'isPromoted', 'reportCount', 'status'])
       );
       allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
+    }
+
+    match /arena_battles/{battleId} {
+      allow read: if isSignedIn();
+      allow update: if isSignedIn() && (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewerCount', 'votes', 'opponentA', 'opponentB', 'reportCount', 'status'])
+      );
+      allow write: if isAdmin();
     }
 
     match /user_intelligence/{userId} {
