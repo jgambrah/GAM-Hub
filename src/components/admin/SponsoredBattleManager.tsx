@@ -6,7 +6,7 @@ import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/fires
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
     Swords, Megaphone, Plus, Trophy, Globe, 
-    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2
+    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -149,7 +149,7 @@ export default function SponsoredBattleManager() {
             </div>
             <h1 className="text-3xl font-black italic tracking-tighter uppercase">Arena Command</h1>
           </div>
-          <p className="text-sm text-muted-foreground font-medium italic">Manage national brand sponsorships and high-stakes tournaments.</p>
+          <p className="text-sm text-muted-foreground font-medium italic">Manage national brand partnerships and high-stakes tournaments.</p>
         </div>
         <div className="flex gap-2">
           {view !== 'overview' ? (
