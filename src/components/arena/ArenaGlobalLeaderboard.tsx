@@ -5,7 +5,7 @@
  * ArenaGlobalLeaderboard Component
  * --------------------------------
  * The national engine for competition and prestige.
- * Features 4 high-stakes categories: Elite (Wins), Hot (Streaks), Wealth (Earnings), Weekly (Champs).
+ * Features 4 high-stakes categories: Elite (Wins), Heat (Best Streaks), Wealth (Earnings), Weekly (Champs).
  */
 
 import React, { useState } from 'react';
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton } from '../ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type LeaderboardTab = 'wins' | 'streaks' | 'earnings' | 'weekly';
@@ -31,17 +31,18 @@ export function ArenaGlobalLeaderboard() {
   const leaderboardQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     
+    // MAP: Logic to sort by specific competitive dimensions
     const sortField = {
         wins: 'wins',
-        streaks: 'winStreak',
-        earnings: 'coinsEarned',
-        weekly: 'weeklyWins'
+        streaks: 'bestStreak', // All-time records for "Longest Streaks"
+        earnings: 'coinsEarned', // Wealth Prestige
+        weekly: 'weeklyWins' // Current cycle
     }[activeTab];
 
     return query(
       collection(firestore, 'arena_leaderboard'),
       orderBy(sortField, 'desc'),
-      limit(10)
+      limit(20)
     );
   }, [firestore, activeTab]);
 
@@ -55,27 +56,27 @@ export function ArenaGlobalLeaderboard() {
 
   return (
     <section className="mx-4 mb-16 animate-in fade-in duration-700">
-      <div className="flex items-center justify-between mb-8 px-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 px-2 gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2.5 bg-slate-900 text-amber-500 rounded-xl shadow-lg">
             <Trophy size={20} />
           </div>
           <div>
-            <h2 className="text-2xl font-black italic tracking-tight text-foreground uppercase">Global Leaderboard</h2>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">National Warrior Index</p>
+            <h2 className="text-2xl font-black italic tracking-tight text-foreground uppercase">National Rankings</h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Official Yard Warrior Index</p>
           </div>
         </div>
-        <div className="hidden sm:flex bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200/50 items-center gap-2">
-          <TrendingUp size={12} /> Live Sync
+        <div className="flex bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-200/50 items-center gap-2 w-fit">
+          <TrendingUp size={12} /> Real-time Handshake Active
         </div>
       </div>
 
       <Tabs defaultValue="wins" className="w-full" onValueChange={(v) => setActiveTab(v as LeaderboardTab)}>
-        <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1 rounded-[2rem] h-auto mb-8 border shadow-sm">
-          <TabsTrigger value="wins" className="rounded-[1.5rem] py-3 font-black text-[10px] uppercase tracking-widest">Elite</TabsTrigger>
-          <TabsTrigger value="streaks" className="rounded-[1.5rem] py-3 font-black text-[10px] uppercase tracking-widest">Heat</TabsTrigger>
-          <TabsTrigger value="earnings" className="rounded-[1.5rem] py-3 font-black text-[10px] uppercase tracking-widest">Wealth</TabsTrigger>
-          <TabsTrigger value="weekly" className="rounded-[1.5rem] py-3 font-black text-[10px] uppercase tracking-widest">Weekly</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1.5 rounded-[2.5rem] h-auto mb-8 border shadow-sm">
+          <TabsTrigger value="wins" className="rounded-[1.8rem] py-3 font-black text-[10px] uppercase tracking-widest">🏆 Elite</TabsTrigger>
+          <TabsTrigger value="streaks" className="rounded-[1.8rem] py-3 font-black text-[10px] uppercase tracking-widest">🔥 Heat</TabsTrigger>
+          <TabsTrigger value="earnings" className="rounded-[1.8rem] py-3 font-black text-[10px] uppercase tracking-widest">💰 Wealth</TabsTrigger>
+          <TabsTrigger value="weekly" className="rounded-[1.8rem] py-3 font-black text-[10px] uppercase tracking-widest">👑 Weekly</TabsTrigger>
         </TabsList>
 
         <div className="bg-white dark:bg-slate-900 rounded-[3.5rem] border-2 border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden relative">
@@ -129,28 +130,28 @@ export function ArenaGlobalLeaderboard() {
                                     {activeTab === 'wins' && (
                                         <>
                                             <p className="text-2xl font-black text-foreground tabular-nums">{warrior.wins}</p>
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Total Victories</p>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Total Wins</p>
                                         </>
                                     )}
                                     {activeTab === 'streaks' && (
                                         <>
-                                            <p className="text-2xl font-black text-red-600 tabular-nums">🔥 {warrior.winStreak}</p>
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Current Heat</p>
+                                            <p className="text-2xl font-black text-red-600 tabular-nums">{warrior.bestStreak}</p>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Longest Streak</p>
                                         </>
                                     )}
                                     {activeTab === 'earnings' && (
                                         <>
                                             <div className="flex items-center gap-1 justify-end">
-                                                <Coins size={16} className="text-amber-500" />
+                                                <Coins size={16} className="text-emerald-500" />
                                                 <span className="text-2xl font-black text-foreground tabular-nums">{(warrior.coinsEarned || 0).toLocaleString()}</span>
                                             </div>
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Artillery Accumulation</p>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Coins Accumulated</p>
                                         </>
                                     )}
                                     {activeTab === 'weekly' && (
                                         <>
                                             <p className="text-2xl font-black text-indigo-600 tabular-nums">{warrior.weeklyWins}</p>
-                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Cycle Wins</p>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Wins This Cycle</p>
                                         </>
                                     )}
                                 </div>
@@ -168,7 +169,7 @@ export function ArenaGlobalLeaderboard() {
             <div className="p-6 bg-slate-50 dark:bg-muted/20 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Official National Command Registry • GH</p>
                 <div className="flex items-center gap-2 text-[8px] font-bold text-slate-500 uppercase">
-                    <Zap size={10} className="text-amber-500" fill="currentColor" /> Updates in real-time
+                    <Zap size={10} className="text-amber-500" fill="currentColor" /> National Ledger Sync: ON
                 </div>
             </div>
         </div>
