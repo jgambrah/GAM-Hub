@@ -166,13 +166,15 @@ export type ArenaBattle = {
     userId: string;
     videoUrl: string;
     votes: number;
+    winStreak?: number;
   };
   opponentB: {
     userId: string;
     videoUrl: string;
     votes: number;
+    winStreak?: number;
   } | null;
-  participantInfo: Record<string, { name: string; avatarUrl: string; campusAcronym: string; primaryColor: string }>;
+  participantInfo: Record<string, { name: string; avatarUrl: string; campusAcronym: string; primaryColor: string; winStreak?: number }>;
   status: 'waiting' | 'live' | 'ended' | 'under_review';
   votes: Record<string, number>; 
   viewerCount: number;
@@ -458,6 +460,8 @@ export type ArenaLeaderboard = {
   campusAcronym: string;
   wins: number;
   losses: number;
+  winStreak: number;
+  bestStreak: number;
   votes_received: number;
   highlightCount: number;
   boostsReceived: number;

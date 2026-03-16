@@ -60,6 +60,15 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
     }
 
     const rival = rivalDoc.data();
+    
+    // Fetch streaks for both participants
+    const winnerRef = db.collection("arena_leaderboard").doc(newEntry.userId);
+    const rivalRef = db.collection("arena_leaderboard").doc(rival.userId);
+    const [winnerSnap, rivalSnap] = await Promise.all([transaction.get(winnerRef), transaction.get(rivalRef)]);
+    
+    const winnerStreak = winnerSnap.exists ? (winnerSnap.data().winStreak || 0) : 0;
+    const rivalStreak = rivalSnap.exists ? (rivalSnap.data().winStreak || 0) : 0;
+
     const battleRef = db.collection("arena_battles").doc();
     const endsAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
@@ -71,25 +80,29 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
       opponentA: {
         userId: newEntry.userId,
         videoUrl: newEntry.videoUrl,
-        votes: 0
+        votes: 0,
+        winStreak: winnerStreak
       },
       opponentB: {
         userId: rival.userId,
         videoUrl: rival.videoUrl,
-        votes: 0
+        votes: 0,
+        winStreak: rivalStreak
       },
       participantInfo: {
         [newEntry.userId]: {
           name: newEntry.userName,
           avatarUrl: newEntry.avatarUrl,
           campusAcronym: newEntry.campusAcronym,
-          primaryColor: "#3b82f6"
+          primaryColor: "#3b82f6",
+          winStreak: winnerStreak
         },
         [rival.userId]: {
           name: rival.userName,
           avatarUrl: rival.avatarUrl,
           campusAcronym: rival.campusAcronym,
-          primaryColor: "#ef4444"
+          primaryColor: "#ef4444",
+          winStreak: rivalStreak
         }
       },
       votes: {
@@ -244,19 +257,15 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
     const data = doc.data();
     const info = data.participantInfo || {};
     
-    // Sponsorship Context
-    const isSponsored = data.isSponsored || false;
-    const sponsorName = data.sponsorName || null;
-    const sponsorLogo = data.sponsorLogo || null;
-
     const vA = data.opponentA?.votes || 0;
     const vB = data.opponentB?.votes || 0;
     const winnerId = vA > vB ? data.opponentA.userId : (vB > vA ? data.opponentB.userId : null);
+    const loserId = vA > vB ? data.opponentB?.userId : (vB > vA ? data.opponentA.userId : null);
     const isDraw = vA === vB;
 
     await doc.ref.update({ status: "ended", endedAt: admin.firestore.FieldValue.serverTimestamp() });
 
-    // 🏆 TOURNAMENT PROGRESSION LOGIC (Step 6)
+    // 🏆 TOURNAMENT PROGRESSION LOGIC
     if (data.tournamentMatch && data.tournamentId && data.matchId) {
         const tourneyRef = db.collection("arena_tournaments").doc(data.tournamentId);
         const matchRef = tourneyRef.collection("matches").doc(data.matchId);
@@ -273,7 +282,6 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             });
         }
 
-        const loserId = data.opponentA.userId === winnerId ? data.opponentB?.userId : data.opponentA.userId;
         if (loserId) {
             await tourneyRef.collection("players").doc(loserId).update({
                 eliminated: true
@@ -281,11 +289,40 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
         }
     }
 
-    if (!isDraw && winnerId) {
-        const winner = data.opponentA.userId === winnerId ? data.opponentA : data.opponentB;
-        const loser = data.opponentA.userId === winnerId ? data.opponentB : data.opponentA;
+    if (!isDraw && winnerId && loserId) {
+        // ⚔️ STEP 10: Adjudicate Win Streaks via Transaction
+        await db.runTransaction(async (transaction) => {
+            const winnerRef = db.collection("arena_leaderboard").doc(winnerId);
+            const loserRef = db.collection("arena_leaderboard").doc(loserId);
+            
+            const [winnerSnap, loserSnap] = await Promise.all([transaction.get(winnerRef), transaction.get(loserRef)]);
+            
+            // Winner Update
+            const winnerData = winnerSnap.exists ? winnerSnap.data() : { wins: 0, winStreak: 0, bestStreak: 0 };
+            const newStreak = (winnerData.winStreak || 0) + 1;
+            const newBest = Math.max(winnerData.bestStreak || 0, newStreak);
+            
+            transaction.set(winnerRef, {
+                wins: admin.firestore.FieldValue.increment(1),
+                winStreak: newStreak,
+                bestStreak: newBest,
+                votes_received: admin.firestore.FieldValue.increment(Math.max(vA, vB)),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            // Loser Update
+            transaction.set(loserRef, {
+                losses: admin.firestore.FieldValue.increment(1),
+                winStreak: 0,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        });
+
         const winnerInfo = info[winnerId];
+        const winner = data.opponentA.userId === winnerId ? data.opponentA : data.opponentB;
+        const loserObj = data.opponentA.userId === winnerId ? data.opponentB : data.opponentA;
         
+        // HIGHLIGHT GENERATION LOGIC
         const eventsSnap = await doc.ref.collection("engagement_events").orderBy("timestamp", "asc").get();
         let peakTimeOffset = 0;
         let totalEnergy = 0;
@@ -324,14 +361,12 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             sourceUrl: winner.videoUrl,
             pulsePostId: pulseRef.id,
             creatorId: data.creatorId,
-            opponentId: loser.userId,
+            opponentId: loserId,
             winnerId: winnerId,
             startTime: peakTimeOffset,
             category: highlightCategory,
             processingStatus: "pending",
-            isSponsored,
-            sponsorName,
-            sponsorLogo,
+            isSponsored: data.isSponsored || false,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -341,41 +376,28 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
             authorAvatarUrl: winnerInfo.avatarUrl,
             campusId: winnerInfo.campusId || "all",
             campusAcronym: winnerInfo.campusAcronym,
-            content: `${isSponsored ? sponsorName + " " : ""}Victory Archive: ${winnerInfo.name} dominated the Yard! Check out this highlight.`,
+            content: `Victory Archive: ${winnerInfo.name} dominated the Yard! Check out this highlight.`,
             mediaType: "video",
             mediaUrl: winner.videoUrl, 
             type: "arena_highlight",
             isArenaEntry: true,
-            isSponsored,
-            sponsorName,
-            sponsorLogo,
             battleMetadata: { 
                 battleId: doc.id, 
                 winnerName: winnerInfo.name, 
                 totalEnergy,
-                category: highlightCategory,
-                isSponsored,
-                sponsorName
+                category: highlightCategory
             },
             likes: 0,
             commentCount: 0,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        // 🎖️ ARENA CHAMPIONS: Increment individual win count & energy
-        const champRef = db.collection("arena_leaderboard").doc(winnerId);
-        await champRef.set({ 
-            wins: admin.firestore.FieldValue.increment(1),
-            votes_received: admin.firestore.FieldValue.increment(vA > vB ? vA : vB),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-
         // 🏛️ CAMPUS WARS: Update University Leaderboard
         if (winnerInfo.campusId) {
             const campusRef = db.collection("campus_leaderboard").doc(winnerInfo.campusId);
             await campusRef.set({
                 wins: admin.firestore.FieldValue.increment(1),
-                totalVotes: admin.firestore.FieldValue.increment(vA > vB ? vA : vB),
+                totalVotes: admin.firestore.FieldValue.increment(Math.max(vA, vB)),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
         }

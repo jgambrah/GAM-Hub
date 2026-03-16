@@ -5,7 +5,7 @@
  * LiveBattleRoom Component
  * -----------------------
  * Elite National Arena Stage.
- * Now expanded with STEP 9: CONTENT MODERATION & REPORTING 🛡️
+ * Now expanded with STEP 10: WIN STREAK PRESTIGE 👑🔥
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -17,10 +17,10 @@ import {
 import { useFirebase, useCollection, useMemoFirebase, useDoc, updateDocumentNonBlocking } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useSound } from '@/context/SoundContext';
-import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry } from '@/lib/types';
+import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry, ArenaLeaderboard } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2, Megaphone, Gem, ShieldAlert
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2, Megaphone, Gem, ShieldAlert, Flame
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -46,17 +46,23 @@ const POWER_UPS = [
     { type: 'knockout', label: 'Knockout', emoji: '⚡', weight: 50, cost: 120 },
 ];
 
-const GIFTS = {
-  fire: { id: 'fire', label: 'Fire', emoji: '🔥', cost: 10 },
-  mic: { id: 'mic', label: 'Mic', emoji: '🎤', cost: 25 },
-  crown: { id: 'crown', label: 'Crown', emoji: '👑', cost: 50 },
-  rocket: { id: 'rocket', label: 'Rocket', emoji: '🚀', cost: 100 },
-  dragon: { id: 'dragon', label: 'Dragon', emoji: '🐉', cost: 500 },
-  throne: { id: 'throne', label: 'Arena Throne', emoji: '🏛️', cost: 1000 },
-  elephant: { id: 'elephant', label: 'Giant Elephant', emoji: '🐘', cost: 2000 }
-};
-
-const MAX_BOOSTS_PER_USER = 5;
+function StreakBadge({ streak, losses }: { streak: number, losses?: number }) {
+    if (streak < 2 && (losses || 0) > 0) return null;
+    
+    return (
+        <motion.div 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className={cn(
+                "flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow-xl border-2",
+                streak >= 5 ? "bg-amber-500 text-slate-950 border-white/20 animate-pulse" : "bg-red-600 text-white border-white/10"
+            )}
+        >
+            {streak >= 10 ? <Crown size={10} /> : streak > 0 ? <Flame size={10} fill="currentColor" /> : <ShieldCheck size={10} />}
+            {streak >= 5 && losses === 0 ? "UNDEFEATED TODAY" : `${streak} WIN STREAK`}
+        </motion.div>
+    );
+}
 
 function SupportLeaderboard({ battleId }: { battleId: string }) {
     const { firestore } = useFirebase();
@@ -139,6 +145,19 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   }, [firestore, battleId]);
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
+
+  // 📈 STEP 10: Participant Streaks Sync
+  const p1StreakRef = useMemoFirebase(() => {
+      if (!firestore || !battle?.opponentA.userId) return null;
+      return doc(firestore, 'arena_leaderboard', battle.opponentA.userId);
+  }, [firestore, battle?.opponentA.userId]);
+  const p2StreakRef = useMemoFirebase(() => {
+      if (!firestore || !battle?.opponentB?.userId) return null;
+      return doc(firestore, 'arena_leaderboard', battle.opponentB.userId);
+  }, [firestore, battle?.opponentB?.userId]);
+
+  const { data: p1Stats } = useDoc<ArenaLeaderboard>(p1StreakRef);
+  const { data: p2Stats } = useDoc<ArenaLeaderboard>(p2StreakRef);
 
   const isCreator = user?.id === battle?.creatorId;
   const isWaiting = battle?.status === 'waiting';
@@ -236,17 +255,22 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     setSelectingOpponentId(challenger.id);
 
     try {
+        const rivalRef = doc(firestore, "arena_leaderboard", challenger.userId);
+        const rivalSnap = await getDoc(rivalRef);
+        const rivalStreak = rivalSnap.exists() ? (rivalSnap.data()?.winStreak || 0) : 0;
+
         const batch = writeBatch(firestore);
         const bRef = doc(firestore, 'arena_battles', battleId);
         batch.update(bRef, {
             status: 'live',
-            opponentB: { userId: challenger.userId, videoUrl: challenger.videoUrl, votes: 0 },
+            opponentB: { userId: challenger.userId, videoUrl: challenger.videoUrl, votes: 0, winStreak: rivalStreak },
             participants: [battle.creatorId, challenger.userId],
             [`participantInfo.${challenger.userId}`]: {
                 name: challenger.userName,
                 avatarUrl: challenger.avatarUrl,
                 campusAcronym: challenger.campusAcronym,
-                primaryColor: '#ef4444' 
+                primaryColor: '#ef4444',
+                winStreak: rivalStreak
             },
             [`votes.${challenger.userId}`]: 0,
             createdAt: serverTimestamp(),
@@ -397,44 +421,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     } catch (err: any) { toast({ variant: 'destructive', title: 'Deployment Failed' }); }
   };
 
-  const handleSendGift = async (gift: any, target: 'A' | 'B') => {
-    if (!firestore || !user || !battle || battle.status !== 'live' || !wallet) return;
-    
-    const isBlocked = await isBotSuspicionCheck(firestore, user.id);
-    if (isBlocked) return;
-
-    if (wallet.coins < gift.cost) {
-        toast({ variant: 'destructive', title: 'Insufficient Coins' });
-        return;
-    }
-
-    const targetUserId = target === 'A' ? battle.opponentA?.userId : battle.opponentB?.userId;
-
-    try {
-        await spendCoins(firestore, user.id, gift.cost, 'gift_sent', {
-            battleId,
-            targetSide: target,
-            giftType: gift.id,
-            targetCreatorId: targetUserId,
-            userName: user.name,
-            userAvatarUrl: user.avatarUrl
-        });
-
-        await addDoc(collection(firestore, 'arena_battles', battleId, 'gifts'), {
-            senderId: user.id,
-            senderName: user.name,
-            receiverId: targetUserId,
-            giftType: gift.id,
-            coinsSpent: gift.cost,
-            createdAt: serverTimestamp()
-        });
-
-        trackUserBehavior(firestore, user.id, 'gift');
-        toast({ title: `${gift.label} Sent! ${gift.emoji}` });
-
-    } catch (err: any) { toast({ variant: 'destructive', title: 'Gift Failed' }); }
-  };
-
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
   if (isLoadingBattle || !battle) {
@@ -470,8 +456,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   return (
     <div className="fixed inset-0 z-[7000] bg-black flex flex-col md:flex-row overflow-hidden animate-in fade-in duration-500">
       
-      {/* CINEMATIC OVERLAYS OMITTED FOR BREVITY */}
-
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
         
         {battle.isSponsored && (
@@ -518,8 +502,11 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 <div className="max-w-2xl w-full space-y-8 py-20">
                     <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black group">
                         <ReactPlayer url={battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
-                        <div className="absolute bottom-6 left-6 z-20 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
-                            <p className="text-xs font-black">{p1?.name}</p>
+                        <div className="absolute bottom-6 left-6 z-20 flex flex-col gap-2">
+                            <StreakBadge streak={p1Stats?.winStreak || 0} losses={p1Stats?.losses} />
+                            <div className="bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
+                                <p className="text-xs font-black">{p1?.name}</p>
+                            </div>
                         </div>
                     </div>
                     <div className="text-center space-y-4">
@@ -551,9 +538,15 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-1 md:gap-4 p-1 md:p-4 bg-slate-900">
                     <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
                         <ReactPlayer url={battle.opponentA.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" />
+                        <div className="absolute bottom-6 left-6 z-20">
+                            <StreakBadge streak={p1Stats?.winStreak || 0} losses={p1Stats?.losses} />
+                        </div>
                     </div>
                     <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white/5 bg-black">
                         <ReactPlayer url={battle.opponentB?.videoUrl} playing={isLive} muted={!soundOn} width="100%" height="100%" />
+                        <div className="absolute bottom-6 right-6 z-20">
+                            <StreakBadge streak={p2Stats?.winStreak || 0} losses={p2Stats?.losses} />
+                        </div>
                     </div>
                 </div>
 
@@ -586,10 +579,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
       </div>
 
-      <div className="flex-1 bg-slate-900 flex flex-col shadow-2xl max-h-screen">
-        {/* CHAT INTERFACE OMITTED FOR BREVITY */}
-      </div>
-
+      {/* CHAT INTERFACE AND OTHER ELEMENTS */}
+      
       <JoinBattleModal battle={battle} isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)} />
       
       {showReport && (

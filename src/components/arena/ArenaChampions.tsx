@@ -4,15 +4,15 @@
 /**
  * ArenaChampions Component
  * ------------------------
- * Displays top individual warriors in the Yard based on wins and votes received.
- * Now expanded to show Monetization Impact: Boosts Received & Coins Earned.
+ * Displays top individual warriors in the Yard based on wins and streaks.
+ * Now expanded to show STEP 10: WIN STREAK PRESTIGE 🔥
  */
 
 import React from 'react';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, limit } from 'firebase/firestore';
 import type { ArenaLeaderboard } from '@/lib/types';
-import { Trophy, Crown, Zap, Star, Medal, Coins } from 'lucide-react';
+import { Trophy, Crown, Zap, Star, Medal, Coins, Flame } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '../ui/skeleton';
@@ -102,15 +102,21 @@ export function ArenaChampions() {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-black text-lg text-foreground truncate flex items-center gap-2 leading-none">
-                    {champ.name}
-                    {i === 0 && <Star size={14} className="fill-amber-500 text-amber-500 animate-pulse" />}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-lg text-foreground truncate leading-none">
+                        {champ.name}
+                    </h3>
+                    {champ.winStreak >= 3 && <Flame size={14} className="text-red-500 fill-current animate-bounce" />}
+                  </div>
                   <div className={cn("mt-2 px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest w-fit shadow-sm", rank.color, rank.textColor)}>
                     {rank.icon} {rank.label}
                   </div>
                   
                   <div className="grid grid-cols-2 gap-4 mt-4 border-t pt-4 border-dashed border-slate-100 dark:border-slate-800">
+                    <div className="text-left">
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Streak</p>
+                      <p className="text-sm font-black text-red-600 tabular-nums">🔥 {champ.winStreak || 0}</p>
+                    </div>
                     <div className="text-left">
                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Wins</p>
                       <p className="text-sm font-black text-foreground">{champ.wins}</p>
@@ -118,10 +124,6 @@ export function ArenaChampions() {
                     <div className="text-left">
                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Energy</p>
                       <p className="text-sm font-black text-amber-600">{champ.votes_received.toLocaleString()}</p>
-                    </div>
-                    <div className="text-left">
-                      <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest flex items-center gap-1"><Zap size={8} /> Boosts</p>
-                      <p className="text-sm font-black text-blue-600">{champ.boostsReceived || 0}</p>
                     </div>
                     <div className="text-left">
                       <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1"><Coins size={8} /> Earned</p>

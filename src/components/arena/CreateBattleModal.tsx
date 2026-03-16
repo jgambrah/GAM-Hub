@@ -10,12 +10,12 @@ import { Switch } from '@/components/ui/switch';
 import { useFirebase, addDocumentNonBlocking, useCollection, useMemoFirebase } from '@/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { collection, serverTimestamp, query, where, limit } from 'firebase/firestore';
+import { collection, serverTimestamp, query, where, limit, doc, getDoc } from 'firebase/firestore';
 import { Loader2, Swords, Zap, Video, Search, UserPlus, X, Target, Globe, Gem } from 'lucide-react';
 import { campuses } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import type { User } from '@/lib/types';
+import type { User, ArenaLeaderboard } from '@/lib/types';
 
 export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) {
   const { firestore } = useFirebase();
@@ -48,8 +48,16 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
     setIsLoading(true);
 
     try {
+      const myStatsRef = doc(firestore, "arena_leaderboard", user.id);
+      const myStatsSnap = await getDoc(myStatsRef);
+      const myStreak = myStatsSnap.exists() ? (myStatsSnap.data()?.winStreak || 0) : 0;
+
       if (selectedRival) {
-        // 1. DIRECT CHALLENGE: Create a battle in 'waiting' state targeting someone
+        const rivalRef = doc(firestore, "arena_leaderboard", selectedRival.id);
+        const rivalSnap = await getDoc(rivalRef);
+        const rivalStreak = rivalSnap.exists() ? (rivalSnap.data()?.winStreak || 0) : 0;
+
+        // 1. DIRECT CHALLENGE
         const myCampus = campuses.find(c => c.id === user.campusId);
         const battleData: any = {
           title: title.trim(),
@@ -60,7 +68,8 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           opponentA: {
             userId: user.id,
             videoUrl: myStreamUrl.trim(),
-            votes: 0
+            votes: 0,
+            winStreak: myStreak
           },
           opponentB: null,
           participantInfo: {
@@ -68,7 +77,15 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
               name: user.name,
               avatarUrl: user.avatarUrl || '',
               campusAcronym: myCampus?.acronym || 'GH',
-              primaryColor: myCampus?.primaryColor || '#000'
+              primaryColor: myCampus?.primaryColor || '#000',
+              winStreak: myStreak
+            },
+            [selectedRival.id]: {
+                name: selectedRival.name,
+                avatarUrl: selectedRival.avatarUrl || '',
+                campusAcronym: selectedRival.campusAcronym || selectedRival.campusId.toUpperCase(),
+                primaryColor: '#ef4444',
+                winStreak: rivalStreak
             }
           },
           status: 'waiting',
@@ -83,7 +100,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
         await addDocumentNonBlocking(collection(firestore, 'arena_battles'), battleData);
         toast({ title: `Challenged ${selectedRival.name}! 🏹`, description: "Invitation sent to their device." });
       } else {
-        // 2. AUTO-MATCH: Enter the staging pool for automated pairing
+        // 2. AUTO-MATCH
         const entryData = {
           userId: user.id,
           userName: user.name,
@@ -93,11 +110,12 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
           videoUrl: myStreamUrl.trim(),
           title: title.trim(),
           subscriberOnly,
+          winStreak: myStreak,
           createdAt: serverTimestamp()
         };
 
         await addDocumentNonBlocking(collection(firestore, 'arena_waiting_pool'), entryData);
-        toast({ title: "Entering Waiting Pool... ⏳", description: "Liaison is matching you with a worthy rival across the Hub." });
+        toast({ title: "Entering Waiting Pool... ⏳", description: "Liaison is matching you with a worthy rival." });
       }
 
       onOpenChange(false);
@@ -206,7 +224,6 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
                     </div>
                 </div>
 
-                {/* STEP 7: EXCLUSIVE BATTLE TOGGLE */}
                 <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-600 text-white rounded-lg"><Gem size={14} /></div>
@@ -223,7 +240,7 @@ export function CreateBattleModal({ open, onOpenChange }: { open: boolean, onOpe
                 <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800 flex items-start gap-3">
                     <Zap className="text-blue-600 mt-1" size={16} />
                     <p className="text-[10px] text-blue-800 dark:text-blue-300 font-bold leading-relaxed italic">
-                        Liaison Auto-Match: Launching without a target rival will enter you into the National Waiting Pool for automated pairing.
+                        Liaison Auto-Match: Launching without a target rival will enter you into the National Waiting Pool.
                     </p>
                 </div>
             )}
