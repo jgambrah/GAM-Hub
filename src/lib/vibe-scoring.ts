@@ -38,6 +38,10 @@ export function computeVibeScore(
           const urgencyMultiplier = progress < 0.5 ? 1.5 : 1.0;
           
           score += tierBonus * urgencyMultiplier;
+
+          // 🏆 LIAISON PROTOCOL: 4x Multiplier for Paid Visibility
+          // This ensures boosted content significantly outranks even the strongest organic vibes.
+          score *= 4;
       }
   }
 

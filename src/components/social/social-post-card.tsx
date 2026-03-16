@@ -1,4 +1,3 @@
-
 'use client';
 
 import Image from 'next/image';
@@ -8,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music, TrendingUp
+  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music, TrendingUp, BarChart3
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
@@ -81,6 +80,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   const cardRef = React.useRef<HTMLDivElement>(null);
   const hasRecordedPlay = React.useRef(false); 
+  const hasTrackedPromotionImpression = React.useRef(false);
 
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
@@ -94,6 +94,38 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   React.useEffect(() => {
     addToQueue([post]);
   }, [post.id, addToQueue]);
+
+  // 🚀 PROMOTION TRACKING PROTOCOL
+  React.useEffect(() => {
+    if (!post.isPromoted || hasTrackedPromotionImpression.current || !firestore || isAuthor) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !hasTrackedPromotionImpression.current) {
+          hasTrackedPromotionImpression.current = true;
+          
+          const postRef = doc(firestore, 'campus_pulse', post.id);
+          const delivered = (post.promotionViewsDelivered || 0) + 1;
+          const target = post.promotionViewsTarget || 0;
+          
+          const updates: any = {
+            promotionViewsDelivered: increment(1)
+          };
+          
+          // Auto-Stop: Set isPromoted to false when target is met
+          if (delivered >= target && target > 0) {
+            updates.isPromoted = false;
+          }
+          
+          updateDoc(postRef, updates).catch(e => console.warn("Liaison Analytics: Promo track drifted.", e));
+        }
+      },
+      { threshold: 0.5 }
+    );
+
+    if (cardRef.current) observer.observe(cardRef.current);
+    return () => observer.disconnect();
+  }, [post.id, post.isPromoted, post.promotionViewsDelivered, post.promotionViewsTarget, firestore, isAuthor]);
 
   React.useEffect(() => {
     if (isActiveVibe) {
@@ -282,6 +314,8 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const youtubeId = post.mediaType === 'youtube' ? getYouTubeId(post.mediaUrl || '') : null;
   const activeAspect = mediaCategory === 'video' ? 'aspect-video md:aspect-[21/9]' : 'aspect-video';
 
+  const promotionProgress = post.promotionViewsTarget ? Math.min(((post.promotionViewsDelivered || 0) / post.promotionViewsTarget) * 100, 100) : 0;
+
   return (
     <div
       ref={cardRef}
@@ -468,6 +502,30 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
           <div className={cn('font-bold leading-snug text-foreground transition-all duration-300', isActiveVibe ? 'text-2xl md:text-3xl tracking-tight' : 'text-xl tracking-tight')}>
             {renderWithHashtags(post.content)}
           </div>
+
+          {/* 🚀 PROMOTION DASHBOARD FOR AUTHOR */}
+          {isAuthor && post.isPromoted && (
+              <div className="mt-8 p-6 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] border-2 border-blue-100 dark:border-blue-800 animate-in slide-in-from-bottom-2 duration-500">
+                  <div className="flex justify-between items-center mb-4">
+                      <div className="flex items-center gap-2">
+                          <BarChart3 size={16} className="text-blue-600" />
+                          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Promotion Signal</span>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase">{Math.round(promotionProgress)}% Delivered</span>
+                  </div>
+                  
+                  <div className="h-2 w-full bg-blue-100 dark:bg-slate-800 rounded-full overflow-hidden mb-3 shadow-inner">
+                      <div 
+                        className="h-full bg-blue-600 rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(37,99,235,0.4)]" 
+                        style={{ width: `${promotionProgress}%` }} 
+                      />
+                  </div>
+                  
+                  <p className="text-[9px] text-blue-800 dark:text-blue-300 font-bold italic">
+                    Reached {post.promotionViewsDelivered?.toLocaleString()} of {post.promotionViewsTarget?.toLocaleString()} guaranteed citizens.
+                  </p>
+              </div>
+          )}
 
           {/* 🎙️ SHOUTOUT AUDIO PLAYER */}
           {post.mediaType === 'audio' && post.mediaUrl && (
