@@ -7,7 +7,7 @@
  * Elite National Arena Stage.
  * Orchestrates Engagement Spike Logging for Replay Highlights.
  * Implements Step 3: Cinematic Gift Animations & Support Leaderboard.
- * Now expanded with Tournament-Tier Special Gifts (Throne & Elephant).
+ * Now expanded with Step 4: SPONSORED BATTLE HUDS.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -22,7 +22,7 @@ import { useSound } from '@/context/SoundContext';
 import type { ArenaBattle, BattleMessage, ArenaChallenger, HubWallet, ArenaGift, GiftLeaderboardEntry } from '@/lib/types';
 import { 
   X, Swords, Users, Send, Zap, 
-  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles
+  Loader2, MessageSquare, Trophy, ShieldCheck, Target, Volume2, VolumeX, CheckCircle2, UserPlus, Star, Crown, AlertTriangle, Gift, Rocket, Medal, Sparkles, Building2
 } from 'lucide-react';
 import ReactPlayer from 'react-player';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -57,10 +57,6 @@ const GIFTS = {
 
 const MAX_BOOSTS_PER_USER = 5;
 
-/**
- * SupportLeaderboard Component
- * Renders the top contributors for the current battle.
- */
 function SupportLeaderboard({ battleId }: { battleId: string }) {
     const { firestore } = useFirebase();
     
@@ -143,7 +139,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
 
   const { data: battle, isLoading: isLoadingBattle } = useDoc<ArenaBattle>(battleRef);
 
-  // Status flags
+  // Status flags - MOVED TO TOP to avoid ReferenceError
   const isCreator = user?.id === battle?.creatorId;
   const isWaiting = battle?.status === 'waiting';
   const isLive = battle?.status === 'live';
@@ -422,18 +418,43 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       </AnimatePresence>
 
       <div className="flex-[3] relative bg-slate-950 flex flex-col border-r border-white/5">
-        <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center">
-          <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl transition-all"><X size={24}/></button>
+        
+        {/* SPONSOR HUD (STEP 4) */}
+        {battle.isSponsored && (
+            <div className="absolute top-0 left-0 right-0 z-[100] px-8 pt-4 pb-12 bg-gradient-to-b from-slate-950/90 to-transparent pointer-events-none">
+                <div className="max-w-4xl mx-auto flex items-center justify-between">
+                    <div className="flex items-center gap-4 animate-in slide-in-from-left-4 duration-1000">
+                        <div className="relative w-12 h-12 rounded-2xl overflow-hidden border-2 border-amber-500/50 bg-white shadow-lg">
+                            <img src={battle.sponsorLogo} alt="sponsor" className="w-full h-full object-contain p-1" />
+                        </div>
+                        <div>
+                            <p className="text-[8px] font-black text-amber-500 uppercase tracking-[0.3em]">Sponsored by</p>
+                            <h4 className="text-lg font-black text-white leading-none">{battle.sponsorName}</h4>
+                        </div>
+                    </div>
+
+                    <div className="text-right animate-in slide-in-from-right-4 duration-1000">
+                        <div className="bg-amber-500 text-slate-950 px-6 py-2 rounded-2xl font-black shadow-[0_0_30px_rgba(245,158,11,0.4)] border-2 border-white/20 flex flex-col items-end">
+                            <span className="text-[8px] uppercase tracking-widest leading-none mb-1">Prize Pool</span>
+                            <span className="text-xl italic tracking-tighter leading-none">GHS {battle.prizeAmount?.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        <div className="absolute top-6 left-6 right-6 z-50 flex justify-between items-center mt-12 sm:mt-0">
+          <button onClick={onClose} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 shadow-xl transition-all pointer-events-auto"><X size={24}/></button>
           <div className={cn("px-6 py-2 rounded-2xl text-[10px] font-black text-white uppercase tracking-[0.3em] backdrop-blur-md border border-white/10", isWaiting ? "bg-indigo-600" : isLive ? "bg-red-600 animate-pulse" : "bg-amber-500")}>
             {isWaiting ? "DEPLOYMENT OPEN" : isLive ? "LIVE SHOWDOWN" : "CONCLUDED"}
           </div>
-          <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 transition-all">
+          <button onClick={toggleSound} className="p-3 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10 hover:bg-black/60 transition-all pointer-events-auto">
             {soundOn ? <Volume2 size={24} /> : <VolumeX size={24} />}
           </button>
         </div>
 
         {isWaiting && (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar">
+            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar pt-24">
                 <div className="max-w-2xl w-full space-y-8 py-20">
                     <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black group">
                         <ReactPlayer url={previewVideoUrl || battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
@@ -466,8 +487,8 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
 
         {isLive && (
-            <div className="flex-1 flex flex-col">
-                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
+            <div className="flex-1 flex flex-col pt-24">
+                <div className="absolute top-32 left-1/2 -translate-x-1/2 z-50 w-full max-w-sm px-4">
                     <div className="bg-black/60 backdrop-blur-xl p-4 rounded-[2rem] border border-white/10 shadow-2xl flex items-center justify-between gap-8">
                         <div className="text-center flex-1">
                             <p className="text-[8px] font-black text-blue-400 uppercase">{p1?.campusAcronym}</p>
@@ -512,7 +533,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
         )}
 
         {isEnded && (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-950">
+            <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-950 pt-24">
                 <Trophy size={100} className="text-amber-500 mb-8 animate-bounce" />
                 <h1 className="text-5xl font-black text-white italic uppercase tracking-tighter mb-10">Concluded</h1>
                 {battle.aiVerdict && (

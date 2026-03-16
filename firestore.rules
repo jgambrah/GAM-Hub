@@ -53,6 +53,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /arena_sponsors/{sponsorId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     match /arena_battles/{battleId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;

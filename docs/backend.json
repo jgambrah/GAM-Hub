@@ -100,8 +100,26 @@
             "votes": { "type": "number" }
           }
         },
-        "viewerCount": { "type": "number" }
+        "viewerCount": { "type": "number" },
+        "isSponsored": { "type": "boolean" },
+        "sponsorId": { "type": "string" },
+        "sponsorName": { "type": "string" },
+        "sponsorLogo": { "type": "string" },
+        "prizeAmount": { "type": "number" }
       }
+    },
+    "ArenaSponsor": {
+      "title": "ArenaSponsor",
+      "type": "object",
+      "description": "A brand or business sponsoring Arena activities.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "website": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
     }
   },
   "auth": {
@@ -113,6 +131,7 @@
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
     "/wallet_transactions/{txId}": { "schema": "#/backend/entities/WalletTransaction", "description": "Historical ledger of coin movements." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
+    "/arena_sponsors/{sponsorId}": { "schema": "#/backend/entities/ArenaSponsor", "description": "Registry of Arena brand sponsors." },
     "/campus_pulse/{postId}": { "description": "Social feed content including highlights." }
   }
 }

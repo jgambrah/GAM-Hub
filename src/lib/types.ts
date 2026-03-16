@@ -93,6 +93,20 @@ export type ArenaBattle = {
   lastSpikeAt?: any;
   createdAt: any;
   endsAt: any;
+  // Step 4: Sponsorship
+  isSponsored?: boolean;
+  sponsorId?: string;
+  sponsorName?: string;
+  sponsorLogo?: string;
+  prizeAmount?: number;
+};
+
+export type ArenaSponsor = {
+  id: string;
+  name: string;
+  logoUrl: string;
+  website?: string;
+  createdAt: any;
 };
 
 export type ArenaGift = {
@@ -614,6 +628,7 @@ export type ArenaChallenger = {
   campusAcronym: string;
   videoUrl: string;
   createdAt: any;
+  votes: number;
 };
 
 export type VoteShard = {
