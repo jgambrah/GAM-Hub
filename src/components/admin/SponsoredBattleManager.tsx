@@ -2,12 +2,12 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, useDoc } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, useDoc, updateDocumentNonBlocking } from '@/firebase';
+import { collection, query, orderBy, serverTimestamp, doc, setDoc, getDocs, where, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
     Swords, Megaphone, Plus, Trophy, Globe, 
-    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck, Banknote, DollarSign, Target, TrendingUp, Crown, Calendar, Users, Coins
+    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck, Banknote, DollarSign, Target, TrendingUp, Crown, Calendar, Users, Coins, Play, ChevronRight
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,21 +16,16 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { ArenaSponsor, ArenaBattle, ArenaPricingTier, ArenaSeason, ArenaTournament } from '@/lib/types';
+import type { ArenaSponsor, ArenaBattle, ArenaPricingTier, ArenaSeason, ArenaTournament, ArenaMatch, User } from '@/lib/types';
 import Image from 'next/image';
 
-/**
- * SponsoredBattleManager Component
- * ------------------------------
- * Official tool for the National Liaison to manage brand partnerships.
- * Now expanded with Tournament Architect view (Step 6).
- */
 export default function SponsoredBattleManager() {
   const { firestore, storage, auth } = useFirebase();
   const { toast } = useToast();
   
-  const [view, setView] = useState<'overview' | 'create_sponsor' | 'launch_battle' | 'season' | 'create_tournament'>('overview');
+  const [view, setView] = useState<'overview' | 'create_sponsor' | 'launch_battle' | 'season' | 'create_tournament' | 'manage_brackets'>('overview');
   const [loading, setLoading] = useState(false);
+  const [selectedTournament, setSelectedTournament] = useState<ArenaTournament | null>(null);
 
   // --- SPONSOR STATE ---
   const [sponsorName, setSponsorName] = useState('');
@@ -234,6 +229,56 @@ export default function SponsoredBattleManager() {
       }
   };
 
+  const handleGenerateBracket = async (tournament: ArenaTournament) => {
+    if (!firestore) return;
+    setLoading(true);
+    try {
+        // 1. Fetch all registered players
+        const playersSnap = await getDocs(collection(firestore, 'arena_tournaments', tournament.id, 'players'));
+        const players = playersSnap.docs.map(d => ({ id: d.id, ...d.data() } as any)).filter(p => !p.eliminated);
+
+        if (players.length < 2) {
+            toast({ variant: 'destructive', title: "Insufficient Warriors", description: "At least 2 players are needed to generate a bracket." });
+            return;
+        }
+
+        // 2. Shuffle & Pair
+        const shuffled = [...players].sort(() => Math.random() - 0.5);
+        const batch = writeBatch(firestore);
+        
+        for (let i = 0; i < shuffled.length - 1; i += 2) {
+            const pA = shuffled[i];
+            const pB = shuffled[i+1];
+            const matchRef = doc(collection(firestore, 'arena_tournaments', tournament.id, 'matches'));
+            batch.set(matchRef, {
+                playerA: pA.userId,
+                playerB: pB.userId,
+                playerAName: pA.userName,
+                playerBName: pB.userName,
+                playerAAvatar: pA.avatarUrl,
+                playerBAvatar: pB.avatarUrl,
+                winner: null,
+                round: 1,
+                battleId: null,
+                status: 'pending',
+                createdAt: serverTimestamp()
+            });
+        }
+
+        // 3. Update status to ongoing
+        batch.update(doc(firestore, 'arena_tournaments', tournament.id), { status: 'ongoing', updatedAt: serverTimestamp() });
+        
+        await batch.commit();
+        toast({ title: "Round 1 Bracket Generated!", description: "Matches are now prepared for deployment." });
+        setSelectedTournament(tournament);
+        setView('manage_brackets');
+    } catch (err) {
+        toast({ variant: 'destructive', title: "Bracket Generation Failed" });
+    } finally {
+        setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       
@@ -250,7 +295,7 @@ export default function SponsoredBattleManager() {
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
           {view !== 'overview' ? (
-            <Button variant="ghost" onClick={() => setView('overview')} className="rounded-xl font-bold">Back</Button>
+            <Button variant="ghost" onClick={() => setView('overview')} className="rounded-xl font-bold transition-all hover:bg-muted">Back to Console</Button>
           ) : (
             <>
               <Button onClick={() => setView('create_tournament')} variant="outline" className="rounded-xl font-black text-[10px] uppercase tracking-widest border-2">
@@ -269,6 +314,14 @@ export default function SponsoredBattleManager() {
           )}
         </div>
       </div>
+
+      {/* ── TOURNAMENT BRACKETS VIEW ───────────────────────────────────────── */}
+      {view === 'manage_brackets' && selectedTournament && (
+          <TournamentBracketManager 
+            tournament={selectedTournament} 
+            onBack={() => setView('overview')} 
+          />
+      )}
 
       {/* ── TOURNAMENT ARCHITECT VIEW ─────────────────────────────────────── */}
       {view === 'create_tournament' && (
@@ -532,14 +585,16 @@ export default function SponsoredBattleManager() {
                     ) : tournaments && tournaments.length > 0 ? (
                     tournaments.map(t => (
                         <div key={t.id} className="p-6 flex items-center justify-between hover:bg-muted/30 transition-all">
-                            <div>
-                                <p className="font-black text-foreground">{t.name}</p>
+                            <div onClick={() => { setSelectedTournament(t); setView('manage_brackets'); }} className="cursor-pointer group flex-1">
+                                <p className="font-black text-foreground group-hover:text-indigo-600 transition-colors">{t.name}</p>
                                 <div className="flex items-center gap-3 mt-1">
                                     <span className="text-[10px] font-bold text-slate-400 uppercase">{t.status}</span>
                                     <span className="flex items-center gap-1 text-[10px] font-black text-indigo-600 uppercase"><Users size={10}/> {t.currentPlayers}/{t.maxPlayers}</span>
                                 </div>
                             </div>
-                            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Zap size={18}/></div>
+                            {t.status === 'registration' && (
+                                <Button onClick={() => handleGenerateBracket(t)} size="sm" className="bg-indigo-600 text-white font-black text-[8px] uppercase h-8 rounded-lg shadow-lg">Start</Button>
+                            )}
                         </div>
                     ))
                     ) : (
@@ -582,4 +637,157 @@ export default function SponsoredBattleManager() {
       )}
     </div>
   );
+}
+
+function TournamentBracketManager({ tournament, onBack }: { tournament: ArenaTournament, onBack: () => void }) {
+    const { firestore } = useFirebase();
+    const { toast } = useToast();
+    const [loadingId, setLoadingId] = useState<string | null>(null);
+
+    const matchesQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'arena_tournaments', tournament.id, 'matches'), orderBy('round', 'asc'), orderBy('createdAt', 'asc'));
+    }, [firestore, tournament.id]);
+
+    const { data: matches, isLoading } = useCollection<ArenaMatch>(matchesQuery);
+
+    const startMatchBattle = async (match: ArenaMatch) => {
+        if (!firestore) return;
+        setLoadingId(match.id);
+        
+        try {
+            // 1. Fetch participants metadata for high-fidelity battle card
+            const pASnap = await getDoc(doc(firestore, 'users', match.playerA));
+            const pBSnap = await getDoc(doc(firestore, 'users', match.playerB));
+            const uA = pASnap.data() as User;
+            const uB = pBSnap.data() as User;
+
+            const battleData: any = {
+                title: `${tournament.name}: Round ${match.round}`,
+                creatorId: match.playerA,
+                creatorName: uA.name,
+                participants: [match.playerA, match.playerB],
+                opponentA: {
+                    userId: match.playerA,
+                    videoUrl: '', // To be filled by player
+                    votes: 0
+                },
+                opponentB: {
+                    userId: match.playerB,
+                    videoUrl: '', 
+                    votes: 0
+                },
+                participantInfo: {
+                    [match.playerA]: {
+                        name: uA.name,
+                        avatarUrl: uA.avatarUrl || '',
+                        campusAcronym: uA.campusAcronym || 'GH',
+                        primaryColor: '#3b82f6'
+                    },
+                    [match.playerB]: {
+                        name: uB.name,
+                        avatarUrl: uB.avatarUrl || '',
+                        campusAcronym: uB.campusAcronym || 'GH',
+                        primaryColor: '#ef4444'
+                    }
+                },
+                votes: { [match.playerA]: 0, [match.playerB]: 0 },
+                viewerCount: 0,
+                status: "live",
+                tournamentMatch: true,
+                tournamentId: tournament.id,
+                matchId: match.id,
+                round: match.round,
+                createdAt: serverTimestamp(),
+                endsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 Hour Match
+            };
+
+            const battleRef = await addDoc(collection(firestore, "arena_battles"), battleData);
+            
+            await updateDocumentNonBlocking(doc(firestore, 'arena_tournaments', tournament.id, 'matches', match.id), {
+                battleId: battleRef.id,
+                status: 'live'
+            });
+
+            toast({ title: "Tournament Match Live!", description: `${uA.name} vs ${uB.name} has begun.` });
+        } catch (err) {
+            toast({ variant: 'destructive', title: "Match deployment failed" });
+        } finally {
+            setLoadingId(null);
+        }
+    };
+
+    return (
+        <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+            <Card className="rounded-[3rem] border-none shadow-xl overflow-hidden">
+                <CardHeader className="bg-indigo-600 text-white p-10 flex flex-row items-center justify-between">
+                    <div>
+                        <div className="flex items-center gap-2 mb-2">
+                            <Trophy size={16} className="text-amber-400" />
+                            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-200">Competition Management</span>
+                        </div>
+                        <CardTitle className="text-3xl font-black italic tracking-tighter uppercase">{tournament.name}</CardTitle>
+                        <CardDescription className="text-indigo-100 font-bold uppercase text-[10px] tracking-widest mt-2">Bracket Status: {tournament.status}</CardDescription>
+                    </div>
+                    <Button onClick={onBack} variant="outline" className="rounded-xl bg-white/10 text-white border-white/20">Back to Hub</Button>
+                </CardHeader>
+                <CardContent className="p-10">
+                    <div className="space-y-6">
+                        {isLoading ? (
+                            <Skeleton className="h-40 w-full rounded-[2rem]" />
+                        ) : matches && matches.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {matches.map((match) => (
+                                    <div key={match.id} className="p-6 bg-muted rounded-[2.5rem] border-2 border-transparent hover:border-indigo-500/30 transition-all flex items-center justify-between group">
+                                        <div className="flex items-center gap-6">
+                                            <div className="text-center">
+                                                <div className="w-12 h-12 rounded-full bg-slate-900 border-2 border-white overflow-hidden mb-2">
+                                                    <img src={(match as any).playerAAvatar} className="w-full h-full object-cover" />
+                                                </div>
+                                                <p className="text-[10px] font-black uppercase truncate max-w-[80px]">{match.playerAName}</p>
+                                            </div>
+                                            <div className="flex flex-col items-center">
+                                                <div className="p-2 bg-slate-200 rounded-full text-slate-500 mb-1"><Swords size={12}/></div>
+                                                <span className="text-[8px] font-black text-slate-400 uppercase">Round {match.round}</span>
+                                            </div>
+                                            <div className="text-center">
+                                                <div className="w-12 h-12 rounded-full bg-slate-900 border-2 border-white overflow-hidden mb-2">
+                                                    <img src={(match as any).playerBAvatar} className="w-full h-full object-cover" />
+                                                </div>
+                                                <p className="text-[10px] font-black uppercase truncate max-w-[80px]">{match.playerBName}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-col items-end gap-2">
+                                            {match.status === 'pending' ? (
+                                                <Button 
+                                                    onClick={() => startMatchBattle(match)} 
+                                                    disabled={loadingId === match.id}
+                                                    className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-[10px] uppercase h-10 px-6"
+                                                >
+                                                    {loadingId === match.id ? <Loader2 className="animate-spin" /> : <><Play size={12} className="mr-2"/> Launch</>}
+                                                </Button>
+                                            ) : (
+                                                <div className={cn(
+                                                    "px-4 py-2 rounded-xl text-[8px] font-black uppercase tracking-widest border",
+                                                    match.status === 'live' ? "bg-red-50 text-red-600 border-red-100" : "bg-green-50 text-green-600 border-green-100"
+                                                )}>
+                                                    {match.status}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="py-20 text-center border-4 border-dashed rounded-[3rem] opacity-30 flex flex-col items-center">
+                                <Swords size={64} className="mb-4" />
+                                <p className="font-black uppercase tracking-[0.3em]">No matches generated yet</p>
+                            </div>
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
 }

@@ -79,6 +79,21 @@
       },
       "required": ["name", "entryFeeCoins", "maxPlayers", "status"]
     },
+    "ArenaMatch": {
+      "title": "ArenaMatch",
+      "type": "object",
+      "description": "A single head-to-head match within a tournament round.",
+      "properties": {
+        "playerA": { "type": "string" },
+        "playerB": { "type": "string" },
+        "playerAName": { "type": "string" },
+        "playerBName": { "type": "string" },
+        "winner": { "type": "string" },
+        "round": { "type": "number" },
+        "battleId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "live", "completed"] }
+      }
+    },
     "SocialPost": {
       "title": "SocialPost",
       "type": "object",
@@ -112,6 +127,7 @@
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/arena_tournaments/{tournamentId}": { "schema": "#/backend/entities/ArenaTournament", "description": "Organized competitions." },
+    "/arena_tournaments/{tournamentId}/matches/{matchId}": { "schema": "#/backend/entities/ArenaMatch", "description": "Individual matches within a tournament round." },
     "/sponsor_stats/{battleId}": { "schema": "#/backend/entities/SponsorStats", "description": "ROI metrics for brand partners." },
     "/campus_pulse/{postId}": { "schema": "#/backend/entities/SocialPost", "description": "Unified feed posts and promoted highlights." },
     "/highlight_stats/{highlightId}": { "schema": "#/backend/entities/HighlightStats", "description": "Detailed ROI analytics for promoted vibrations." }

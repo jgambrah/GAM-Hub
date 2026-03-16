@@ -23,15 +23,12 @@ service cloud.firestore {
     // 💰 MONETIZATION: Coin Wallet Registry
     match /wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      // 🛡️ ANTI-CHEAT PROTOCOL: Client can only deduct from their own wallet during transactions.
-      // Increases (Refills) MUST be handled by Cloud Functions or Admins.
       allow update: if isSignedIn() && request.auth.uid == userId && request.resource.data.coins < resource.data.coins;
       allow write: if isAdmin();
     }
 
     match /creator_wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      // 🛡️ REVENUE SPLIT: Allowing automated client transactions to increment earned coins
       allow write: if isSignedIn();
     }
 
@@ -60,7 +57,7 @@ service cloud.firestore {
 
     match /arena_battles/{battleId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.creatorId == request.auth.uid;
+      allow create: if isSignedIn();
       
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.creatorId || isAdmin() ||
@@ -115,15 +112,20 @@ service cloud.firestore {
     match /arena_tournaments/{tournamentId} {
       allow read: if isSignedIn();
       allow create: if isAdmin();
-      // Allow updates for registration increments (transactional)
       allow update: if isAdmin() || (
         isSignedIn() && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPlayers', 'prizePool', 'updatedAt'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPlayers', 'prizePool', 'updatedAt', 'status'])
       );
 
       match /players/{userId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.auth.uid == userId;
+        allow update: if isAdmin();
+      }
+
+      match /matches/{matchId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
       }
     }
 
@@ -178,7 +180,7 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.authorId ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'comebackCount', 'commerceClicks', 'trendScore'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'commentCount', 'comebackCount', 'commerceClicks', 'trendScore', 'promotionViewsDelivered', 'isPromoted'])
       );
       allow delete: if isAdmin() || request.auth.uid == resource.data.authorId;
     }

@@ -66,6 +66,18 @@ export type ArenaTournament = {
   createdAt: any;
 };
 
+export type ArenaMatch = {
+  id: string;
+  playerA: string;
+  playerB: string;
+  playerAName: string;
+  playerBName: string;
+  winner: string | null;
+  round: number;
+  battleId: string | null;
+  status: 'pending' | 'live' | 'completed';
+};
+
 export type SponsorStats = {
   id: string;
   battleId: string;
@@ -122,6 +134,10 @@ export type ArenaBattle = {
   sponsorName?: string;
   sponsorLogo?: string;
   prizeAmount?: number;
+  tournamentMatch?: boolean;
+  tournamentId?: string;
+  matchId?: string;
+  round?: number;
 };
 
 export type ArenaSponsor = {
