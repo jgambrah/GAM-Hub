@@ -37,6 +37,23 @@ export type User = {
   candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
 };
 
+export type UserDevice = {
+  id: string;
+  userId: string;
+  deviceHash: string;
+  lastSeen: any;
+  createdAt: any;
+};
+
+export type FraudLog = {
+  id: string;
+  type: 'suspicious_votes' | 'multi_account_device' | 'gift_spam';
+  userId: string;
+  battleId?: string;
+  details: string;
+  timestamp: any;
+};
+
 export type CreatorSettings = {
   id: string;
   subscriptionsEnabled: boolean;
@@ -612,23 +629,6 @@ export type RegistryPost = {
   targetAudience: 'all' | 'staff' | 'student';
   attachments: string[];
   createdAt: string;
-};
-
-export type SpotlightItem = {
-  id: string;
-  title: string;
-  type: 'vendor' | 'student' | 'vlog' | 'event' | 'announcement';
-  campusId: string;
-  authorCampus?: string;
-  image?: string;
-  imageHint?: string;
-  score?: number;
-  vibeColor?: string;
-  isOfficial?: boolean;
-  content?: string;
-  category?: string;
-  updatedAt: any;
-  data?: any;
 };
 
 export type WatchParty = {

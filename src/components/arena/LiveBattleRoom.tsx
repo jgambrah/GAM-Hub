@@ -5,10 +5,7 @@
  * LiveBattleRoom Component
  * -----------------------
  * Elite National Arena Stage.
- * Orchestrates Engagement Spike Logging for Replay Highlights.
- * Implements Step 3: Cinematic Gift Animations & Support Leaderboard.
- * Now expanded with Step 7: SUBSCRIBER BADGE & PROMOTION PROTOCOL 💎
- * STEP 8: Layer 1 Anti-Fraud Vote Rate Limiting Active 🛡️
+ * Now expanded with STEP 8: SYBIL PROTECTION & FRAUD LOGGING 🛡️
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -39,6 +36,7 @@ import { Badge } from '../ui/badge';
 import { Label } from '../ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CreatorSubscribeDialog } from '../social/CreatorSubscribeDialog';
+import { registerUserDevice, logSuspiciousActivity } from '@/lib/fraud-protection';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Fire Boost', emoji: '🔥', weight: 5, cost: 10 },
@@ -179,6 +177,13 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
   
   const { data: messages } = useCollection<BattleMessage>(messagesQuery);
 
+  // 🛡️ STEP 8: Device Registry Handshake
+  useEffect(() => {
+    if (firestore && user?.id) {
+        registerUserDevice(firestore, user.id);
+    }
+  }, [firestore, user?.id]);
+
   useEffect(() => {
     if (!firestore || !battleId || !isLive) return;
     
@@ -258,10 +263,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     setMessage('');
   };
 
-  /**
-   * 🛡️ STEP 8: Layer 1 - Vote Rate Limiting
-   * Checks the last vote time in the audit node before processing.
-   */
   const handleVote = async (target: 'A' | 'B') => {
     if (!firestore || !user || isVoting || !battle || battle.status !== 'live') return;
     
@@ -271,21 +272,32 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
     setIsVoting(true);
 
     try {
-      // 1. SECURITY AUDIT: Check frequency
       const voteAuditRef = doc(firestore, 'battle_votes', battleId, 'users', user.id);
       const auditSnap = await getDoc(voteAuditRef);
       const now = Date.now();
 
       if (auditSnap.exists()) {
-          const lastVote = auditSnap.data().lastVoteTime?.toMillis?.() || 0;
+          const data = auditSnap.data();
+          const lastVote = data.lastVoteTime?.toMillis?.() || 0;
+          const voteCount = data.voteCount || 0;
+
           if (now - lastVote < 10000) {
               toast({ variant: 'destructive', title: 'Voting too fast!', description: 'Please wait 10s between energy contributions.' });
               setIsVoting(false);
               return;
           }
+
+          // 🛡️ STEP 8 Layer 3: Suspicious Activity Detection
+          if (voteCount > 50) {
+              logSuspiciousActivity(firestore, {
+                  type: 'suspicious_votes',
+                  userId: user.id,
+                  battleId,
+                  details: `User has contributed ${voteCount + 1} votes to battle ${battleId}. Threshold exceeded.`
+              });
+          }
       }
 
-      // 2. LOG AUDIT & INCREMENT TALLY
       const batch = writeBatch(firestore);
       batch.set(voteAuditRef, {
           lastVoteTime: serverTimestamp(),
@@ -304,7 +316,6 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
       }
 
       await batch.commit();
-      setHasVoted(true);
       toast({ title: "Energy Contributed! ⚡" });
 
     } catch(err) { 
@@ -517,7 +528,7 @@ export function LiveBattleRoom({ battleId, onClose }: { battleId: string, onClos
             <div className="flex-1 flex flex-col items-center justify-center p-8 bg-slate-900 overflow-y-auto no-scrollbar pt-24">
                 <div className="max-w-2xl w-full space-y-8 py-20">
                     <div className="relative aspect-video rounded-[2.5rem] overflow-hidden border-4 border-white/10 shadow-2xl bg-black group">
-                        <ReactPlayer url={previewVideoUrl || battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
+                        <ReactPlayer url={battle.opponentA.videoUrl} playing={!isEnded} muted={!soundOn} width="100%" height="100%" />
                         <div className="absolute bottom-6 left-6 z-20 bg-black/40 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10 text-white">
                             <p className="text-xs font-black">{p1?.name}</p>
                         </div>

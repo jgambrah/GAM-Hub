@@ -5,9 +5,7 @@
  * CampusWarRoom Component
  * -----------------------
  * National Hub Stage for University vs University Wars.
- * Orchestrates massive spectator loads using Distributed Counters (Sharding).
- * Implements "One Vote Per Student" integrity protocol.
- * STEP 8: Layer 1 Anti-Fraud Vote Rate Limiting Active 🛡️
+ * Now expanded with STEP 8: DEVICE REGISTRY & FRAUD PROTECTION 🛡️
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -26,6 +24,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import { registerUserDevice, logSuspiciousActivity } from '@/lib/fraud-protection';
 
 const POWER_UPS = [
     { type: 'fire', label: 'Vibe Boost', emoji: '🔥', weight: 5 },
@@ -68,9 +67,12 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
       }), { A: 0, B: 0 });
   }, [shards, war]);
 
-  // 🛡️ STEP 8: Check for initial vote status (optional for multi-vote system)
+  // 🛡️ STEP 8: Device Registry & Initial Check
   useEffect(() => {
-    if (!firestore || !user || !warId) return;
+    if (!firestore || !user?.id || !warId) return;
+    
+    registerUserDevice(firestore, user.id);
+
     const checkVote = async () => {
         const auditRef = doc(firestore, 'battle_votes', warId, 'users', user.id);
         const snap = await getDoc(auditRef);
@@ -102,30 +104,37 @@ export function CampusWarRoom({ warId, onClose }: { warId: string, onClose: () =
     });
   };
 
-  /**
-   * 🛡️ STEP 8: Layer 1 - Vote Rate Limiting (Campus War Edition)
-   * Enforces 10s cooldown across distributed shards.
-   */
   const handleVote = async (side: 'A' | 'B') => {
     if (!firestore || !user || isVoting || !war || war.status === 'ended') return;
     setIsVoting(true);
     
     try {
-      // 1. SECURITY AUDIT: Frequency Check
       const voteAuditRef = doc(firestore, 'battle_votes', warId, 'users', user.id);
       const auditSnap = await getDoc(voteAuditRef);
       const now = Date.now();
 
       if (auditSnap.exists()) {
-          const lastVote = auditSnap.data().lastVoteTime?.toMillis?.() || 0;
+          const data = auditSnap.data();
+          const lastVote = data.lastVoteTime?.toMillis?.() || 0;
+          const voteCount = data.voteCount || 0;
+
           if (now - lastVote < 10000) {
               toast({ variant: 'destructive', title: 'Energy Recharging...', description: 'Please wait 10s between war contributions.' });
               setIsVoting(false);
               return;
           }
+
+          // 🛡️ STEP 8 Layer 3: Fraud Detection
+          if (voteCount > 50) {
+              logSuspiciousActivity(firestore, {
+                  type: 'suspicious_votes',
+                  userId: user.id,
+                  battleId: warId,
+                  details: `User reached ${voteCount + 1} votes in national war ${warId}. Flagging for bot audit.`
+              });
+          }
       }
 
-      // 2. DISTRIBUTED HANDSHAKE
       const shardId = Math.floor(Math.random() * 10).toString();
       const shardRef = doc(firestore, 'campus_wars', warId, 'vote_shards', shardId);
       const batch = writeBatch(firestore);

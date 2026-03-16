@@ -43,6 +43,29 @@
       },
       "required": ["id", "email", "role"]
     },
+    "UserDevice": {
+      "title": "UserDevice",
+      "type": "object",
+      "description": "Anti-fraud audit node mapping users to hardware fingerprints.",
+      "properties": {
+        "userId": { "type": "string" },
+        "deviceHash": { "type": "string" },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FraudLog": {
+      "title": "FraudLog",
+      "type": "object",
+      "description": "Official audit trail for suspicious Arena activity.",
+      "properties": {
+        "type": { "type": "string", "enum": ["suspicious_votes", "multi_account_device", "gift_spam"] },
+        "userId": { "type": "string" },
+        "battleId": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
     "HubWallet": {
       "title": "HubWallet",
       "type": "object",
@@ -140,6 +163,8 @@
   },
   "firestore": {
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
+    "/user_devices/{deviceId}": { "schema": "#/backend/entities/UserDevice", "description": "Device-to-user mappings for Sybil protection." },
+    "/fraud_logs/{logId}": { "schema": "#/backend/entities/FraudLog", "description": "Audit trail for suspicious activity." },
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
     "/creator_settings/{userId}": { "schema": "#/backend/entities/CreatorSettings", "description": "Subscription and commercial settings for creators." },

@@ -20,6 +20,19 @@ service cloud.firestore {
       allow write: if isAdmin() || request.auth.uid == userId;
     }
 
+    // 🛡️ ANTI-FRAUD: Device Mapping
+    match /user_devices/{deviceId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    // 🛡️ ANTI-FRAUD: Suspicious Activity Logs (Liaison Only Write)
+    match /fraud_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn(); // Loggers run on client
+      allow update, delete: if isAdmin();
+    }
+
     match /creator_settings/{userId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
