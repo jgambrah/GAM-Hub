@@ -45,6 +45,15 @@ export type CreatorSettings = {
   updatedAt: any;
 };
 
+export type CreatorAnalytics = {
+  id: string;
+  activeSubscribers: number;
+  monthlyIncomeGHS: number;
+  totalNetEarningsGHS: number;
+  newSubscribersLast30: number;
+  updatedAt: any;
+};
+
 export type CreatorSubscription = {
   id: string;
   creatorId: string;

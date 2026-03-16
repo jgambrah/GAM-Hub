@@ -22,7 +22,12 @@ service cloud.firestore {
 
     match /creator_settings/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    match /creator_analytics/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
     }
 
     // 💎 RECURRING: Creator Subscriptions (Audit Trail)

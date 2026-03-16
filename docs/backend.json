@@ -75,6 +75,18 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
+    "CreatorAnalytics": {
+      "title": "CreatorAnalytics",
+      "type": "object",
+      "description": "Business intelligence for creators to track subscription ROI.",
+      "properties": {
+        "activeSubscribers": { "type": "number" },
+        "monthlyIncomeGHS": { "type": "number" },
+        "totalNetEarningsGHS": { "type": "number" },
+        "newSubscribersLast30": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "CreatorSubscription": {
       "title": "CreatorSubscription",
       "type": "object",
@@ -122,6 +134,7 @@
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
     "/creator_settings/{userId}": { "schema": "#/backend/entities/CreatorSettings", "description": "Subscription and commercial settings for creators." },
+    "/creator_analytics/{userId}": { "schema": "#/backend/entities/CreatorAnalytics", "description": "ROI and income tracking for talent." },
     "/creator_subscriptions/{subId}": { "schema": "#/backend/entities/CreatorSubscription", "description": "Recurring fan support audit trail." },
     "/creator_subscribers/{creatorId}/subscribers/{subscriberId}": { "schema": "#/backend/entities/CreatorSubscriber", "description": "Inner Circle membership list for benefit gating." },
     "/arena_tournaments/{tournamentId}": { "schema": "#/backend/entities/ArenaTournament", "description": "Organized competitions." },

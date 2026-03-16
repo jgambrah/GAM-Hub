@@ -152,7 +152,7 @@ export async function spendCoins(
  * subscribeToCreator (Step 7)
  * --------------------------
  * Establishes a recurring monthly relationship between a fan and a creator.
- * Implements the requested 'creator_subscribers' sub-collection for benefit gating.
+ * Implements the requested 70/30 Revenue Split.
  */
 export async function subscribeToCreator(
     db: Firestore,
@@ -168,10 +168,16 @@ export async function subscribeToCreator(
     const benefitRef = doc(db, 'creator_subscribers', creatorId, 'subscribers', subscriberId);
     const userRef = doc(db, 'users', subscriberId);
     const settingsRef = doc(db, 'creator_settings', creatorId);
+    const analyticsRef = doc(db, 'creator_analytics', creatorId);
+    const revenueRef = doc(db, 'platform_stats', 'revenue');
 
     const now = new Date();
     const renewalDate = new Date();
     renewalDate.setDate(now.getDate() + 30); 
+
+    // THE REVENUE SPLIT: Creator (70%) / Hub (30%)
+    const creatorNet = amountGHS * 0.7;
+    const platformCut = amountGHS * 0.3;
 
     const subData = {
         creatorId,
@@ -199,13 +205,27 @@ export async function subscribeToCreator(
             subscribedCreators: arrayUnion(creatorId)
         });
 
-        // 4. Update Creator Stats
+        // 4. Update Creator Stats & Analytics
         transaction.set(settingsRef, {
             subscriberCount: increment(1),
             updatedAt: serverTimestamp()
         }, { merge: true });
 
-        // 5. Log notification for creator
+        transaction.set(analyticsRef, {
+            activeSubscribers: increment(1),
+            newSubscribersLast30: increment(1),
+            monthlyIncomeGHS: increment(creatorNet),
+            totalNetEarningsGHS: increment(creatorNet),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 5. Update Platform Hub Revenue
+        transaction.set(revenueRef, {
+            total_fees_collected: increment(platformCut),
+            last_updated: serverTimestamp()
+        }, { merge: true });
+
+        // 6. Log notification for creator
         const notifRef = doc(collection(db, 'users', creatorId, 'notifications'));
         transaction.set(notifRef, {
             type: 'subscription',
