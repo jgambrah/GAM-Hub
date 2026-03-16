@@ -17,7 +17,7 @@ import type { ArenaTournament } from './types';
 export const PROMOTION_PACKAGES = {
   small: { cost: 100, target: 5000, label: 'Small: 5,000 Views' },
   medium: { cost: 300, target: 20000, label: 'Medium: 20,000 Views' },
-  large: { cost: 700, target: 50000, label: 'Large: 50,000 Views' }
+  large: { cost: 700, target: 50000, label: 'Large: 5,000 Views' }
 };
 
 /**
@@ -178,6 +178,7 @@ export async function boostVibe(
  * joinTournament (Step 6)
  * ---------------------
  * Orchestrates structured competition entry.
+ * Implements the atomic player registry and prize pool growth.
  */
 export async function joinTournament(
   db: Firestore,
@@ -187,7 +188,7 @@ export async function joinTournament(
   tournamentId: string
 ) {
   const tournamentRef = doc(db, 'arena_tournaments', tournamentId);
-  const participantRef = doc(db, 'arena_tournaments', tournamentId, 'participants', userId);
+  const playerRef = doc(db, 'arena_tournaments', tournamentId, 'players', userId);
 
   return runTransaction(db, async (transaction) => {
     // 1. Verify Entry Eligibility
@@ -198,8 +199,8 @@ export async function joinTournament(
     if (tourney.status !== 'registration') throw new Error("Registration is closed.");
     if (tourney.currentPlayers >= tourney.maxPlayers) throw new Error("Tournament is full.");
 
-    const participantSnap = await transaction.get(participantRef);
-    if (participantSnap.exists()) throw new Error("Already registered.");
+    const playerSnap = await transaction.get(playerRef);
+    if (playerSnap.exists()) throw new Error("Already registered.");
 
     // 2. Spend entry fee (Wallet Audit)
     await spendCoins(db, userId, tourney.entryFeeCoins, 'tournament_entry', {
@@ -208,10 +209,12 @@ export async function joinTournament(
     });
 
     // 3. Register & Update National Hub
-    transaction.set(participantRef, {
+    transaction.set(playerRef, {
         userId,
         userName,
         avatarUrl,
+        eliminated: false,
+        round: 1,
         joinedAt: serverTimestamp()
     });
 

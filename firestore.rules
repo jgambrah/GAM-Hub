@@ -121,7 +121,7 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentPlayers', 'prizePool', 'updatedAt'])
       );
 
-      match /participants/{userId} {
+      match /players/{userId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.auth.uid == userId;
       }
