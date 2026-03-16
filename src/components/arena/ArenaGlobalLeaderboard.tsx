@@ -6,6 +6,7 @@
  * --------------------------------
  * The national engine for competition and prestige.
  * Features 4 high-stakes categories: Elite (Wins), Heat (Best Streaks), Wealth (Earnings), Weekly (Champs).
+ * Now includes STEP 9: National Rewards Visibility.
  */
 
 import React, { useState } from 'react';
@@ -14,7 +15,7 @@ import { collection, query, orderBy, limit } from 'firebase/firestore';
 import type { ArenaLeaderboard } from '@/lib/types';
 import { 
     Trophy, Crown, Zap, Flame, Coins, 
-    TrendingUp, Calendar, Medal, Star, ShieldCheck 
+    TrendingUp, Calendar, Medal, Star, ShieldCheck, Gem, Gift
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -70,6 +71,32 @@ export function ArenaGlobalLeaderboard() {
           <TrendingUp size={12} /> Real-time Handshake Active
         </div>
       </div>
+
+      {/* 🏆 STEP 9: WEEKLY REWARDS HUD */}
+      {activeTab === 'weekly' && (
+          <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4 animate-in slide-in-from-top-4 duration-500">
+              {[
+                  { rank: '#1 Weekly', prize: '5,000', label: 'Gold Champ', color: 'bg-amber-500', icon: Crown },
+                  { rank: '#2 Weekly', prize: '2,000', label: 'Silver Elite', color: 'bg-slate-300', icon: Medal },
+                  { rank: '#3 Weekly', prize: '1,000', label: 'Bronze Warrior', color: 'bg-orange-400', icon: Star },
+              ].map((r) => (
+                  <div key={r.rank} className="bg-slate-900 rounded-[2rem] p-6 border-2 border-white/5 relative overflow-hidden group">
+                      <div className="absolute right-0 top-0 p-4 opacity-5 group-hover:scale-110 transition-transform"><r.icon size={80}/></div>
+                      <div className="flex items-center gap-3 mb-3">
+                          <div className={cn("p-2 rounded-xl text-slate-950", r.color)}>
+                              <r.icon size={16} />
+                          </div>
+                          <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">{r.rank}</span>
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                          <span className="text-3xl font-black text-white italic tracking-tighter">{r.prize}</span>
+                          <span className="text-[10px] font-bold text-amber-500 uppercase">Coins</span>
+                      </div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase mt-2 tracking-[0.2em]">{r.label} Protocol</p>
+                  </div>
+              ))}
+          </div>
+      )}
 
       <Tabs defaultValue="wins" className="w-full" onValueChange={(v) => setActiveTab(v as LeaderboardTab)}>
         <TabsList className="grid w-full grid-cols-4 bg-muted/50 p-1.5 rounded-[2.5rem] h-auto mb-8 border shadow-sm">
@@ -167,7 +194,10 @@ export function ArenaGlobalLeaderboard() {
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-muted/20 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Official National Command Registry • GH</p>
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-600 text-white rounded-lg shadow-lg"><Gift size={12}/></div>
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Weekly Rewards: 5K • 2K • 1K COINS</p>
+                </div>
                 <div className="flex items-center gap-2 text-[8px] font-bold text-slate-500 uppercase">
                     <Zap size={10} className="text-amber-500" fill="currentColor" /> National Ledger Sync: ON
                 </div>

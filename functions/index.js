@@ -123,123 +123,6 @@ exports.autoMatchBattles = onDocumentCreated("arena_waiting_pool/{entryId}", asy
 });
 
 /**
- * 🔥 ARENA RING: REAL-TIME SPIKE DETECTION
- */
-exports.detectHighlightSpike = onDocumentCreated("arena_battles/{battleId}/engagement_events/{eventId}", async (event) => {
-    const db = admin.firestore();
-    const battleId = event.params.battleId;
-    const battleRef = db.collection("arena_battles").doc(battleId);
-
-    const recentEventsSnap = await battleRef.collection("engagement_events")
-        .orderBy("timestamp", "desc")
-        .limit(20)
-        .get();
-
-    if (recentEventsSnap.size < 15) return null;
-
-    const events = recentEventsSnap.docs.map(d => d.data());
-    const newest = events[0].timestamp.toMillis();
-    const oldest = events[events.length - 1].timestamp.toMillis();
-
-    const timeGapMs = newest - oldest;
-    if (timeGapMs < 30000) {
-        console.log(`🔥 SPIKE DETECTED in Battle ${battleId}: 15 events in ${Math.round(timeGapMs/1000)}s`);
-        return battleRef.update({ 
-            isHot: true, 
-            lastSpikeAt: admin.firestore.FieldValue.serverTimestamp() 
-        });
-    }
-
-    return null;
-});
-
-/**
- * 🎬 ARENA RING: VIDEO HIGHLIGHT CUTTER (FLUENT-FFMPEG)
- */
-exports.processArenaHighlight = onDocumentCreated("arena_highlights/{highlightId}", async (event) => {
-    const highlight = event.data.data();
-    const highlightId = event.params.highlightId;
-    const db = admin.firestore();
-
-    if (highlight.processingStatus === "completed") return null;
-
-    const sourceUrl = highlight.sourceUrl;
-    const startTime = highlight.startTime || 0;
-    const tempInput = path.join(os.tmpdir(), `input-${highlightId}.mp4`);
-    const tempOutput = path.join(os.tmpdir(), `output-${highlightId}.mp4`);
-
-    try {
-        console.log(`🎬 Cutting highlight for Battle ${highlight.battleId} starting at ${startTime}s`);
-        
-        const response = await axios({
-            method: "GET",
-            url: sourceUrl,
-            responseType: "stream",
-        });
-        
-        const writer = fs.createWriteStream(tempInput);
-        response.data.pipe(writer);
-        await new Promise((resolve, reject) => {
-            writer.on("finish", resolve);
-            writer.on("error", reject);
-        });
-
-        await new Promise((resolve, reject) => {
-            ffmpeg(tempInput)
-                .setStartTime(startTime)
-                .setDuration(10) 
-                .output(tempOutput)
-                .on("end", resolve)
-                .on("error", reject)
-                .run();
-        });
-
-        const bucket = admin.storage().bucket();
-        const destination = `arena_highlights/${highlightId}.mp4`;
-        await bucket.upload(tempOutput, {
-            destination,
-            metadata: { contentType: "video/mp4", metadata: { battleId: highlight.battleId } },
-        });
-
-        const finalUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(destination)}?alt=media`;
-
-        const batch = db.batch();
-        batch.update(db.collection("arena_highlights").doc(highlightId), {
-            clipUrl: finalUrl,
-            processingStatus: "completed",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        if (highlight.pulsePostId) {
-            batch.update(db.collection("campus_pulse").doc(highlight.pulsePostId), {
-                mediaUrl: finalUrl,
-                thumbnailUrl: finalUrl 
-            });
-        }
-
-        // 🎖️ ARENA LEGENDS: Increment highlight count for the winner
-        if (highlight.winnerId) {
-            const legendRef = db.collection("arena_leaderboard").doc(highlight.winnerId);
-            batch.set(legendRef, { 
-                highlightCount: admin.firestore.FieldValue.increment(1),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-        }
-
-        await batch.commit();
-        console.log(`✅ Highlight processed successfully: ${finalUrl}`);
-
-    } catch (err) {
-        console.error("❌ Highlight processing failed:", err);
-        await db.collection("arena_highlights").doc(highlightId).update({ processingStatus: "failed", error: err.message });
-    } finally {
-        if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput);
-        if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput);
-    }
-    return null;
-});
-
-/**
  * 🛡️ ARENA RING: AUTO-END BATTLES & HIGHLIGHT REGISTRATION
  */
 exports.endBattle = onSchedule("every 1 minutes", async (event) => {
@@ -265,32 +148,8 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
 
     await doc.ref.update({ status: "ended", endedAt: admin.firestore.FieldValue.serverTimestamp() });
 
-    // 🏆 TOURNAMENT PROGRESSION LOGIC
-    if (data.tournamentMatch && data.tournamentId && data.matchId) {
-        const tourneyRef = db.collection("arena_tournaments").doc(data.tournamentId);
-        const matchRef = tourneyRef.collection("matches").doc(data.matchId);
-        
-        await matchRef.update({ 
-            winner: winnerId, 
-            status: "completed",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        if (winnerId) {
-            await tourneyRef.collection("players").doc(winnerId).update({
-                round: admin.firestore.FieldValue.increment(1)
-            });
-        }
-
-        if (loserId) {
-            await tourneyRef.collection("players").doc(loserId).update({
-                eliminated: true
-            });
-        }
-    }
-
     if (!isDraw && winnerId && loserId) {
-        // ⚔️ STEP 10 & 11: Adjudicate Win Streaks & Leaderboards via Transaction
+        // ⚔️ STEP 10, 11 & 12: Adjudicate Win Streaks, Leaderboards & Stats via Transaction
         await db.runTransaction(async (transaction) => {
             const winnerRef = db.collection("arena_leaderboard").doc(winnerId);
             const loserRef = db.collection("arena_leaderboard").doc(loserId);
@@ -319,126 +178,97 @@ exports.endBattle = onSchedule("every 1 minutes", async (event) => {
                 lastBattleAt: admin.firestore.FieldValue.serverTimestamp(),
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             }, { merge: true });
+
+            // 🔔 RANK NOTIFICATION: If winner is top 3 in weekly, notify them
+            if (winnerData.weeklyWins + 1 >= 5) { // Assuming 5+ wins puts you in contention
+                const notifRef = db.collection("users").doc(winnerId).collection("notifications").doc();
+                transaction.set(notifRef, {
+                    type: 'system',
+                    title: "Top 3 Contender! 🏆",
+                    message: `You've secured another win! You're currently a top contender for the Weekly National Rewards.`,
+                    link: "/arena",
+                    read: false,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
         });
-
-        const winnerInfo = info[winnerId];
-        const winner = data.opponentA.userId === winnerId ? data.opponentA : data.opponentB;
-        const loserObj = data.opponentA.userId === winnerId ? data.opponentB : data.opponentA;
-        
-        // HIGHLIGHT GENERATION LOGIC
-        const eventsSnap = await doc.ref.collection("engagement_events").orderBy("timestamp", "asc").get();
-        let peakTimeOffset = 0;
-        let totalEnergy = 0;
-
-        if (!eventsSnap.empty) {
-            const events = eventsSnap.docs.map(d => ({ ...d.data(), time: d.data().timestamp.toMillis() }));
-            const startTime = data.createdAt.toMillis();
-            const bucketSize = 10000; 
-            const buckets = {};
-            
-            events.forEach(e => {
-                const bucketIdx = Math.floor((e.time - startTime) / bucketSize);
-                buckets[bucketIdx] = (buckets[bucketIdx] || 0) + (e.weight || 1);
-                totalEnergy += (e.weight || 1);
-            });
-
-            const sortedBuckets = Object.entries(buckets).sort((a, b) => b[1] - a[1]);
-            peakTimeOffset = Math.max(0, parseInt(sortedBuckets[0][0]) * 10 - 2); 
-        }
-
-        let highlightCategory = "crowd_favorite";
-        const totalVotes = vA + vB;
-        const winMargin = Math.abs(vA - vB) / (totalVotes || 1);
-
-        if (winMargin > 0.6) {
-            highlightCategory = "knockout_moment";
-        } else if (totalEnergy > 50) {
-            highlightCategory = "savage_roast";
-        }
-
-        const pulseRef = db.collection("campus_pulse").doc();
-        const highlightRef = db.collection("arena_highlights").doc();
-
-        await highlightRef.set({
-            battleId: doc.id,
-            sourceUrl: winner.videoUrl,
-            pulsePostId: pulseRef.id,
-            creatorId: data.creatorId,
-            opponentId: loserId,
-            winnerId: winnerId,
-            startTime: peakTimeOffset,
-            category: highlightCategory,
-            processingStatus: "pending",
-            isSponsored: data.isSponsored || false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        await pulseRef.set({
-            authorId: winnerId,
-            authorName: winnerInfo.name,
-            authorAvatarUrl: winnerInfo.avatarUrl,
-            campusId: winnerInfo.campusId || "all",
-            campusAcronym: winnerInfo.campusAcronym,
-            content: `Victory Archive: ${winnerInfo.name} dominated the Yard! Check out this highlight.`,
-            mediaType: "video",
-            mediaUrl: winner.videoUrl, 
-            type: "arena_highlight",
-            isArenaEntry: true,
-            battleMetadata: { 
-                battleId: doc.id, 
-                winnerName: winnerInfo.name, 
-                totalEnergy,
-                category: highlightCategory
-            },
-            likes: 0,
-            commentCount: 0,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
-
-        // 🏛️ CAMPUS WARS: Update University Leaderboard
-        if (winnerInfo.campusId) {
-            const campusRef = db.collection("campus_leaderboard").doc(winnerInfo.campusId);
-            await campusRef.set({
-                wins: admin.firestore.FieldValue.increment(1),
-                totalVotes: admin.firestore.FieldValue.increment(Math.max(vA, vB)),
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-        }
     }
   }
   return null;
 });
 
 /**
- * 👑 WEEKLY CHAMPIONS: RESET WEEKLY WINS
+ * 👑 WEEKLY CHAMPIONS: REWARD & RESET (STEP 9 & 11)
  */
 exports.resetWeeklyWins = onSchedule("every monday 00:00", async (event) => {
   const db = admin.firestore();
   const now = new Date();
   const weekId = `${now.getFullYear()}_week${Math.ceil(now.getDate() / 7)}`;
 
-  const leaderboardSnap = await db.collection("arena_leaderboard")
-    .where("weeklyWins", ">", 0)
+  // 1. IDENTIFY TOP 3 WEEKLY WARRIORS
+  const topSnap = await db.collection("arena_leaderboard")
+    .orderBy("weeklyWins", "desc")
+    .limit(3)
     .get();
 
-  if (leaderboardSnap.empty) return null;
+  if (topSnap.empty) return null;
 
   const batch = db.batch();
-  
-  leaderboardSnap.forEach(docSnap => {
+  const rewards = [5000, 2000, 1000]; // #1, #2, #3 rewards
+
+  topSnap.docs.forEach((docSnap, index) => {
     const data = docSnap.data();
-    
-    // 1. Archive to Weekly Leaderboard History
-    const archiveRef = db.collection("weekly_leaderboard").doc(weekId).collection("creators").doc(docSnap.id);
+    const userId = docSnap.id;
+    const prize = rewards[index];
+
+    // A. DISTRIBUTE COIN REWARDS
+    const walletRef = db.collection("wallets").doc(userId);
+    batch.update(walletRef, {
+        coins: admin.firestore.FieldValue.increment(prize),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // B. LOG TRANSACTION
+    const txRef = db.collection("wallet_transactions").doc();
+    batch.set(txRef, {
+        userId,
+        type: 'gift_received',
+        coins: prize,
+        metadata: {
+            type: 'weekly_championship',
+            rank: index + 1,
+            weekId
+        },
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // C. SEND VICTORY NOTIFICATION
+    const notifRef = db.collection("users").doc(userId).collection("notifications").doc();
+    batch.set(notifRef, {
+        type: 'system',
+        title: `Weekly Champion #${index + 1}! 👑`,
+        message: `Salute the Yard! You finished #${index + 1} this week and earned ${prize} Hub Coins.`,
+        link: "/wallet",
+        read: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // D. ARCHIVE TO HISTORICAL LEDGER
+    const archiveRef = db.collection("weekly_leaderboard").doc(weekId).collection("creators").doc(userId);
     batch.set(archiveRef, {
-        creatorId: docSnap.id,
+        creatorId: userId,
         name: data.name,
         wins: data.weeklyWins,
+        rank: index + 1,
+        prizeEarned: prize,
         campusAcronym: data.campusAcronym,
         archivedAt: admin.firestore.FieldValue.serverTimestamp()
     });
+  });
 
-    // 2. Reset Current Weekly Wins
+  // 2. RESET EVERYONE'S WEEKLY TALLY
+  const allWeeklyWarriors = await db.collection("arena_leaderboard").where("weeklyWins", ">", 0).get();
+  allWeeklyWarriors.forEach(docSnap => {
     batch.update(docSnap.ref, { 
         weeklyWins: 0, 
         updatedAt: admin.firestore.FieldValue.serverTimestamp() 
