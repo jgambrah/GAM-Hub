@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -9,7 +8,7 @@ import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { boostVibe, BOOST_TIERS } from '@/lib/monetization';
+import { boostVibe, PROMOTION_PACKAGES } from '@/lib/monetization';
 import type { SocialPost, HubWallet } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -23,7 +22,7 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
   const { firestore } = useFirebase();
   const { user } = useAuth();
   const { toast } = useToast();
-  const [selectedTier, setSelectedTier] = useState<keyof typeof BOOST_TIERS | null>(null);
+  const [selectedTier, setSelectedTier] = useState<keyof typeof PROMOTION_PACKAGES | null>(null);
   const [isBoosting, setIsBoosting] = useState(false);
 
   const walletRef = useMemoFirebase(() => {
@@ -35,8 +34,8 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
   const handleBoost = async () => {
     if (!firestore || !user || !selectedTier) return;
     
-    const cost = BOOST_TIERS[selectedTier].cost;
-    if ((wallet?.coins || 0) < cost) {
+    const pack = PROMOTION_PACKAGES[selectedTier];
+    if ((wallet?.coins || 0) < pack.cost) {
         toast({ variant: 'destructive', title: 'Insufficient Coins', description: 'Refill your Hub Wallet to deploy this boost.' });
         return;
     }
@@ -46,7 +45,7 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
         await boostVibe(firestore, user.id, post.id, selectedTier);
         toast({ 
             title: "Performance Boosted! 🚀", 
-            description: `Liaison is deploying your victory to ${BOOST_TIERS[selectedTier].target.toLocaleString()} more viewers.` 
+            description: `Liaison is deploying your victory to ${pack.target.toLocaleString()} more viewers.` 
         });
         onClose();
     } catch (err: any) {
@@ -83,9 +82,9 @@ export function BoostVibeDialog({ post, isOpen, onClose }: BoostVibeDialogProps)
           </div>
 
           <div className="grid grid-cols-1 gap-3">
-            {(Object.entries(BOOST_TIERS) as [keyof typeof BOOST_TIERS, any][]).map(([key, tier]) => {
+            {(Object.entries(PROMOTION_PACKAGES) as [keyof typeof PROMOTION_PACKAGES, any][]).map(([key, tier]) => {
                 const isActive = selectedTier === key;
-                const Icon = key === 'legendary' ? Crown : key === 'viral' ? Rocket : TrendingUp;
+                const Icon = key === 'large' ? Crown : key === 'medium' ? Rocket : TrendingUp;
                 
                 return (
                     <button

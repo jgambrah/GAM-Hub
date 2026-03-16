@@ -1,4 +1,3 @@
-
 import type { SocialPost, UserIntelligence, VibeMood } from './types';
 import { cosineSimilarity } from './utils';
 
@@ -30,8 +29,9 @@ export function computeVibeScore(
       
       // Only boost if target hasn't been met
       if (delivered < target) {
-          const tier = candidate.promotionLevel || 'starter';
-          const tierBonus = tier === 'legendary' ? 300 : tier === 'viral' ? 200 : 100;
+          const tier = candidate.promotionLevel || 'small';
+          // Massive bonuses to ensure promoted content surfaces instantly
+          const tierBonus = tier === 'large' ? 1000 : tier === 'medium' ? 600 : 300;
           
           // Apply a "Urgency Multiplier" - stronger boost if we are far from target
           const progress = delivered / target;

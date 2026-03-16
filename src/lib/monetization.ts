@@ -1,4 +1,3 @@
-
 'use client';
 
 /**
@@ -11,10 +10,14 @@ import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDo
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 
-export const BOOST_TIERS = {
-  starter: { cost: 100, target: 5000, label: 'Starter Boost' },
-  viral: { cost: 300, target: 20000, label: 'Viral Momentum' },
-  legendary: { cost: 750, target: 60000, label: 'Legendary Takeover' }
+/**
+ * 💎 PROMOTION PACKAGES (Step 5)
+ * Defines the commercial tiers for pushing highlights to more citizens.
+ */
+export const PROMOTION_PACKAGES = {
+  small: { cost: 100, target: 5000, label: 'Small Boost' },
+  medium: { cost: 300, target: 20000, label: 'Medium Boost' },
+  large: { cost: 700, target: 50000, label: 'Large Takeover' }
 };
 
 /**
@@ -165,12 +168,12 @@ export async function boostVibe(
   db: Firestore,
   userId: string,
   postId: string,
-  tier: keyof typeof BOOST_TIERS
+  tier: keyof typeof PROMOTION_PACKAGES
 ) {
-  const config = BOOST_TIERS[tier];
+  const pack = PROMOTION_PACKAGES[tier];
   
   // 1. First spend the coins (Transactionally secure)
-  await spendCoins(db, userId, config.cost, 'highlight_boost', {
+  await spendCoins(db, userId, pack.cost, 'highlight_boost', {
     boostTier: tier,
     targetCreatorId: userId // Boosting self
   });
@@ -180,7 +183,7 @@ export async function boostVibe(
   return updateDoc(postRef, {
     isPromoted: true,
     promotionLevel: tier,
-    promotionViewsTarget: config.target,
+    promotionViewsTarget: pack.target,
     promotionViewsDelivered: 0,
     promotedAt: serverTimestamp()
   });
