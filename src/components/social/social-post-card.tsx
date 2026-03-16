@@ -9,7 +9,7 @@ import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
   ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music, TrendingUp, BarChart3,
-  UserPlus, CheckCircle2
+  UserPlus, CheckCircle2, Gem
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase, updateDocumentNonBlocking } from '@/firebase';
@@ -17,6 +17,7 @@ import {
   doc, getDoc, setDoc, deleteDoc, updateDoc, increment, serverTimestamp, arrayUnion, arrayRemove
 } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
+import { formatDistanceToNow } from 'date-fns';
 import CommentSection from './CommentSection';
 import ReactPlayer from 'react-player';
 import YouTube from 'react-youtube';
@@ -35,6 +36,7 @@ import VibeShopOverlay from './VibeShopOverlay';
 import VoicePlayer from './VoicePlayer';
 import { BoostVibeDialog } from '../arena/BoostVibeDialog';
 import { HighlightAnalyticsDialog } from '../arena/HighlightAnalyticsDialog';
+import { CreatorSubscribeDialog } from './CreatorSubscribeDialog';
 import dynamic from 'next/dynamic';
 
 const TikTokEmbed = dynamic(() => import('./tiktok-embed').then(mod => mod.TikTokEmbed), {
@@ -76,6 +78,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [isRestricted, setIsRestricted] = React.useState(false);
   const [showBoostDialog, setShowBoostDialog] = React.useState(false);
   const [showAnalytics, setShowAnalytics] = React.useState(false);
+  const [showSubscribe, setShowSubscribe] = React.useState(false);
   
   const [isSkippingRestricted, setIsSkippingRestricted] = React.useState(false);
   const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
@@ -101,6 +104,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const mediaCategory = getMediaCategory(post.mediaType);
 
   const isFollowing = user?.followedUsers?.includes(post.authorId) || false;
+  const isSubscribed = user?.subscribedCreators?.includes(post.authorId) || false;
   const [isProcessingFollow, setIsProcessingFollow] = React.useState(false);
 
   const videoSource = post.hlsUrl || post.mediaUrl;
@@ -128,14 +132,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             promotionViewsDelivered: increment(1)
           };
           
-          // Auto-Stop Protocol
           if (delivered >= target && target > 0) {
             updates.isPromoted = false;
           }
           
           updateDoc(postRef, updates).catch(e => console.warn("Liaison Analytics: Promo track drifted.", e));
           
-          // Sync to persistent analytics node
           setDoc(statsRef, {
               views: increment(1),
               updatedAt: serverTimestamp()
@@ -261,7 +263,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         recordLike(post);
         recordEngagement(firestore, post.id, 'like', post.authorId, post.createdAt);
         
-        // 🚀 Promotion Analytics Sync
         if (post.isPromoted) {
             setDoc(statsRef, { likes: increment(1), updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
         }
@@ -274,7 +275,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
     if (!firestore) return;
     recordEngagement(firestore, post.id, 'share', post.authorId, post.createdAt);
     
-    // 🚀 Promotion Analytics Sync
     if (post.isPromoted) {
         const statsRef = doc(firestore, 'highlight_stats', post.id);
         setDoc(statsRef, { shares: increment(1), updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
@@ -309,12 +309,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             toast({ title: "Unfollowed Creator" });
         } else {
             await updateDoc(userRef, { followedUsers: arrayUnion(post.authorId) });
-            
-            // 🚀 Growth Loop Analytics: Attribute follow to THIS highlight if promoted
             if (post.isPromoted) {
                 setDoc(statsRef, { followersGained: increment(1), updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
             }
-            
             toast({ title: `Now Following ${post.authorName}! 🤝` });
         }
     } catch (e) {
@@ -382,10 +379,9 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         isGlobalSeed && !isActiveVibe && 'border-amber-200'
       )}
     >
-      {/* STEP 5: PROMOTED INDICATOR */}
       {post.isPromoted && (
           <div className="absolute top-6 left-6 z-20 animate-in zoom-in duration-500">
-              <div className="bg-red-600 text-white px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
+              <div className="bg-red-600 text-white px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
                   <TrendingUp size={12} fill="white" /> Promoted Highlight
               </div>
           </div>
@@ -393,7 +389,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
       {isGlobalSeed && !post.isPromoted && (
         <div className="absolute top-6 left-6 z-20 animate-in zoom-in duration-500">
-          <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
+          <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
             <Globe size={12} /> Global Vibe
           </div>
         </div>
@@ -431,8 +427,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         </div>
       )}
 
-      {/* 🎙️ SHOUTOUT HERO STAGE */}
-      {post.mediaType === 'audio' && (
+      {post.mediaType === 'audio' && post.mediaUrl && (
         <div 
           onClick={() => setActivePost(post)}
           className={cn(
@@ -546,16 +541,31 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
                 <p className={cn('font-black text-foreground transition-all duration-300 truncate', isActiveVibe ? 'text-lg' : 'text-base')}>
                     {post.authorName}
                 </p>
+                {isSubscribed && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 text-amber-600 px-2 py-0.5 rounded-lg text-[7px] font-black uppercase flex items-center gap-1">
+                        <Gem size={8} fill="currentColor" /> Inner Circle
+                    </div>
+                )}
                 {!isAuthor && !isProcessingFollow && (
-                    <button 
-                        onClick={handleFollow}
-                        className={cn(
-                            "px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all active:scale-95 border",
-                            isFollowing ? "bg-slate-100 text-slate-500 border-slate-200" : "bg-blue-600 text-white border-blue-600 shadow-md"
+                    <div className="flex gap-1">
+                        <button 
+                            onClick={handleFollow}
+                            className={cn(
+                                "px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all active:scale-95 border",
+                                isFollowing ? "bg-slate-100 text-slate-500 border-slate-200" : "bg-blue-600 text-white border-blue-600 shadow-md"
+                            )}
+                        >
+                            {isFollowing ? 'Following' : 'Follow'}
+                        </button>
+                        {!isSubscribed && (
+                            <button 
+                                onClick={() => setShowSubscribe(true)}
+                                className="px-3 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-slate-800 transition-all active:scale-95 flex items-center gap-1"
+                            >
+                                <Gem size={8} /> Support
+                            </button>
                         )}
-                    >
-                        {isFollowing ? 'Following' : 'Follow'}
-                    </button>
+                    </div>
                 )}
                 {isProcessingFollow && <Loader2 className="animate-spin text-slate-300" size={10} />}
               </div>
@@ -568,7 +578,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               </div>
             </div>
             
-            {/* 🚀 STEP 5: CREATOR ROI QUICK-ACCESS */}
             {isAuthor && post.isPromoted && (
                 <button 
                     onClick={() => setShowAnalytics(true)}
@@ -584,7 +593,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             {renderWithHashtags(post.content)}
           </div>
 
-          {/* 🚀 PROMOTION DASHBOARD FOR AUTHOR */}
           {isAuthor && post.isPromoted && (
               <div className="mt-8 p-6 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] border-2 border-blue-100 dark:border-blue-800 animate-in slide-in-from-bottom-2 duration-500">
                   <div className="flex justify-between items-center mb-4">
@@ -608,7 +616,6 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
               </div>
           )}
 
-          {/* 🎙️ SHOUTOUT AUDIO PLAYER */}
           {post.mediaType === 'audio' && post.mediaUrl && (
             <div className="mt-8 max-w-xl animate-in slide-in-from-bottom-2 duration-500">
                 <VoicePlayer url={post.mediaUrl} duration={post.duration} theme="primary" />
@@ -671,6 +678,19 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
       {showAnalytics && (
           <HighlightAnalyticsDialog post={post} isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} />
+      )}
+
+      {showSubscribe && (
+          <CreatorSubscribeDialog 
+            creator={{
+                id: post.authorId,
+                name: post.authorName || 'Creator',
+                avatarUrl: post.authorAvatarUrl || '',
+                campusAcronym: post.authorAcronym || post.authorCampus
+            }}
+            isOpen={showSubscribe} 
+            onClose={() => setShowSubscribe(false)} 
+          />
       )}
     </div>
   );

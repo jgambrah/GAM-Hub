@@ -3,13 +3,13 @@
 
 /**
  * @fileOverview Liaison Monetization Engine: Wallet Transactions.
- * Implements Step 2, 3, 5 & 6: Spam Prevention, Revenue Split, Paid Boosting & Tournament Entry.
+ * Implements Step 2, 3, 5, 6 & 7: Spam Prevention, Revenue Split, Paid Boosting, Tournament Entry & Subscriptions.
  */
 
-import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp, getDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp, getDoc, setDoc, writeBatch, arrayUnion } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
-import type { ArenaTournament } from './types';
+import type { ArenaTournament, CreatorSubscription } from './types';
 
 /**
  * 💎 PROMOTION PACKAGES (Step 5)
@@ -176,9 +176,6 @@ export async function boostVibe(
 
 /**
  * joinTournament (Step 6)
- * ---------------------
- * Orchestrates structured competition entry.
- * Implements the atomic player registry and prize pool growth.
  */
 export async function joinTournament(
   db: Firestore,
@@ -191,7 +188,6 @@ export async function joinTournament(
   const playerRef = doc(db, 'arena_tournaments', tournamentId, 'players', userId);
 
   return runTransaction(db, async (transaction) => {
-    // 1. Verify Entry Eligibility
     const tourneySnap = await transaction.get(tournamentRef);
     if (!tourneySnap.exists()) throw new Error("Tournament not found.");
     
@@ -202,13 +198,11 @@ export async function joinTournament(
     const playerSnap = await transaction.get(playerRef);
     if (playerSnap.exists()) throw new Error("Already registered.");
 
-    // 2. Spend entry fee (Wallet Audit)
     await spendCoins(db, userId, tourney.entryFeeCoins, 'tournament_entry', {
         tournamentId,
         userName
     });
 
-    // 3. Register & Update National Hub
     transaction.set(playerRef, {
         userId,
         userName,
@@ -220,21 +214,70 @@ export async function joinTournament(
 
     transaction.update(tournamentRef, {
         currentPlayers: increment(1),
-        prizePool: increment(tourney.entryFeeCoins), // Entry fees feed the prize pool
+        prizePool: increment(tourney.entryFeeCoins),
         updatedAt: serverTimestamp()
     });
-
   });
 }
 
 /**
+ * subscribeToCreator (Step 7)
+ * --------------------------
+ * Establishes a recurring monthly relationship between a fan and a creator.
+ * Handshake: Paystack GHS Payment -> Active Subscription Document.
+ */
+export async function subscribeToCreator(
+    db: Firestore,
+    subscriberId: string,
+    creatorId: string,
+    amountGHS: number,
+    paystackRef: string
+) {
+    if (!db || !subscriberId || !creatorId) return;
+
+    const subId = `${subscriberId}_${creatorId}`;
+    const subRef = doc(db, 'creator_subscriptions', subId);
+    const userRef = doc(db, 'users', subscriberId);
+
+    const now = new Date();
+    const renewalDate = new Date();
+    renewalDate.setDate(now.getDate() + 30); // 30-day billing cycle
+
+    const subData = {
+        creatorId,
+        subscriberId,
+        priceMonthly: amountGHS,
+        status: 'active',
+        paystackReference: paystackRef,
+        startDate: serverTimestamp(),
+        renewalDate: renewalDate.toISOString(),
+        updatedAt: serverTimestamp()
+    };
+
+    return runTransaction(db, async (transaction) => {
+        // 1. Create the subscription node
+        transaction.set(subRef, subData, { merge: true });
+
+        // 2. Cache subscription status on user profile for fast UI checks
+        transaction.update(userRef, {
+            subscribedCreators: arrayUnion(creatorId)
+        });
+
+        // 3. Log notification for creator
+        const notifRef = doc(collection(db, 'users', creatorId, 'notifications'));
+        transaction.set(notifRef, {
+            type: 'subscription',
+            title: "New Inner Circle Member! 💎",
+            message: `A fan has subscribed to your channel for GHS ${amountGHS}/mo.`,
+            link: `/chat`,
+            read: false,
+            createdAt: serverTimestamp()
+        });
+    });
+}
+
+/**
  * distributeTournamentPrizes (Step 6)
- * ---------------------------------
- * Finalizes a national competition and distributes Hub Coins rewards.
- * Prize Fund = Total Pool - 20% Platform Commission
- * 1st: 60% of fund
- * 2nd: 25% of fund
- * 3rd: 15% of fund
  */
 export async function distributeTournamentPrizes(
     db: Firestore, 
@@ -251,11 +294,9 @@ export async function distributeTournamentPrizes(
         const data = tourneySnap.data() as ArenaTournament;
         const totalPool = data.prizePool;
         
-        // 1. Calculate Fund (80% of pool)
         const platformFee = Math.floor(totalPool * 0.20);
         const prizeFund = totalPool - platformFee;
 
-        // 2. Calculate Tiers
         const firstPrize = Math.floor(prizeFund * 0.60);
         const secondPrize = Math.floor(prizeFund * 0.25);
         const thirdPrize = Math.floor(prizeFund * 0.15);
@@ -266,7 +307,6 @@ export async function distributeTournamentPrizes(
             { userId: winners.third, amount: thirdPrize, rank: '3rd' }
         ];
 
-        // 3. Dispatch Rewards
         for (const p of payouts) {
             const walletRef = doc(db, 'wallets', p.userId);
             transaction.update(walletRef, {
@@ -289,7 +329,6 @@ export async function distributeTournamentPrizes(
             });
         }
 
-        // 4. Update Tournament Status
         transaction.update(tournamentRef, {
             status: 'finished',
             platformFeeCollected: platformFee,

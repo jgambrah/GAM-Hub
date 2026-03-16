@@ -63,6 +63,20 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
+    "CreatorSubscription": {
+      "title": "CreatorSubscription",
+      "type": "object",
+      "description": "Monthly recurring support from a fan to a creator.",
+      "properties": {
+        "creatorId": { "type": "string" },
+        "subscriberId": { "type": "string" },
+        "priceMonthly": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "cancelled", "expired"] },
+        "startDate": { "type": "string", "format": "date-time" },
+        "renewalDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["creatorId", "subscriberId", "status"]
+    },
     "ArenaTournament": {
       "title": "ArenaTournament",
       "type": "object",
@@ -125,6 +139,7 @@
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
+    "/creator_subscriptions/{subId}": { "schema": "#/backend/entities/CreatorSubscription", "description": "Recurring fan support." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/arena_tournaments/{tournamentId}": { "schema": "#/backend/entities/ArenaTournament", "description": "Organized competitions." },
     "/arena_tournaments/{tournamentId}/matches/{matchId}": { "schema": "#/backend/entities/ArenaMatch", "description": "Individual matches within a tournament round." },

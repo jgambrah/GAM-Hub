@@ -16,6 +16,7 @@ export type User = {
   fcmToken?: string;
   followedVendors?: string[];
   followedUsers?: string[];
+  subscribedCreators?: string[]; // Step 7: IDs of creators user is subscribed to
   onboardingStatus?: 'needs_submission' | 'pending_review' | 'approved';
   vendorCategory?: string;
   contactPhone?: string;
@@ -34,6 +35,16 @@ export type User = {
   businessName?: string;
   candidatePosition?: string;
   candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+};
+
+export type CreatorSubscription = {
+  id: string;
+  creatorId: string;
+  subscriberId: string;
+  priceMonthly: number;
+  status: 'active' | 'cancelled' | 'expired';
+  startDate: any;
+  renewalDate: any;
 };
 
 export type HubWallet = {
@@ -426,7 +437,7 @@ export type Notification = {
     | 'like' | 'comment' | 'share' | 'follow' | 'voice_reply' 
     | 'message' | 'voice_message' | 'group_message'
     | 'order' | 'price_drop' | 'vendor_reply' | 'product_recommendation'
-    | 'event' | 'hostel_update' | 'department_news' | 'war' | 'system' | 'battle_challenge';
+    | 'event' | 'hostel_update' | 'department_news' | 'war' | 'system' | 'battle_challenge' | 'subscription';
   title: string;
   message: string;
   link?: string;

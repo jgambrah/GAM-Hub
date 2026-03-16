@@ -32,6 +32,17 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
 
+    // 💎 RECURRING: Creator Subscriptions
+    match /creator_subscriptions/{subId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == resource.data.subscriberId || 
+        request.auth.uid == resource.data.creatorId || 
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.subscriberId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
     // 💰 MONETIZATION: Transaction History
     match /wallet_transactions/{txId} {
       allow read: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
