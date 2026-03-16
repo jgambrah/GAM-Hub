@@ -119,6 +119,14 @@ export type ArenaPricingTier = {
   order: number;
 };
 
+export type ArenaSeason = {
+  title: string;
+  sponsorName: string;
+  sponsorLogo: string;
+  isActive: boolean;
+  updatedAt: any;
+};
+
 export type ArenaGift = {
   id: string;
   senderId: string;

@@ -1,11 +1,12 @@
+
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking } from '@/firebase';
+import { useFirebase, useCollection, useMemoFirebase, deleteDocumentNonBlocking, addDocumentNonBlocking, useDoc } from '@/firebase';
 import { collection, query, orderBy, limit, where, doc, onSnapshot, serverTimestamp, getDoc, setDoc, increment } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry } from '@/lib/types';
-import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target, Smile, ImagePlus, Youtube, PlusCircle, Star, Megaphone } from 'lucide-react';
+import type { ArenaPost, ArenaBattle, CampusWar, ArenaWaitingPoolEntry, ArenaSeason } from '@/lib/types';
+import { Swords, Trophy, Zap, Loader2, Flame, Sparkles, Globe, Radar, X, Crown, ShieldAlert, Send, ShieldCheck, Target, Smile, ImagePlus, Youtube, PlusCircle, Star, Megaphone, Calendar } from 'lucide-react';
 import { ArenaPostCard } from '@/components/arena/ArenaPostCard';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -63,6 +64,13 @@ export default function ArenaPage() {
 
     const userCampusInfo = user ? staticCampuses.find(c => c.id === user.campusId) : undefined;
     
+    // 0. NATIONAL SEASON SYNC (TOP PRIORITY)
+    const seasonRef = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return doc(firestore, 'platform_stats', 'arena_season');
+    }, [firestore]);
+    const { data: season } = useDoc<ArenaSeason>(seasonRef);
+
     // 1. SPONSORED BATTLES (PRIORITY HUB)
     const featuredBattlesQuery = useMemoFirebase(() => {
         if (!firestore) return null;
@@ -379,6 +387,38 @@ export default function ArenaPage() {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* 🛡️ NATIONAL SEASON BANNER (RECURRING SPONSORSHIP) */}
+            {season && season.isActive && (
+                <section className="max-w-5xl mx-auto mb-12 animate-in slide-in-from-top-4 duration-1000">
+                    <div className="bg-gradient-to-r from-slate-900 to-indigo-900 rounded-[3rem] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl border-b-8 border-indigo-500">
+                        <div className="absolute right-0 top-0 p-10 opacity-5 rotate-12 pointer-events-none">
+                            <Trophy size={200} />
+                        </div>
+                        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
+                            <div className="text-center md:text-left">
+                                <div className="flex items-center justify-center md:justify-start gap-3 mb-4">
+                                    <div className="bg-amber-500 p-2 rounded-xl text-slate-950">
+                                        <Star size={16} fill="currentColor" />
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-[0.4em] text-amber-400">National Arena Season</span>
+                                </div>
+                                <h1 className="text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none">
+                                    {season.title}
+                                </h1>
+                                <p className="text-sm md:text-lg font-bold text-slate-400 mt-4 uppercase tracking-widest">
+                                    Powered by <span className="text-white">{season.sponsorName}</span>
+                                </p>
+                            </div>
+                            {season.sponsorLogo && (
+                                <div className="w-32 h-32 md:w-48 md:h-48 bg-white rounded-[2.5rem] p-6 shadow-2xl flex items-center justify-center border-4 border-white/10 group hover:scale-105 transition-transform duration-500">
+                                    <img src={season.sponsorLogo} alt="season sponsor" className="w-full h-full object-contain" />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </section>
             )}
 
             <ArenaLeaderboard />

@@ -1,13 +1,13 @@
 
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useFirebase, useCollection, useMemoFirebase, addDocumentNonBlocking, useDoc } from '@/firebase';
-import { collection, query, orderBy, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, query, orderBy, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
     Swords, Megaphone, Plus, Trophy, Globe, 
-    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck, Banknote, DollarSign, Target, TrendingUp, Crown
+    Upload, X, Loader2, Save, BadgeCheck, Zap, Building2, ShieldCheck, Banknote, DollarSign, Target, TrendingUp, Crown, Calendar
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,20 +16,20 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { ArenaSponsor, ArenaBattle, ArenaPricingTier } from '@/lib/types';
+import type { ArenaSponsor, ArenaBattle, ArenaPricingTier, ArenaSeason } from '@/lib/types';
 import Image from 'next/image';
 
 /**
  * SponsoredBattleManager Component
  * ------------------------------
  * Official tool for the National Liaison to manage brand partnerships.
- * Now expanded with Live Commercial Intelligence and Dynamic Pricing.
+ * Now expanded with Season Sponsorship management.
  */
 export default function SponsoredBattleManager() {
   const { firestore, storage, auth } = useFirebase();
   const { toast } = useToast();
   
-  const [view, setView] = useState<'overview' | 'create_sponsor' | 'launch_battle'>('overview');
+  const [view, setView] = useState<'overview' | 'create_sponsor' | 'launch_battle' | 'season'>('overview');
   const [loading, setLoading] = useState(false);
 
   // --- SPONSOR STATE ---
@@ -43,22 +43,34 @@ export default function SponsoredBattleManager() {
   const [selectedSponsorId, setSelectedSponsorId] = useState('');
   const [prizeAmount, setPrizeAmount] = useState('');
 
+  // --- SEASON STATE ---
+  const [seasonData, setSeasonData] = useState({ title: '', sponsorName: '', logoUrl: '', isActive: true });
+
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. LIVE DATA SYNC: Fetch National Revenue & Pricing Tiers
+  // 1. LIVE DATA SYNC
   const statsRef = useMemoFirebase(() => firestore ? doc(firestore, 'platform_stats', 'revenue') : null, [firestore]);
   const { data: revenueData } = useDoc(statsRef);
+
+  const seasonRef = useMemoFirebase(() => firestore ? doc(firestore, 'platform_stats', 'arena_season') : null, [firestore]);
+  const { data: currentSeason } = useDoc<ArenaSeason>(seasonRef);
 
   const pricingQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'arena_pricing'), orderBy('order', 'asc')) : null, [firestore]);
   const { data: pricingTiers, isLoading: isLoadingPricing } = useCollection<ArenaPricingTier>(pricingQuery);
 
-  // 2. Fetch existing sponsors
-  const sponsorsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return query(collection(firestore, 'arena_sponsors'), orderBy('createdAt', 'desc'));
-  }, [firestore]);
-
+  const sponsorsQuery = useMemoFirebase(() => firestore ? query(collection(firestore, 'arena_sponsors'), orderBy('createdAt', 'desc')) : null, [firestore]);
   const { data: sponsors, isLoading: isLoadingSponsors } = useCollection<ArenaSponsor>(sponsorsQuery);
+
+  useEffect(() => {
+    if (currentSeason) {
+        setSeasonData({
+            title: currentSeason.title || '',
+            sponsorName: currentSeason.sponsorName || '',
+            logoUrl: currentSeason.sponsorLogo || '',
+            isActive: currentSeason.isActive ?? true
+        });
+    }
+  }, [currentSeason]);
 
   const getPricingIcon = (type: string) => {
     switch(type) {
@@ -101,6 +113,36 @@ export default function SponsoredBattleManager() {
       toast({ variant: 'destructive', title: "Registration Failed" });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveSeason = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!firestore || !storage) return;
+    setLoading(true);
+    try {
+        let finalLogoUrl = seasonData.logoUrl;
+        
+        if (sponsorLogoFile) {
+            const logoRef = ref(storage, `arena_seasons/${Date.now()}_logo`);
+            await uploadBytes(logoRef, sponsorLogoFile);
+            finalLogoUrl = await getDownloadURL(logoRef);
+        }
+
+        await setDoc(doc(firestore, 'platform_stats', 'arena_season'), {
+            title: seasonData.title,
+            sponsorName: seasonData.sponsorName,
+            sponsorLogo: finalLogoUrl,
+            isActive: seasonData.isActive,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        toast({ title: "Arena Season Activated!" });
+        setView('overview');
+    } catch (err) {
+        toast({ variant: 'destructive', title: "Activation Failed" });
+    } finally {
+        setLoading(false);
     }
   };
 
@@ -175,6 +217,9 @@ export default function SponsoredBattleManager() {
             <Button variant="ghost" onClick={() => setView('overview')} className="rounded-xl font-bold">Back</Button>
           ) : (
             <>
+              <Button onClick={() => setView('season')} variant="outline" className="rounded-xl font-black text-[10px] uppercase tracking-widest border-2">
+                Season Sponsor
+              </Button>
               <Button onClick={() => setView('create_sponsor')} variant="outline" className="rounded-xl font-black text-[10px] uppercase tracking-widest border-2">
                 Register Sponsor
               </Button>
@@ -185,6 +230,48 @@ export default function SponsoredBattleManager() {
           )}
         </div>
       </div>
+
+      {/* ── SEASON SPONSOR VIEW ───────────────────────────────────────────── */}
+      {view === 'season' && (
+        <Card className="max-w-2xl mx-auto rounded-[3rem] border-2 border-indigo-500/20 shadow-2xl animate-in zoom-in-95 duration-300">
+          <CardHeader className="p-10 border-b bg-indigo-500/10">
+            <CardTitle className="text-2xl font-black text-indigo-600">Season Architect</CardTitle>
+            <CardDescription className="font-bold uppercase text-[10px] tracking-widest text-indigo-500/60">Configure recurring national seasonal branding</CardDescription>
+          </CardHeader>
+          <CardContent className="p-10">
+            <form onSubmit={handleSaveSeason} className="space-y-6">
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Season Title</Label>
+                <Input required value={seasonData.title} onChange={e => setSeasonData({...seasonData, title: e.target.value})} placeholder="e.g. Arena Season 1: The Takeover" className="h-14 rounded-2xl border-none bg-muted font-bold text-lg shadow-inner" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Anchor Sponsor Name</Label>
+                <Input required value={seasonData.sponsorName} onChange={e => setSeasonData({...seasonData, sponsorName: e.target.value})} placeholder="e.g. MTN Ghana" className="h-14 rounded-2xl border-none bg-muted font-bold text-lg shadow-inner" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] font-black uppercase text-slate-400 px-1">Season Logo</Label>
+                <div className="aspect-video bg-muted/50 rounded-[2rem] border-4 border-dashed border-muted-foreground/10 flex items-center justify-center overflow-hidden relative">
+                  {(logoPreview || seasonData.logoUrl) ? (
+                    <div className="relative w-full h-full">
+                      <Image src={logoPreview || seasonData.logoUrl} fill className="object-contain p-8" alt="preview" />
+                      <button type="button" onClick={() => { setSponsorLogoFile(null); setLogoPreview(null); }} className="absolute top-4 right-4 p-2 bg-black/50 text-white rounded-full"><X size={16}/></button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => logoInputRef.current?.click()} className="flex flex-col items-center gap-3">
+                      <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-lg"><Upload size={24}/></div>
+                      <span className="text-xs font-black uppercase tracking-widest text-slate-400">Select PNG Logo</span>
+                    </button>
+                  )}
+                  <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+                </div>
+              </div>
+              <Button disabled={loading} type="submit" className="w-full py-8 bg-indigo-600 text-white rounded-[2rem] font-black text-xl shadow-xl active:scale-95 transition-all">
+                {loading ? <Loader2 className="animate-spin" /> : <><Calendar size={20} className="mr-2"/> Activate National Season</>}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── CREATE SPONSOR VIEW ───────────────────────────────────────────── */}
       {view === 'create_sponsor' && (
