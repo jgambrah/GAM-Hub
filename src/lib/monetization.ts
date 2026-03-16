@@ -1,14 +1,21 @@
+
 'use client';
 
 /**
  * @fileOverview Liaison Monetization Engine: Wallet Transactions.
- * Implements Step 2 & 3: Spam Prevention & 50/50 Creator Revenue Split.
- * Now synchronized with the National Leaderboard and Battle Gift Leaderboard.
+ * Implements Step 2, 3 & 5: Spam Prevention, Revenue Split & Paid Boosting.
+ * Now synchronized with the National Leaderboard and Post Promotion registry.
  */
 
 import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
+
+export const BOOST_TIERS = {
+  starter: { cost: 100, target: 5000, label: 'Starter Boost' },
+  viral: { cost: 300, target: 20000, label: 'Viral Momentum' },
+  legendary: { cost: 750, target: 60000, label: 'Legendary Takeover' }
+};
 
 /**
  * addCoins
@@ -56,18 +63,18 @@ export async function addCoins(db: Firestore, userId: string, coins: number, amo
  * spendCoins
  * ----------
  * High-integrity transaction with 50/50 Creator Split logic.
- * Also updates the Arena Leaderboard and Battle Support Leaderboard.
  */
 export async function spendCoins(
   db: Firestore, 
   userId: string, 
   amount: number, 
-  type: 'gift_sent' | 'powerup_used' | 'tournament_entry',
+  type: 'gift_sent' | 'powerup_used' | 'tournament_entry' | 'highlight_boost',
   metadata: { 
     battleId?: string; 
     targetCreatorId?: string;
     userName?: string;
     userAvatarUrl?: string;
+    boostTier?: string;
   } = {}
 ) {
   if (!db || !userId || amount <= 0) return Promise.reject("Invalid amount");
@@ -93,7 +100,7 @@ export async function spendCoins(
     });
 
     // 3. Creator Achievement Handshake (50/50 Revenue Split)
-    if (creatorId) {
+    if (creatorId && type !== 'highlight_boost') {
       // A. Wallet Payout (Earned Income Vault)
       const creatorWalletRef = doc(db, 'creator_wallets', creatorId);
       const earnedAmount = Math.floor(amount * 0.5); // platform keeps 50%
@@ -105,7 +112,6 @@ export async function spendCoins(
       }, { merge: true });
 
       // B. Leaderboard Impact Tracking
-      // Increments boostsReceived or giftsReceived based on transaction type
       const leaderRef = doc(db, 'arena_leaderboard', creatorId);
       transaction.set(leaderRef, {
         boostsReceived: type === 'powerup_used' ? increment(1) : increment(0),
@@ -146,5 +152,36 @@ export async function spendCoins(
     });
     errorEmitter.emit('permission-error', permissionError);
     throw serverError;
+  });
+}
+
+/**
+ * boostVibe
+ * ---------
+ * Step 5: Professional Paid Promotion Handshake.
+ * Deducts coins and flags the post for algorithm prioritization.
+ */
+export async function boostVibe(
+  db: Firestore,
+  userId: string,
+  postId: string,
+  tier: keyof typeof BOOST_TIERS
+) {
+  const config = BOOST_TIERS[tier];
+  
+  // 1. First spend the coins (Transactionally secure)
+  await spendCoins(db, userId, config.cost, 'highlight_boost', {
+    boostTier: tier,
+    targetCreatorId: userId // Boosting self
+  });
+
+  // 2. Update the Pulse document to trigger neural prioritization
+  const postRef = doc(db, 'campus_pulse', postId);
+  return updateDoc(postRef, {
+    isPromoted: true,
+    promotionLevel: tier,
+    promotionViewsTarget: config.target,
+    promotionViewsDelivered: 0,
+    promotedAt: serverTimestamp()
   });
 }

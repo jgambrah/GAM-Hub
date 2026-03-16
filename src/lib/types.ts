@@ -46,7 +46,7 @@ export type HubWallet = {
 export type WalletTransaction = {
   id: string;
   userId: string;
-  type: 'purchase' | 'gift_sent' | 'gift_received' | 'powerup_used' | 'tournament_entry';
+  type: 'purchase' | 'gift_sent' | 'gift_received' | 'powerup_used' | 'tournament_entry' | 'highlight_boost';
   coins: number;
   amountPaidGHS?: number;
   metadata?: any;
@@ -182,6 +182,11 @@ export type SocialPost = {
     isSponsored?: boolean;
     sponsorName?: string;
   };
+  // Step 5: Promotion Fields
+  isPromoted?: boolean;
+  promotionLevel?: 'none' | 'starter' | 'viral' | 'legendary';
+  promotionViewsTarget?: number;
+  promotionViewsDelivered?: number;
 };
 
 export type ArenaPost = SocialPost;

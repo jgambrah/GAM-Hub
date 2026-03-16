@@ -1,3 +1,4 @@
+
 'use client';
 
 import Image from 'next/image';
@@ -7,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   ThumbsUp, MessageCircle, Share2, Youtube, Play, PlayCircle,
   Video, Trash2, Globe, AlertTriangle, FastForward, Minimize2,
-  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music
+  ImageIcon, FileText, ArrowRight, Zap, Volume2, VolumeX, Mic, Music, TrendingUp
 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import { useFirebase } from '@/firebase';
@@ -31,6 +32,7 @@ import { recordEngagement } from '@/lib/trending-service';
 import { renderWithHashtags } from '@/lib/hashtag-utils';
 import VibeShopOverlay from './VibeShopOverlay';
 import VoicePlayer from './VoicePlayer';
+import { BoostVibeDialog } from '../arena/BoostVibeDialog';
 import dynamic from 'next/dynamic';
 
 const TikTokEmbed = dynamic(() => import('./tiktok-embed').then(mod => mod.TikTokEmbed), {
@@ -63,6 +65,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
   const [isProcessingLike, setIsProcessingLike] = React.useState(false);
   const [showComments, setShowComments] = React.useState(false);
   const [isRestricted, setIsRestricted] = React.useState(false);
+  const [showBoostDialog, setShowBoostDialog] = React.useState(false);
   
   const [isSkippingRestricted, setIsSkippingRestricted] = React.useState(false);
   const [skipCountdown, setSkipCountdown] = React.useState<number | null>(null);
@@ -81,6 +84,7 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
 
   const isAuthor = user?.id === post.authorId;
   const canDelete = isAuthor || isAdmin;
+  const canBoost = isAuthor && (post.type === 'arena_highlight' || post.isArenaEntry);
   const isGlobalSeed = post.campusId === 'all';
   const isActiveVibe = activePostId === post.id;
   const mediaCategory = getMediaCategory(post.mediaType);
@@ -288,7 +292,16 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         isGlobalSeed && !isActiveVibe && 'border-amber-200'
       )}
     >
-      {isGlobalSeed && (
+      {/* STEP 5: PROMOTED INDICATOR */}
+      {post.isPromoted && (
+          <div className="absolute top-6 left-6 z-20 animate-in zoom-in duration-500">
+              <div className="bg-blue-600 text-white px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
+                  <TrendingUp size={12} fill="white" /> Promoted Victory
+              </div>
+          </div>
+      )}
+
+      {isGlobalSeed && !post.isPromoted && (
         <div className="absolute top-6 left-6 z-20 animate-in zoom-in duration-500">
           <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-2xl text-[9px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 border-2 border-white/20">
             <Globe size={12} /> Global Vibe
@@ -489,6 +502,12 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
             </button>
           </div>
           <div className="flex items-center gap-3">
+            {canBoost && !post.isPromoted && (
+                <button onClick={() => setShowBoostDialog(true)} className="p-3 text-blue-600 hover:bg-blue-50 transition-all bg-blue-50/50 rounded-2xl hover:scale-110 active:scale-95 border-2 border-blue-100 flex items-center gap-2 pr-4 shadow-sm">
+                    <Zap size={20} fill="currentColor" />
+                    <span className="text-[10px] font-black uppercase tracking-widest">Boost Performance</span>
+                </button>
+            )}
             {canDelete && (
               <button type="button" onClick={handleDeletePost} className="p-3 text-muted-foreground hover:text-red-500 transition-all bg-muted/50 rounded-2xl hover:scale-110 active:scale-95 border-2 border-transparent hover:border-red-100" title="Retract">
                 <Trash2 size={20} />
@@ -505,6 +524,10 @@ export default function SocialPostCard({ post }: { post: SocialPost }) {
         <div className={cn('border-t border-border', isActiveVibe ? 'px-10 pb-10' : 'px-8 pb-8')}>
           <CommentSection postId={post.id} authorId={post.authorId} />
         </div>
+      )}
+
+      {showBoostDialog && (
+          <BoostVibeDialog post={post} isOpen={showBoostDialog} onClose={() => setShowBoostDialog(false)} />
       )}
     </div>
   );
