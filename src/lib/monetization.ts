@@ -9,7 +9,7 @@
 import { Firestore, doc, increment, runTransaction, updateDoc, collection, addDoc, serverTimestamp, getDoc, setDoc, writeBatch, arrayUnion } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
-import type { ArenaTournament, CreatorSubscription } from './types';
+import type { ArenaTournament, CreatorSubscription, CreatorSettings } from './types';
 
 /**
  * 💎 PROMOTION PACKAGES (Step 5)
@@ -238,6 +238,7 @@ export async function subscribeToCreator(
     const subId = `${subscriberId}_${creatorId}`;
     const subRef = doc(db, 'creator_subscriptions', subId);
     const userRef = doc(db, 'users', subscriberId);
+    const settingsRef = doc(db, 'creator_settings', creatorId);
 
     const now = new Date();
     const renewalDate = new Date();
@@ -273,6 +274,12 @@ export async function subscribeToCreator(
             read: false,
             createdAt: serverTimestamp()
         });
+
+        // 4. Update Creator Stats
+        transaction.set(settingsRef, {
+            subscriberCount: increment(1),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
     });
 }
 

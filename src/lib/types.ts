@@ -37,6 +37,14 @@ export type User = {
   candidacyStatus?: 'none' | 'pending' | 'approved' | 'rejected';
 };
 
+export type CreatorSettings = {
+  id: string;
+  subscriptionsEnabled: boolean;
+  subscriptionPrice: 2 | 3 | 5;
+  subscriberCount: number;
+  updatedAt: any;
+};
+
 export type CreatorSubscription = {
   id: string;
   creatorId: string;
@@ -241,7 +249,6 @@ export type SocialPost = {
     isSponsored?: boolean;
     sponsorName?: string;
   };
-  // Step 5: Promotion Fields
   isPromoted?: boolean;
   promotionLevel?: 'none' | 'small' | 'medium' | 'large';
   promotionViewsTarget?: number;

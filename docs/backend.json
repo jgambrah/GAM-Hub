@@ -63,6 +63,17 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       }
     },
+    "CreatorSettings": {
+      "title": "CreatorSettings",
+      "type": "object",
+      "description": "Commercial governance for individual creators.",
+      "properties": {
+        "subscriptionsEnabled": { "type": "boolean" },
+        "subscriptionPrice": { "type": "number", "enum": [2, 3, 5] },
+        "subscriberCount": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "CreatorSubscription": {
       "title": "CreatorSubscription",
       "type": "object",
@@ -139,6 +150,7 @@
     "/users/{userId}": { "schema": "#/backend/entities/User", "description": "Global user profiles." },
     "/wallets/{userId}": { "schema": "#/backend/entities/HubWallet", "description": "Private coin balances." },
     "/creator_wallets/{userId}": { "schema": "#/backend/entities/CreatorWallet", "description": "Earnings vault for creators." },
+    "/creator_settings/{userId}": { "schema": "#/backend/entities/CreatorSettings", "description": "Subscription and commercial settings for creators." },
     "/creator_subscriptions/{subId}": { "schema": "#/backend/entities/CreatorSubscription", "description": "Recurring fan support." },
     "/arena_battles/{battleId}": { "schema": "#/backend/entities/ArenaBattle", "description": "Real-time Arena competitions." },
     "/arena_tournaments/{tournamentId}": { "schema": "#/backend/entities/ArenaTournament", "description": "Organized competitions." },

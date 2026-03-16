@@ -17,6 +17,7 @@ import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { updateNotificationSettings } from '@/lib/market-intelligence';
 import type { NotificationSettings } from '@/lib/types';
+import { CreatorSettingsCard } from '@/components/settings/CreatorSettingsCard';
 
 function NotificationCommand({ userId }: { userId: string }) {
     const { firestore } = useFirebase();
@@ -199,6 +200,9 @@ export default function SettingsPage() {
           <VendorMomoSettings vendorData={user} />
         </div>
       )}
+
+      {/* CREATOR MONETIZATION HUB (Step 7) */}
+      {!isVendor && <CreatorSettingsCard />}
 
       {!isVendor && <CandidateApplicationCard />}
       

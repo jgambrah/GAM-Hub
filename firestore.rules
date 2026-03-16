@@ -20,6 +20,11 @@ service cloud.firestore {
       allow write: if isAdmin() || request.auth.uid == userId;
     }
 
+    match /creator_settings/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
     // 💰 MONETIZATION: Coin Wallet Registry
     match /wallets/{userId} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
